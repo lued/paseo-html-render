@@ -264,6 +264,8 @@ the capture.
 - **2026-10-20, autonomous harness + install:** `npm run verify:e2e` (G1–G6) passes 6/6 with evidence in `verification-20261020/`; 154/154 tests, typecheck, bundles 14/21, package 31 files, runtime audit 0. Installed `html-render` 2.0.0 from this directory (`paseo plugin install .`), then reloaded it. G6 captured a real agent timeline and the HTML file preview in the hosted client.
 - Historical canary entries (five workspaces, model preflight, scope rejection) were removed with the methodology; their evidence files remain in `~/.paseo/plugin-data/html-render-v2-qa/` and are not acceptance evidence.
 
+- **2026-10-20, release 2.0.0:** installed from a clean checkout (`~/git/paseo-html-render`, not the dev worktree); `npm ci` + `paseo plugin install <dir>` is now the documented machine path. Added `npm run check:trigger` (10-prompt corpus counting real tool calls) and refreshed verification evidence (155 tests, G2 no-fallback, G5 third-party plugins, trigger policy, 1.4 s publish latency for nine widths). Tagged `v2.0.0`, published a Gitea release, and pinned the plugin in dotfiles (`apps.md`, `CHECKLIST.md`, `README.md`). Final full run on HEAD: `verify:e2e` 6/6, 155/155 tests.
+
 ## Evidence and interpretation
 
 Source basis: T3 `packages/shared/src/htmlRender.ts`, server
