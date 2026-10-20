@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PRODUCTION_IDENTITY } from "../shared/identity.ts";
+import { BRIDGE_TOKEN_FILE, PRODUCTION_IDENTITY } from "../shared/identity.ts";
 import {
   decodeReportReference,
   encodeReportReference,
@@ -30,6 +30,7 @@ test("identity preserves the historical external contracts", () => {
   assert.equal(PRODUCTION_IDENTITY.dataDirName, "html-render");
   assert.equal(PRODUCTION_IDENTITY.adapterFileName, "mcp-adapter-v1.mjs");
   assert.equal(PRODUCTION_IDENTITY.socketFileName, "bridge.sock");
+  assert.equal(BRIDGE_TOKEN_FILE, "bridge.token");
   assert.deepEqual(PRODUCTION_IDENTITY.bridgeEnv, {
     bridge: "PASEO_HTML_RENDER_BRIDGE",
     token: "PASEO_HTML_RENDER_TOKEN",

@@ -1,10 +1,10 @@
 import { AbortController, type AbortSignal } from "./cancellation.ts";
-import { timingSafeEqual } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { createServer, type Socket } from "node:net";
 import { join } from "node:path";
+import { BRIDGE_TOKEN_FILE, type PluginIdentity } from "../shared/identity.ts";
 import { BRIDGE_MAX_MESSAGE_BYTES } from "../shared/limits.ts";
-import type { PluginIdentity } from "../shared/identity.ts";
 import { SELECTED_IDENTITY } from "../shared/selected-identity.ts";
 import { buildAdapterSource } from "./adapter-source.ts";
 import type { Authority } from "./authority.ts";
@@ -36,6 +36,7 @@ export interface BridgeOptions {
 export interface Bridge {
   socketPath: string;
   token: string;
+  tokenPath: string;
   adapterPath: string;
   close(): Promise<void>;
 }
@@ -54,18 +55,76 @@ function safeEqual(left: string, right: string): boolean {
   return timingSafeEqual(a, b);
 }
 
+const TOKEN_PATTERN = /^[0-9a-f]{64}$/;
+
+async function readBridgeToken(path: string): Promise<string | null> {
+  try {
+    const value = (await fs.readFile(path, "utf8")).trim();
+    return TOKEN_PATTERN.test(value) ? value : null;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+async function writeBridgeToken(path: string, token: string): Promise<void> {
+  const temporary = `${path}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
+  await fs.writeFile(temporary, `${token}\n`, { mode: 0o600 });
+  await fs.chmod(temporary, 0o600).catch(() => {});
+  await fs.rename(temporary, path);
+}
+
+/**
+ * Reads the shared token or creates it exactly once. `wx` makes concurrent
+ * plugin starts agree on a single credential; a malformed existing file is
+ * replaced rather than leaving every adapter permanently locked out.
+ */
+export async function loadOrCreateBridgeToken(path: string): Promise<string> {
+  const existing = await readBridgeToken(path);
+  if (existing) return existing;
+  const token = randomBytes(32).toString("hex");
+  try {
+    const handle = await fs.open(path, "wx", 0o600);
+    try {
+      await handle.writeFile(`${token}\n`, "utf8");
+    } finally {
+      await handle.close();
+    }
+    return token;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    const raced = await readBridgeToken(path);
+    if (raced) return raced;
+    await writeBridgeToken(path, token);
+    return token;
+  }
+}
+
 /**
  * Local bridge between the per-agent MCP adapter process and the plugin daemon.
  * Authority comes from the adapter's cwd configured by the daemon at injection
- * time; a request can never name its own workspace, and the token never leaves
- * the daemon or the spawned process environment.
+ * time; a request can never name its own workspace.
+ *
+ * The token is a durable per-install credential in the private data root, not a
+ * per-process value. Paseo injects the token into an agent's MCP server
+ * environment when that agent is created, and a plugin reload cannot rewrite
+ * those environments. Persisting the token means adapters continue to
+ * authenticate after a reload instead of failing with `Invalid bridge token`.
+ *
+ * An explicit token is still accepted for tests and for a deliberate rotation.
+ * The effective token is always written to the shared file so adapters that
+ * re-read it cannot get out of sync with the running bridge.
  */
-export async function startBridge(options: BridgeOptions, token: string): Promise<Bridge> {
+export async function startBridge(options: BridgeOptions, token?: string): Promise<Bridge> {
   const identity = options.identity ?? SELECTED_IDENTITY;
   await fs.mkdir(options.dataRoot, { recursive: true, mode: 0o700 });
   await fs.chmod(options.dataRoot, 0o700).catch(() => {});
   const socketPath = join(options.dataRoot, identity.socketFileName);
   const adapterPath = join(options.dataRoot, identity.adapterFileName);
+  const tokenPath = join(options.dataRoot, BRIDGE_TOKEN_FILE);
+  const bridgeToken = token ?? await loadOrCreateBridgeToken(tokenPath);
+  if (token !== undefined) await writeBridgeToken(tokenPath, bridgeToken);
+  await fs.chmod(tokenPath, 0o600).catch(() => {});
   await fs.rm(socketPath, { force: true });
   await fs.writeFile(adapterPath, buildAdapterSource(identity), { mode: 0o600 });
 
@@ -128,7 +187,7 @@ export async function startBridge(options: BridgeOptions, token: string): Promis
     } catch {
       return { ok: false, error: { code: "invalid_input", message: "Malformed bridge request" } };
     }
-    if (typeof request.token !== "string" || !safeEqual(request.token, token)) {
+    if (typeof request.token !== "string" || !safeEqual(request.token, bridgeToken)) {
       options.onLog?.("Rejected bridge request with an invalid token");
       return { ok: false, error: { code: "denied", message: "Invalid bridge token" } };
     }
@@ -184,7 +243,8 @@ export async function startBridge(options: BridgeOptions, token: string): Promis
 
   return {
     socketPath,
-    token,
+    token: bridgeToken,
+    tokenPath,
     adapterPath,
     async close() {
       for (const socket of sockets) socket.destroy();

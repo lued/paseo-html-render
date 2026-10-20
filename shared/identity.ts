@@ -53,6 +53,14 @@ export interface PluginIdentity {
   readonly socketFileName: string;
 }
 
+/**
+ * Persisted bridge credential inside the private data root. Every plugin process
+ * for one identity shares this file, so a reload does not invalidate MCP
+ * adapters that were injected into existing agents. The file is 0600 and the
+ * containing directory is 0700.
+ */
+export const BRIDGE_TOKEN_FILE = "bridge.token";
+
 export const PRODUCTION_IDENTITY: PluginIdentity = Object.freeze({
   pluginId: "html-render",
   pluginName: "HTML Render",

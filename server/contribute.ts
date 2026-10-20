@@ -1,6 +1,5 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import type { PaseoApi } from "@getpaseo/client";
-import { randomBytes } from "node:crypto";
 import type { PluginIdentity } from "../shared/identity.ts";
 import { SELECTED_IDENTITY } from "../shared/selected-identity.ts";
 import {
@@ -42,12 +41,18 @@ export default function contribute(server: PluginServerContext, options: Contrib
     executablePath: process.env.PASEO_HTML_RENDER_CHROMIUM?.trim() || undefined,
   });
   const tools = createHtmlTools({ renderer, store });
-  const token = randomBytes(32).toString("hex");
 
   let authority: Authority | null = null;
   const getAuthority = (paseo: PaseoApi): Authority => {
     authority ??= createAuthority(paseo);
     return authority;
+  };
+  const warmAuthority = async (paseo: PaseoApi, agentId: string, cwd?: string | null) => {
+    const current = getAuthority(paseo);
+    await Promise.allSettled([
+      current.workspaceForAgent(agentId),
+      cwd ? current.workspaceForCwd(cwd) : Promise.resolve(null),
+    ]);
   };
   // The bridge starts before any handler can run; a request that arrives early
   // waits for the socket instead of being served without authority checks.
@@ -68,7 +73,6 @@ export default function contribute(server: PluginServerContext, options: Contrib
       identity,
       onLog: log,
     },
-    token,
   );
   bridgePromise.catch((error: unknown) => {
     log(`bridge failed to start: ${error instanceof Error ? error.message : String(error)}`);
@@ -171,11 +175,15 @@ export default function contribute(server: PluginServerContext, options: Contrib
   // A resumed agent may call a tool before any client RPC has run. Warm both
   // authority paths from the public session-open hook; the request is untouched.
   server.before("agent.session_open", async ({ request }, context) => {
-    const authority = getAuthority(context.paseo);
-    await Promise.allSettled([
-      authority.workspaceForAgent(request.agentId),
-      request.cwd ? authority.workspaceForCwd(request.cwd) : Promise.resolve(null),
-    ]);
+    await warmAuthority(context.paseo, request.agentId, request.cwd);
+  });
+
+  // A plugin reload can land while an agent process is already running, after
+  // its session-open hook has passed. Warm authority again at the start of every
+  // turn so the next tool call does not fail closed with "not part of an open
+  // Paseo workspace".
+  server.on("agent.turn_started", async ({ agent }, context) => {
+    await warmAuthority(context.paseo, agent.id, agent.cwd);
   });
 
   // Non-destructive by default: only an explicit `PASEO_HTML_RENDER_PURGE_ON_ARCHIVE`

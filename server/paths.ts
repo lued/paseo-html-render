@@ -10,7 +10,9 @@ import { SELECTED_IDENTITY } from "../shared/selected-identity.ts";
  *
  *   $PASEO_HOME/plugin-data/html-render/{artifacts,bridge.sock,bridge.token}
  *
- * PASEO_HTML_RENDER_DATA_DIR overrides it for isolated tests.
+ * `bridge.token` is a durable per-install credential, so plugin reloads do not
+ * invalidate MCP adapters already injected into agents. PASEO_HTML_RENDER_DATA_DIR
+ * overrides the root for isolated tests.
  *
  * The QA canary uses the same function with its own identity, so it resolves to
  * `$PASEO_HOME/plugin-data/html-render-v2-qa` and ignores the production

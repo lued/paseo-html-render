@@ -73,7 +73,7 @@ npm ci --ignore-scripts
 npm run verify:e2e     # G1-G6: renderer, mounted card, MCP, dedupe, install, client
 npm run check:trigger  # 10-prompt corpus: structured renders, plain stays text
 npm run typecheck
-npm test               # 154 unit/integration tests
+npm test               # 158 unit/integration tests
 npm run check:bundles
 npm pack --dry-run --json
 paseo plugin install /absolute/path/to/plugin-v2
@@ -86,8 +86,11 @@ New agents receive MCP injection plus the rendering policy in the MCP handshake:
 render a card when the answer has structure, answer in text for single facts, prose,
 code, file contents or config. Disabling the plugin removes both the tools and the
 policy; agents created while it was enabled keep their injected config until they are
-recreated. Existing session configurations are never edited.
-Plugin reloads may require a resumed agent to reconnect its MCP process.
+recreated. Existing session configurations are never edited. The bridge token is a durable
+0600 file under the private data root, and the adapter re-reads it on every call,
+so a plugin reload does not invalidate MCP tools in existing agents. An adapter
+process that is already running still needs one reconnect to pick up the new
+adapter source.
 
 See [`docs/compatibility.md`](docs/compatibility.md) for intentional T3 differences
 and [`docs/verification.md`](docs/verification.md) for live results and rollback.

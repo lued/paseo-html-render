@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { PRODUCTION_IDENTITY, type PluginIdentity } from "../shared/identity.ts";
+import { BRIDGE_TOKEN_FILE, PRODUCTION_IDENTITY, type PluginIdentity } from "../shared/identity.ts";
 import { reportModelSchema } from "../shared/report-model.ts";
 
 const reportJsonSchema = z.toJSONSchema(reportModelSchema, { target: "draft-7", unrepresentable: "any" });
@@ -24,7 +24,9 @@ properties.graph.description += " Node ids must be unique; edge endpoints and de
  * Keep this template free of backticks and `${` sequences.
  */
 export function buildAdapterSource(identity: PluginIdentity): string {
-  return String.raw`import net from "node:net";
+  return String.raw`import { readFileSync } from "node:fs";
+import net from "node:net";
+import { dirname, join } from "node:path";
 
 const MARKER = __PASEO_MARKER__;
 const MAX_HTML_CHARS = 512000;
@@ -34,10 +36,27 @@ const SUPPORTED_PROTOCOLS = ["2024-11-05", "2025-03-26", "2025-06-18"];
 const MAX_LINE_BYTES = 8 * 1024 * 1024;
 
 const BRIDGE_ENV = __PASEO_BRIDGE_ENV__;
+const BRIDGE_TOKEN_FILE = __PASEO_TOKEN_FILE__;
 const ADAPTER_LOG_TAG = __PASEO_LOG_TAG__;
 const bridgePath = process.env[BRIDGE_ENV.bridge] || "";
 const bridgeToken = process.env[BRIDGE_ENV.token] || "";
 const callerCwd = process.env[BRIDGE_ENV.cwd] || "";
+const bridgeTokenFile = bridgePath ? join(dirname(bridgePath), BRIDGE_TOKEN_FILE) : "";
+
+// The token file is the source of truth so a plugin reload can rotate the
+// credential without stranding MCP adapters that were injected earlier. The
+// environment token remains the fallback for older installs and isolated tests.
+function currentBridgeToken() {
+  if (bridgeTokenFile) {
+    try {
+      const shared = readFileSync(bridgeTokenFile, "utf8").trim();
+      if (shared) return shared;
+    } catch {
+      // Fall through to the injected token.
+    }
+  }
+  return bridgeToken;
+}
 
 const HTML_DESCRIPTION =
   "A complete, self-contained HTML document. Lead with something visual: a diagram, chart, flow, " +
@@ -153,7 +172,8 @@ function fail(id, code, message) {
 
 function bridge(request) {
   return new Promise(function (resolve, reject) {
-    if (!bridgePath || !bridgeToken || !callerCwd) {
+    const token = currentBridgeToken();
+    if (!bridgePath || !token || !callerCwd) {
       reject(new Error("The HTML Render bridge is not configured for this agent"));
       return;
     }
@@ -174,7 +194,7 @@ function bridge(request) {
     });
     socket.on("connect", function () {
       socket.write(JSON.stringify({
-        token: bridgeToken,
+        token: token,
         tool: request.tool,
         cwd: callerCwd,
         input: request.input,
@@ -403,6 +423,7 @@ process.stdin.on("end", function () {
     .replace("__PASEO_REPORT_SCHEMA__", () => JSON.stringify(reportJsonSchema))
     .replace("__PASEO_MARKER__", () => JSON.stringify(identity.markerPrefix))
     .replace("__PASEO_BRIDGE_ENV__", () => JSON.stringify(identity.bridgeEnv))
+    .replace("__PASEO_TOKEN_FILE__", () => JSON.stringify(BRIDGE_TOKEN_FILE))
     .replace("__PASEO_LOG_TAG__", () => JSON.stringify(identity.logTag))
     .replace("__PASEO_SERVER_NAME__", () => JSON.stringify(identity.mcpServerName));
 }

@@ -8,7 +8,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { ArtifactStore } from "../server/artifacts.ts";
 import type { Authority } from "../server/authority.ts";
-import { startBridge, type Bridge } from "../server/bridge.ts";
+import { loadOrCreateBridgeToken, startBridge, type Bridge } from "../server/bridge.ts";
 import { createRenderer } from "../server/renderer.ts";
 import { createHtmlTools } from "../server/tools.ts";
 import { decodeReportReference } from "../shared/recognize.ts";
@@ -35,8 +35,8 @@ class Adapter {
   private nextId = 1;
   private readonly pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void }>();
 
-  constructor(env: Record<string, string>) {
-    this.child = spawn(process.execPath, [join(dataRoot, "mcp-adapter-v1.mjs")], {
+  constructor(env: Record<string, string>, adapterPath = join(dataRoot, "mcp-adapter-v1.mjs")) {
+    this.child = spawn(process.execPath, [adapterPath], {
       env: { ...process.env, ...env },
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -291,6 +291,66 @@ test("an invalid bridge token is denied and a caller cannot choose its workspace
   assert.equal(stored.manifest.workspaceId, WORKSPACE_ID);
   assert.equal(stored.manifest.ownerCwd, workspace);
   await assert.rejects(() => store.readPreview(artifactId, "wks_attacker"), /another workspace/);
+});
+
+test("the bridge token persists across reloads and stale adapters recover from the file", async () => {
+  const root = await fs.mkdtemp(join(tmpdir(), "hr-token-"));
+  let first: Bridge | null = null;
+  let second: Bridge | null = null;
+  try {
+    first = await startBridge({ dataRoot: root, tools, authority });
+    const token = first.token;
+    assert.equal((await fs.stat(first.tokenPath)).mode & 0o777, 0o600);
+    assert.equal((await fs.readFile(first.tokenPath, "utf8")).trim(), token);
+    await first.close();
+    first = null;
+
+    // A plugin reload starts a new bridge over the same private data root.
+    second = await startBridge({ dataRoot: root, tools, authority });
+    assert.equal(second.token, token);
+    assert.equal((await fs.readFile(second.tokenPath, "utf8")).trim(), token);
+
+    // The adapter was injected with the old environment token. It must prefer
+    // the shared file, or a reload would strand every existing agent.
+    const client = new Adapter(
+      {
+        PASEO_HTML_RENDER_BRIDGE: second.socketPath,
+        PASEO_HTML_RENDER_TOKEN: "0".repeat(64),
+        PASEO_HTML_RENDER_CWD: workspace,
+      },
+      second.adapterPath,
+    );
+    try {
+      await client.request("initialize", { protocolVersion: "2024-11-05", capabilities: {} });
+      const result = (await client.request("tools/call", {
+        name: "html_preview",
+        arguments: { html: "<p>shared token</p>", width: 390 },
+      })) as { content: Array<{ type: string; data?: string }>; isError: boolean };
+      assert.equal(result.isError, false);
+      assert.ok(result.content.some((entry) => entry.type === "image" && entry.data));
+    } finally {
+      client.close();
+    }
+  } finally {
+    if (first) await first.close().catch(() => {});
+    if (second) await second.close().catch(() => {});
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a malformed shared token file is replaced with a valid 0600 token", async () => {
+  const root = await fs.mkdtemp(join(tmpdir(), "hr-token-bad-"));
+  const tokenPath = join(root, "bridge.token");
+  try {
+    await fs.writeFile(tokenPath, "not-a-token\n", { mode: 0o600 });
+    const token = await loadOrCreateBridgeToken(tokenPath);
+    assert.match(token, /^[0-9a-f]{64}$/);
+    assert.equal((await fs.readFile(tokenPath, "utf8")).trim(), token);
+    assert.equal((await fs.stat(tokenPath)).mode & 0o777, 0o600);
+    assert.equal(await loadOrCreateBridgeToken(tokenPath), token);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
 });
 
 function rawBridge(payload: unknown): Promise<unknown> {

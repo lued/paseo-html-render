@@ -80,6 +80,14 @@ test("daemon entry injects MCP into new agents, serves owned artifacts, and clea
     undefined,
   );
 
+  // A running agent whose plugin was reloaded mid-session warms on turn start.
+  const turnStarted = events.get("agent.turn_started");
+  assert.ok(turnStarted);
+  await turnStarted(
+    { agent: { id: "agent_ok", workspaceId: "wks_test", parentAgentId: null, provider: "pi", cwd: workspace, title: null } },
+    { paseo, signal: new AbortController().signal },
+  );
+
   const hook = hooks.get("agent.create");
   assert.ok(hook);
   const existing = { provider: "pi", cwd: workspace, mcpServers: { other: { type: "stdio", command: "x" } } };
@@ -99,6 +107,11 @@ test("daemon entry injects MCP into new agents, serves owned artifacts, and clea
   // needs this to behave as Node instead of starting the GUI and closing stdio.
   assert.equal(injected?.env.ELECTRON_RUN_AS_NODE, "1");
   assert.ok((await fs.stat(injected!.args[0]!)).size > 1_000);
+
+  // The token is shared by every future plugin process, not per-process state.
+  const tokenPath = join(dataRoot, "bridge.token");
+  assert.equal((await fs.stat(tokenPath)).mode & 0o777, 0o600);
+  assert.equal((await fs.readFile(tokenPath, "utf8")).trim(), injected!.env.PASEO_HTML_RENDER_TOKEN);
 
   // The adapter file and bridge socket exist before any render is requested.
   assert.ok(await fs.stat(join(dataRoot, "bridge.sock")));

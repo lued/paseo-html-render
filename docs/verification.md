@@ -69,7 +69,7 @@ tool's message.
 | --- | --- |
 | `npm run verify:e2e` | **6/6 gates pass** (no blocked, no unavailable) |
 | `npm run typecheck` | pass |
-| `npm test` | **155/155 pass**, 0 skipped/fail/cancelled |
+| `npm test` | **158/158 pass**, 0 skipped/fail/cancelled |
 | `npm run check:trigger` | corpus probe: structured renders, plain prompts stay text (model-dependent, see below) |
 | `npm run check:bundles` | pass; 14 client inputs, 21 server inputs, Pele server-only |
 | `npm pack --dry-run --json` | pass; 31 files; tests, docs, private data excluded |
@@ -102,6 +102,11 @@ click interception do not fully contain `location.assign` or meta refresh.
 
 ## History
 
+- **2026-10-20 (bridge token):** The bridge token is now a durable 0600 file in
+  the private data root and the MCP adapter re-reads it on every call. A plugin
+  reload no longer invalidates tools in existing agents. Authority is also warmed
+  at `agent.turn_started`, so a reload that lands mid-session recovers on the next
+  turn. Running adapters still need one reconnect to load the new adapter source.
 - **2026-10-20:** QA canary methodology removed; five QA projects/workspaces
   deleted (dirs backed up to `verification-20261020/qa-workspaces-20261020-qa01.tar.gz`);
   QA identity/allowlist/`build-qa` deleted. `html-render` 2.0.0 installed and
