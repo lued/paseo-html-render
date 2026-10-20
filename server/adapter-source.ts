@@ -54,7 +54,10 @@ const REPORT_DESCRIPTION =
   "and views only; HTML still supplies the portable page.";
 
 const RENDER_DESCRIPTION =
-  "Publish a finished HTML page as a report card in this thread, above your final reply. " +
+  "Publish a visual HTML card when the answer has structure: a comparison, several findings, status, " +
+  "steps, a flow, an architecture, or numbers a reader will scan. Skip it for a single fact, one " +
+  "sentence, code, file contents or config, and anything the reader will copy as text. " +
+  "Publish the finished page above your final reply. " +
   "renderMode auto is the default: it renders live, sandboxed HTML on web and desktop and a static " +
   "PNG on native clients (a native report when report is supplied). In live mode inline scripts and styles " +
   "run; network resources, forms, local file URLs, and remote assets are blocked. Self-navigation remains possible. Inline SVG markup is supported; embed raster images as data: URIs or " +
@@ -323,12 +326,13 @@ async function handle(message) {
         capabilities: { tools: {} },
         serverInfo: { name: __PASEO_SERVER_NAME__, version: "1.0.0" },
         instructions:
-          "HTML reports for Paseo. html_preview returns a script-disabled PNG screenshot and content height; " +
-          "html_render publishes a report card with a private byte-identical original HTML, a static preview, " +
+          "If the answer has structure (comparison, several findings, status, steps, flow, architecture, numbers), render a visual HTML card; if it is one fact, a sentence, code, file contents or config, answer in text. " +
+          "html_preview returns a script-disabled PNG screenshot and content height; " +
+          "html_render publishes a visual card with a private byte-identical original HTML, a static preview, " +
           "an absolute interactive.html path for Paseo file preview, and an optional bounded native report. " +
           "Daemon captures keep JavaScript, network, remote assets, SVG, and file URLs blocked; workspace " +
           "raster images are inlined. Live scripts run only in the sandboxed live frame or file preview. " +
-          "Include [Open interactive report](<path>) from the tool result in your final reply.",
+          "Prefer one card per reply. Include [Open interactive report](<path>) from the tool result in your final reply.",
       },
     });
     return;

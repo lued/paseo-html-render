@@ -81,7 +81,11 @@ paseo plugin install /absolute/path/to/plugin-v2
 A sandbox-capable Chromium must already be installed, or set
 `PASEO_HTML_RENDER_CHROMIUM` to its executable. No browser is downloaded and
 `--no-sandbox` is never used. Missing Chromium fails preview/publish explicitly.
-New agents receive MCP injection; existing session configurations are not edited.
+New agents receive MCP injection plus the rendering policy in the MCP handshake:
+render a card when the answer has structure, answer in text for single facts, prose,
+code, file contents or config. Disabling the plugin removes both the tools and the
+policy; agents created while it was enabled keep their injected config until they are
+recreated. Existing session configurations are never edited.
 Plugin reloads may require a resumed agent to reconnect its MCP process.
 
 See [`docs/compatibility.md`](docs/compatibility.md) for intentional T3 differences

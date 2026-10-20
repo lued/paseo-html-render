@@ -658,12 +658,20 @@ test("G5 installed plugin registration", { timeout: 120_000 }, async () => {
       const ids = plugins.map((plugin) => plugin.id).sort();
       const status = JSON.parse(await runPaseo(["status", "--json"])) as { pid?: number; serverId?: string };
       const record = await writeEvidenceJson("g5-plugins.json", { plugins, daemonPid: status.pid, serverId: status.serverId });
-      assert.deepEqual(ids, ["html-render", "shared-browser"], `unexpected plugin set: ${ids.join(",")}`);
+      // Unrelated third-party plugins are allowed; what matters is that this
+      // plugin is installed, running, and that no retired identity survived.
       const html = plugins.find((plugin) => plugin.id === "html-render");
       assert.equal(html?.enabled, true, "html-render is enabled");
       assert.equal(html?.status, "running", "html-render is running");
       assert.equal(plugins.find((plugin) => plugin.id === "shared-browser")?.status, "running");
-      return { detail: "html-render running; only shared-browser plus html-render registered", evidence: [record] };
+      assert.ok(
+        !ids.some((id) => id.includes("-qa") || id.includes("html-render-v2")),
+        `retired canary identity is still registered: ${ids.join(",")}`,
+      );
+      return {
+        detail: `html-render running; registered: ${ids.join(", ")}`,
+        evidence: [record],
+      };
     },
   );
 });

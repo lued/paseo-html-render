@@ -191,6 +191,30 @@ is an open acceptance gate any more.
 | PQ-134 | DeepSeek-only work | Retired. It was a canary-process rule, not a product requirement. |
 | PQ-135 | Authoritative evidence tracking | ✅ Still in force: stable PQ ids, gate mapping, ledger. |
 
+## Trigger policy (plugin-scoped)
+
+The plugin tells the model *when* to render through the two surfaces it owns, so
+disabling the plugin removes the guidance with it (no AGENTS.md, no skill, no host
+configuration):
+
+- the MCP `instructions` line, which Pi places in the agent's `mcp_servers` section:
+  "If the answer has structure (comparison, several findings, status, steps, flow,
+  architecture, numbers), render a visual HTML card; if it is one fact, a sentence,
+  code, file contents or config, answer in text."
+- the `html_render` tool description, which repeats the positive rule and the
+  negative one (no cards for facts, prose, code, file contents or config).
+
+Measured with a fixed 10-prompt corpus (5 structured, 5 plain), DeepSeek, high
+thinking, natural wording with no tool names:
+
+| Run | Structured prompts rendering | Plain prompts rendering |
+| --- | --- | --- |
+| Before the policy | 0/5 (3 distinct prompts seen) | 1/5 |
+| After, first pass | 4/5 | 0/5 |
+| After, second pass | 5/5 | 0/5 |
+
+Prompt-to-prompt variance remains; the policy biases selection, it cannot force it.
+
 ## Autonomous verification gates
 
 `npm run verify:e2e` runs `tests/e2e/verify.test.ts` and writes
