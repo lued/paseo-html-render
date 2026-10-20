@@ -1,0 +1,88 @@
+# HTML Render for Paseo
+
+T3-shaped `html_preview` and `html_render`, implemented entirely in this plugin.
+No Paseo fork, daemon HTTP route, or shared-browser dependency.
+
+## Choose a display
+
+| Client / input | Display |
+| --- | --- |
+| Web/desktop, `renderMode: "auto"` (default) or `"iframe"` | Borderless inline HTML with theme updates and content-height fitting; no fullscreen. If the artifact also carries a report, one muted "View report" link opens the report screen. |
+| iOS/Android, optional `report` supplied | Accessible native report views, findings, graph lists, evidence and usage |
+| Explicit `"static"` | Native report views when supplied; otherwise PNG, with no live HTML |
+| Native without a report, or legacy marker without a report | Static PNG fallback |
+| Assistant's absolute HTML file link | Paseo's built-in HTML file preview, subject to client support |
+
+The web/desktop raw iframe is **unsupported by the public plugin SDK**. Native
+views never execute HTML. A compact web viewport is not native-client evidence.
+Verification is fully autonomous: `npm run verify:e2e` renders with real Chromium,
+runs the real MCP adapter, and captures the hosted client. Results and remaining
+gaps are in [`docs/verification.md`](docs/verification.md).
+
+## Tools
+
+1. `html_preview({ html, width?, appearance? })` returns a static PNG and measured
+   height plus a bounded `suggestedHeight` (80–2000). Scripts are disabled; provide meaningful static markup even for live
+   pages that enhance themselves with JavaScript.
+2. `html_render({ html, title, height, summary?, renderMode?, report? })` stores the
+   page and publishes a durable timeline reference. Optional `report` is bounded
+   `ReportModelV1` JSON, not executable content.
+3. Include the exact link returned by `html_render` in the final assistant reply:
+   `[Open interactive report](</absolute/path/to/interactive.html>)`.
+
+Use CSS variables such as `--background`, `--foreground`, `--card`, `--border`,
+`--accent`, `--primary`, `--muted-foreground`, `--chart-1` through `--chart-6`,
+`--radius`, `--font-sans` and `--font-mono`. Live theme updates preserve page state.
+Keep the outer page fluid, transparent and without duplicate card/title chrome.
+
+## Privacy and limits
+
+Artifacts live under `$PASEO_HOME/plugin-data/html-render/artifacts/<id>/`
+(default `~/.paseo/...`), with directories `0700` and files `0600`. Plugin reads
+check the requesting agent's workspace. Original HTML is preserved byte-for-byte.
+The interactive copy contains CSP and inlined workspace-local raster images.
+
+Network resources, forms, local file URLs, frames, objects and workers are blocked.
+Inline scripts execute only in live/file-preview HTML, never screenshots or native
+report blocks. The live iframe has `sandbox="allow-scripts"`, never same-origin.
+**A web iframe can still navigate itself.** CSP and click interception do not fully
+contain `location.assign` or meta refresh. Do not treat arbitrary live HTML as
+incapable of all network navigation.
+
+Local PNG/JPEG/GIF/WebP/AVIF images: at most 2 MiB each, 256 local references per
+page. Symlink escapes and non-regular files are refused; SVG files are not inlined
+(inline SVG markup is supported). A local image that cannot be resolved is removed
+from the prepared page with a bounded warning — the original HTML keeps it. There is
+no image fallback for a failed live render: the frame stays, and only an artifact
+that cannot be read shows one line of text. Prepared page <8 MiB; interactive file <=8 MiB;
+original HTML <=512,000 characters and <=512,000 UTF-8 bytes; report <=256 KiB;
+each PNG <=3 MiB. Noisy/large captures are clipped vertically to fit; original HTML
+is preserved. Remote assets are not fetched. Missing images are diagnostics, not
+permission to broaden access. Calls have a 60-second absolute deadline and cancel
+unfinished work on disconnect.
+
+Artifacts are retained by default. Set `PASEO_HTML_RENDER_PURGE_ON_ARCHIVE=1`
+only if deleting a workspace's reports on archive is desired. No background
+age-based deletion is performed. Pele is pinned inside this plugin; graph lists
+remain usable if graph thumbnails cannot be generated.
+
+## Development and installation
+
+```sh
+npm ci --ignore-scripts
+npm run verify:e2e     # G1-G6: renderer, mounted card, MCP, dedupe, install, client
+npm run typecheck
+npm test               # 154 unit/integration tests
+npm run check:bundles
+npm pack --dry-run --json
+paseo plugin install /absolute/path/to/plugin-v2
+```
+
+A sandbox-capable Chromium must already be installed, or set
+`PASEO_HTML_RENDER_CHROMIUM` to its executable. No browser is downloaded and
+`--no-sandbox` is never used. Missing Chromium fails preview/publish explicitly.
+New agents receive MCP injection; existing session configurations are not edited.
+Plugin reloads may require a resumed agent to reconnect its MCP process.
+
+See [`docs/compatibility.md`](docs/compatibility.md) for intentional T3 differences
+and [`docs/verification.md`](docs/verification.md) for live results and rollback.

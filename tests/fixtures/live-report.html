@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Plugin-v2 acceptance check</title><style>
+*{box-sizing:border-box}body{margin:0;padding:20px;background:transparent;color:var(--foreground);font:15px/1.5 var(--font-sans)}main{max-width:900px;margin:auto}h1{margin:0 0 8px;font-size:24px}p{margin:8px 0}.muted{color:var(--muted-foreground)}.status{display:inline-block;padding:3px 9px;border:1px solid var(--border);border-radius:999px}.row{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:16px 0}button{font:inherit;min-height:44px;border:1px solid var(--border);border-radius:8px;padding:8px 14px;background:var(--card);color:var(--foreground);cursor:pointer}button:focus-visible{outline:2px solid var(--accent)}img{border-radius:6px}#details{padding:12px;border-left:3px solid var(--accent)}@media(max-width:450px){body{padding:12px}h1{font-size:20px}.row{gap:8px}}
+</style></head><body><main>
+<span class="status">Local checks passed · device check pending</span>
+<h1>Plugin-v2 acceptance check</h1>
+<p class="muted">149 tests passed. This page checks live scripts, theme updates, height fitting, local images, and private file delivery.</p>
+<div class="row"><img src="tests/fixtures/local-raster.png" width="96" height="40" alt="Workspace-local raster inlined into the private report"><button id="count" type="button">Count: 0</button><button id="toggle" type="button" aria-expanded="false" aria-controls="details">Toggle details</button></div>
+<div id="details" hidden><p>Change the Paseo theme: the counter must keep its value.</p><p>Expand or close this section: the frame should fit its content.</p><p>The frame stays inline; there is no fullscreen control or viewport overlay.</p><p>Native clients show a structured report, not this live iframe.</p></div>
+<p class="muted">No remote resources. Static previews never execute this page's script.</p>
+</main><script>let count=0;document.getElementById('count').addEventListener('click',event=>{event.currentTarget.textContent='Count: '+(++count)});document.getElementById('toggle').addEventListener('click',event=>{const details=document.getElementById('details');details.hidden=!details.hidden;event.currentTarget.setAttribute('aria-expanded',String(!details.hidden))});</script></body></html>

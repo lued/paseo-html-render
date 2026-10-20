@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "outcome": {"status":"partial","headline":"Local verification passed; actual-device acceptance remains open","detail":"This is the live-daemon delivery fixture, not proof that a real client displayed the report."},
+  "summary":"Plugin-only HTML rendering with a private interactive export and native report fallback.",
+  "metrics":[{"label":"Local tests","value":"149/149","tone":"good"},{"label":"Implementation packages","value":"5 complete","tone":"good"},{"label":"Actual native device","value":"Unverified","tone":"warn"}],
+  "blocks":[
+    {"kind":"heading","text":"Acceptance check"},
+    {"kind":"text","text":"Browser harnesses verify live script state, theme updates, responsive heights, inline-only rendering, and safe fallback. Native views display validated JSON only."},
+    {"kind":"bullets","items":["Private original and interactive copies","Scoped workspace raster image","Light/dark graph previews with native list fallback"]},
+    {"kind":"steps","items":["Open the interactive report","Click Count once","Change theme and confirm Count stays at 1"]},
+    {"kind":"callout","tone":"warn","title":"Acceptance gate","text":"Real iOS/Android behavior and built-in file-preview click-through require an actual client check."},
+    {"kind":"code","language":"sh","text":"npm run typecheck\nnpm test\nnpm run check:bundles"},
+    {"kind":"table","columns":["Surface","Evidence"],"rows":[["Live iframe","Mounted Chromium tests"],["Native report","DOM-backed React Native shim"],["Actual native app","Unverified"]]},
+    {"kind":"agents","agents":[{"name":"Implementation workers","role":"Packages A–E","model":"pi/ocx/opencode-go/deepseek-v4.1-flash","status":"ok"}]},
+    {"kind":"graph","graphId":"acceptance"},
+    {"kind":"evidence","items":[{"label":"Verification record","artifactPath":"docs/verification.md"}]}
+  ],
+  "graph":{"id":"acceptance","nodes":[{"id":"local","label":"Local gates passed","tone":"good"},{"id":"daemon","label":"Live daemon smoke","tone":"neutral"},{"id":"device","label":"Actual device acceptance pending","tone":"warn"}],"edges":[{"from":"local","to":"daemon"},{"from":"daemon","to":"device"}],"decisions":[{"id":"device-check","label":"Require actual client evidence","nodeId":"device","choice":"Do not equate browser shim with native acceptance"}]},
+  "nextAction":"Open the interactive file link, click Count once, then change theme and check that the count remains 1.",
+  "promptLesson":{"improvedPrompt":"Separate local test results, daemon smoke evidence, and actual-device acceptance; preserve the security boundary.","lesson":"A passing browser harness does not prove native-client behavior."},
+  "usage":{"totalTokens":{"provenance":"unavailable"},"costUsd":{"provenance":"unavailable"}}
+}
