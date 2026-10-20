@@ -219,6 +219,10 @@ export default function contribute(server: PluginServerContext, options: Contrib
               [identity.bridgeEnv.bridge]: bridge.socketPath,
               [identity.bridgeEnv.token]: bridge.token,
               [identity.bridgeEnv.cwd]: cwd,
+              // A desktop-managed daemon has the Electron app as process.execPath.
+              // Without this the adapter starts the GUI instead of Node and exits,
+              // closing MCP stdio; Node ignores the variable.
+              ELECTRON_RUN_AS_NODE: "1",
             },
           },
         },

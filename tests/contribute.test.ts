@@ -95,6 +95,9 @@ test("daemon entry injects MCP into new agents, serves owned artifacts, and clea
   assert.ok(injected?.args[0]?.endsWith(".mjs"));
   assert.equal(injected?.env.PASEO_HTML_RENDER_CWD, workspace);
   assert.ok(injected?.env.PASEO_HTML_RENDER_TOKEN);
+  // A desktop-managed daemon runs the adapter through its Electron binary, which
+  // needs this to behave as Node instead of starting the GUI and closing stdio.
+  assert.equal(injected?.env.ELECTRON_RUN_AS_NODE, "1");
   assert.ok((await fs.stat(injected!.args[0]!)).size > 1_000);
 
   // The adapter file and bridge socket exist before any render is requested.
