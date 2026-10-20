@@ -202,7 +202,12 @@ configuration):
   architecture, numbers), render a visual HTML card; if it is one fact, a sentence,
   code, file contents or config, answer in text."
 - the `html_render` tool description, which repeats the positive rule and the
-  negative one (no cards for facts, prose, code, file contents or config).
+  negative one (no cards for facts, prose, code, file contents or config), and
+  requires the card to be a picture — diagram, chart, flow, timeline or
+  interactive — not a styled essay. Prose belongs in the reply below the card.
+- the injected MCP server config sets `alwaysLoad: true`, so the tools are
+  present as first-class choices instead of being hidden behind codemode search.
+  This moved the same prompt from 1/3 to 3/3 renders.
 
 Measured with a fixed 10-prompt corpus (5 structured, 5 plain), DeepSeek, high
 thinking, natural wording with no tool names:

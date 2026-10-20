@@ -210,6 +210,9 @@ export default function contribute(server: PluginServerContext, options: Contrib
           ...request.config.mcpServers,
           [identity.mcpServerName]: {
             type: "stdio",
+            // Load the tools with the session instead of behind codemode, so the
+            // model sees html_render as a first-class choice.
+            alwaysLoad: true,
             command: process.execPath,
             args: [bridge.adapterPath],
             env: {
