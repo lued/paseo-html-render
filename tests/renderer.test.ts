@@ -156,6 +156,19 @@ test("executable discovery is explicit and testable", () => {
   if (unavailable) assert.equal(discovered, null);
 });
 
+test("shared-browser's bundled Chromium is a discovery fallback", async () => {
+  const home = await fs.mkdtemp(join(tmpdir(), "hr-shared-browser-"));
+  try {
+    const runtime = join(home, ".paseo", "plugin-data", "shared-browser", ".runtime-test", "chromium");
+    await fs.mkdir(runtime, { recursive: true });
+    const chrome = join(runtime, "chrome");
+    await fs.writeFile(chrome, "", { mode: 0o700 });
+    assert.equal(findChromiumExecutable({}, home), chrome);
+  } finally {
+    await fs.rm(home, { recursive: true, force: true });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Multi-width measurement
 // ---------------------------------------------------------------------------

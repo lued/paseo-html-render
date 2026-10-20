@@ -226,6 +226,21 @@ function browserCacheCandidates(home: string): string[] {
   return found.sort().reverse();
 }
 
+function sharedBrowserCandidates(home: string): string[] {
+  // shared-browser installs a sandbox-capable Chrome for Testing under its own
+  // app-owned runtime. Reuse it read-only instead of requiring a second browser.
+  const root = join(home, ".paseo", "plugin-data", "shared-browser");
+  const found: string[] = [];
+  try {
+    for (const entry of readdirSync(root).filter((name) => name.startsWith(".runtime-"))) {
+      found.push(join(root, entry, "chromium", "chrome"));
+    }
+  } catch {
+    // Shared-browser is optional; a missing runtime is normal.
+  }
+  return found.sort().reverse();
+}
+
 const SYSTEM_CANDIDATES = [
   "/usr/bin/chromium",
   "/usr/bin/chromium-browser",
@@ -243,7 +258,11 @@ export function findChromiumExecutable(
 ): string | null {
   const override = env.PASEO_HTML_RENDER_CHROMIUM?.trim();
   if (override && isExecutable(override)) return override;
-  for (const candidate of [...browserCacheCandidates(home), ...SYSTEM_CANDIDATES]) {
+  for (const candidate of [
+    ...browserCacheCandidates(home),
+    ...sharedBrowserCandidates(home),
+    ...SYSTEM_CANDIDATES,
+  ]) {
     if (isExecutable(candidate)) return candidate;
   }
   return null;
