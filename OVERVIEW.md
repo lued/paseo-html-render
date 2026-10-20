@@ -71,6 +71,7 @@ remain usable if graph thumbnails cannot be generated.
 ```sh
 npm ci --ignore-scripts
 npm run verify:e2e     # G1-G6: renderer, mounted card, MCP, dedupe, install, client
+npm run check:trigger  # 10-prompt corpus: structured renders, plain stays text
 npm run typecheck
 npm test               # 154 unit/integration tests
 npm run check:bundles
