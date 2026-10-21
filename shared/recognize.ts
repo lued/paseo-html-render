@@ -118,6 +118,25 @@ export function isHtmlRenderToolName(name: unknown): boolean {
 export interface RecognizedToolCall {
   name: unknown;
   detail?: unknown;
+  callId?: unknown;
+}
+
+/**
+ * Duplicate suppression for the two rows Pi can persist for one render: the
+ * outer `codemode` wrapper and a direct `html_render` row. The same row may be
+ * transformed again while streaming, so a stable call id is allowed through.
+ */
+export interface TimelineTransformState {
+  readonly seen: Map<string, { callId: string; at: number }>;
+  readonly now: () => number;
+  readonly windowMs: number;
+}
+
+export function createTimelineTransformState(
+  now: () => number = Date.now,
+  windowMs = 10_000,
+): TimelineTransformState {
+  return { seen: new Map(), now, windowMs };
 }
 
 /**
@@ -145,12 +164,40 @@ export function isRenderToolCall(name: string): boolean {
  * touched. The scan is bounded, cycle-safe, and returns only the first valid
  * reference per row.
  */
+function isCodemodeToolCall(name: string): boolean {
+  return name.trim().toLowerCase() === "codemode";
+}
+
+/**
+ * Pi records an MCP call made from codemode as one outer `codemode` row whose
+ * output carries the nested calls. Those calls are not separate persisted
+ * timeline items, so recognizing only `html_render` rows loses every card after
+ * a history load. Require a real nested render call so unrelated codemode rows
+ * are never touched, then let the marker decide.
+ */
+function hasNestedRenderCall(detail: unknown): boolean {
+  if (typeof detail !== "object" || detail === null) return false;
+  const output = (detail as { output?: unknown }).output;
+  if (typeof output !== "object" || output === null) return false;
+  const details = (output as { details?: unknown }).details;
+  if (typeof details !== "object" || details === null) return false;
+  const calls = (details as { calls?: unknown }).calls;
+  if (!Array.isArray(calls)) return false;
+  return calls.some(
+    (call) => typeof call === "object" && call !== null && typeof (call as { name?: unknown }).name === "string" && isRenderToolCall((call as { name: string }).name),
+  );
+}
+
 export function recognizeToolCall(
   item: RecognizedToolCall,
   identity: PluginIdentity = SELECTED_IDENTITY,
 ): ReportCardData | null {
-  if (typeof item.name !== "string" || !isRenderToolCall(item.name)) return null;
-  return findReportReference(item.detail, identity);
+  if (typeof item.name !== "string") return null;
+  if (isRenderToolCall(item.name)) return findReportReference(item.detail, identity);
+  if (isCodemodeToolCall(item.name) && hasNestedRenderCall(item.detail)) {
+    return findReportReference(item.detail, identity);
+  }
+  return null;
 }
 
 export interface PluginTimelineReplacement {
@@ -165,9 +212,24 @@ export interface PluginTimelineReplacement {
 export function transformTimelineToolCall(
   item: RecognizedToolCall,
   identity: PluginIdentity = SELECTED_IDENTITY,
+  state?: TimelineTransformState,
 ): PluginTimelineReplacement | undefined {
   const data = recognizeToolCall(item, identity);
   if (!data) return undefined;
+  if (state) {
+    const callId = typeof item.callId === "string" ? item.callId : "";
+    const now = state.now();
+    const prior = state.seen.get(data.artifactId);
+    if (prior && prior.callId !== callId && now - prior.at < state.windowMs) {
+      return { items: [] };
+    }
+    state.seen.set(data.artifactId, { callId, at: now });
+    if (state.seen.size > 256) {
+      for (const [artifactId, entry] of state.seen) {
+        if (now - entry.at >= state.windowMs) state.seen.delete(artifactId);
+      }
+    }
+  }
   return {
     items: [{ type: "plugin", kind: identity.rendererKind, version: identity.reportVersion, data }],
   };

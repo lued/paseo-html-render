@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  createTimelineTransformState,
   decodeReportReference,
   encodeReportReference,
   recognizeToolCall,
@@ -44,8 +45,7 @@ test("recognition is marker-driven and still rejects invalid markers", () => {
     recognizeToolCall({ name: "mcp__html-render__html_render", detail: { output: [encoded] } }),
     card,
   );
-  // Only the render tool's own row becomes a card: Pi's `codemode` wrapper row
-  // carries the same marker and would otherwise render a duplicate card.
+  // A wrapper with no nested render call is never touched.
   assert.equal(recognizeToolCall({ name: "bash", detail: { output: encoded } }), null);
   assert.equal(recognizeToolCall({ name: "codemode", detail: { output: encoded } }), null);
   assert.deepEqual(recognizeToolCall({ name: "mcp__html_render__html_render", detail: { output: encoded } }), card);
@@ -80,11 +80,47 @@ test("recognizes a real Pi codemode row with the MCP call nested in details", ()
       },
     },
   };
-  // Pi reports the outer persisted row as codemode, not html_render.
+  // Pi persists the outer row as codemode, not html_render. Both shapes work.
+  assert.deepEqual(recognizeToolCall({ name: "codemode", detail }), card);
   assert.deepEqual(recognizeToolCall({ name: "mcp__html_render__html_render", detail }), card);
-  const replacement = transformTimelineToolCall({ name: "mcp__html_render__html_render", detail });
-  assert.equal(replacement?.items.length, 1);
-  assert.deepEqual(replacement?.items[0]?.data, card);
+  const wrapped = transformTimelineToolCall({ name: "codemode", detail, callId: "wrapped" });
+  assert.equal(wrapped?.items.length, 1);
+  assert.deepEqual(wrapped?.items[0]?.data, card);
+  const direct = transformTimelineToolCall({ name: "mcp__html_render__html_render", detail });
+  assert.equal(direct?.items.length, 1);
+  assert.deepEqual(direct?.items[0]?.data, card);
+});
+
+test("codemode and direct rows for one artifact produce one card, not duplicates", () => {
+  const encoded = encodeReportReference(card);
+  const detail = {
+    output: {
+      content: [{ type: "text", text: encoded }],
+      details: { calls: [{ name: "mcp__html_render__html_render", status: "completed" }] },
+    },
+  };
+  const state = createTimelineTransformState(() => 1_000);
+  const wrapped = transformTimelineToolCall({ name: "codemode", detail, callId: "call-1" }, undefined, state);
+  assert.equal(wrapped?.items.length, 1);
+  // The same row re-transforming while streaming still renders.
+  const again = transformTimelineToolCall({ name: "codemode", detail, callId: "call-1" }, undefined, state);
+  assert.equal(again?.items.length, 1);
+  // A second persisted row for the same artifact is suppressed.
+  const direct = transformTimelineToolCall(
+    { name: "mcp__html_render__html_render", detail: { output: encoded }, callId: "call-2" },
+    undefined,
+    state,
+  );
+  assert.deepEqual(direct, { items: [] });
+  // A different artifact still renders.
+  const other = { ...card, artifactId: "fedcba9876543210fedcba9876543210" };
+  const distinct = transformTimelineToolCall(
+    { name: "html_render", detail: { output: encodeReportReference(other) }, callId: "call-3" },
+    undefined,
+    state,
+  );
+  assert.equal(distinct?.items.length, 1);
+  assert.equal(distinct?.items[0]?.data.artifactId, other.artifactId);
 });
 
 test("nested codemode rows without a marker are preserved", () => {
