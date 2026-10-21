@@ -256,14 +256,23 @@ const MAX_SCAN_STRINGS = 400;
 const MAX_SCANNED_STRING_CHARS = 200_000;
 const MAX_SCAN_DEPTH = 12;
 
+export type ReferenceSource = "marker" | "path";
+
+export interface FoundReportReference {
+  readonly data: ReportCardData;
+  /** `marker` is the persisted encoded reference; `path` is the bounded fallback. */
+  readonly source: ReferenceSource;
+}
+
 /**
- * Walks a provider tool-call payload looking for the marker. Only the first
- * valid reference is used; anything else keeps the native tool row.
+ * Walks a provider tool-call payload looking for the marker, then for a bounded
+ * artifact-path fallback. Only the first valid reference is used; anything else
+ * keeps the native tool row.
  */
-export function findReportReference(
+export function findReportReferenceWithSource(
   value: unknown,
   identity: PluginIdentity = SELECTED_IDENTITY,
-): ReportCardData | null {
+): FoundReportReference | null {
   const marker = identity.markerPrefix;
   let visited = 0;
   let pathCandidate: ReportCardData | null = null;
@@ -272,14 +281,14 @@ export function findReportReference(
   // `allowPath` is false under an `input` key: a model-supplied HTML argument
   // must never be mistaken for this render's own artifact path. The marker scan
   // remains unchanged and is still allowed in every string.
-  const walk = (node: unknown, depth: number, allowPath: boolean): ReportCardData | null => {
+  const walk = (node: unknown, depth: number, allowPath: boolean): FoundReportReference | null => {
     if (visited >= MAX_SCAN_STRINGS || depth > MAX_SCAN_DEPTH) return null;
     if (typeof node === "string") {
       visited += 1;
       const text = node.length > MAX_SCANNED_STRING_CHARS ? node.slice(0, MAX_SCANNED_STRING_CHARS) : node;
       if (text.includes(marker)) {
         const found = decodeReportReference(text, identity);
-        if (found) return found;
+        if (found) return { data: found, source: "marker" };
       }
       if (allowPath && pathCandidate === null && text.includes("artifacts/")) {
         pathCandidate = recoverReportReferenceFromArtifactPath(text);
@@ -303,7 +312,16 @@ export function findReportReference(
     return null;
   };
 
-  return walk(value, 0, true) ?? pathCandidate;
+  const foundMarker = walk(value, 0, true);
+  if (foundMarker) return foundMarker;
+  return pathCandidate ? { data: pathCandidate, source: "path" } : null;
+}
+
+export function findReportReference(
+  value: unknown,
+  identity: PluginIdentity = SELECTED_IDENTITY,
+): ReportCardData | null {
+  return findReportReferenceWithSource(value, identity)?.data ?? null;
 }
 
 /**
@@ -390,16 +408,30 @@ function hasNestedRenderCall(detail: unknown): boolean {
   );
 }
 
+/**
+ * True when this row belongs to the render tool (directly, or through Pi's
+ * codemode wrapper). Used by the client catalog to tell an unresolved render
+ * row (a gap that may fill while streaming) from an unrelated tool row.
+ */
+export function isRenderToolRow(item: RecognizedToolCall): boolean {
+  if (typeof item.name !== "string") return false;
+  if (isRenderToolCall(item.name)) return true;
+  return isCodemodeToolCall(item.name) && hasNestedRenderCall(item.detail);
+}
+
+export function recognizeToolCallWithSource(
+  item: RecognizedToolCall,
+  identity: PluginIdentity = SELECTED_IDENTITY,
+): FoundReportReference | null {
+  if (!isRenderToolRow(item)) return null;
+  return findReportReferenceWithSource(item.detail, identity);
+}
+
 export function recognizeToolCall(
   item: RecognizedToolCall,
   identity: PluginIdentity = SELECTED_IDENTITY,
 ): ReportCardData | null {
-  if (typeof item.name !== "string") return null;
-  if (isRenderToolCall(item.name)) return findReportReference(item.detail, identity);
-  if (isCodemodeToolCall(item.name) && hasNestedRenderCall(item.detail)) {
-    return findReportReference(item.detail, identity);
-  }
-  return null;
+  return recognizeToolCallWithSource(item, identity)?.data ?? null;
 }
 
 export interface PluginTimelineReplacement {
