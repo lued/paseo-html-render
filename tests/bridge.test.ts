@@ -26,6 +26,9 @@ const authority: Authority = {
   async workspaceForAgent() {
     return WORKSPACE_ID;
   },
+  async workspaceForAgentOwnership() {
+    return { workspaceId: WORKSPACE_ID, root: workspace };
+  },
 };
 const tools = createHtmlTools({ renderer, store });
 

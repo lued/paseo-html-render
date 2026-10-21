@@ -10,8 +10,14 @@ export interface WorkspaceRoot {
 export interface Authority {
   /** Resolves a tool caller's cwd to the workspace that owns it. Never trusts a caller-supplied id. */
   workspaceForCwd(cwd: string): Promise<WorkspaceRoot | null>;
-  /** Resolves an agent id to its workspace, for artifact read checks. */
+  /** Resolves an agent id to its own workspace id, for diagnostics. */
   workspaceForAgent(agentId: string): Promise<string | null>;
+  /**
+   * Resolves an agent to the stable workspace that owns artifacts published
+   * from its directory. Several workspaces can share a directory; publish uses
+   * the lowest workspace id, so reads must resolve to that same owner.
+   */
+  workspaceForAgentOwnership(agentId: string): Promise<WorkspaceRoot | null>;
 }
 
 export interface AuthorityOptions {
@@ -72,23 +78,35 @@ export function createAuthority(paseo: PaseoApi, options: AuthorityOptions = {})
     return workspaceId;
   };
 
+  const ownershipForTarget = async (target: string): Promise<WorkspaceRoot | null> => {
+    const all = await workspaces();
+    const matches = all
+      .filter((entry) => target === entry.root || target.startsWith(entry.root + sep))
+      .sort((left, right) =>
+        right.root.length - left.root.length || left.workspaceId.localeCompare(right.workspaceId));
+    return matches[0] ?? null;
+  };
+
   return {
     async workspaceForCwd(cwd) {
       if (typeof cwd !== "string" || !cwd.startsWith("/")) return null;
       const target = canonicalPath(cwd);
       if (!target) return null;
-
-      const all = await workspaces();
-      const matches = all
-        .filter((entry) => target === entry.root || target.startsWith(entry.root + sep))
-        .sort((left, right) =>
-          right.root.length - left.root.length || left.workspaceId.localeCompare(right.workspaceId));
-      return matches[0] ?? null;
+      return ownershipForTarget(target);
     },
 
     async workspaceForAgent(agentId) {
       if (typeof agentId !== "string" || agentId.length === 0) return null;
       return agentWorkspace(agentId);
+    },
+
+    async workspaceForAgentOwnership(agentId) {
+      const workspaceId = await agentWorkspace(agentId);
+      if (!workspaceId) return null;
+      const all = await workspaces();
+      const entry = all.find((workspace) => workspace.workspaceId === workspaceId);
+      if (!entry) return null;
+      return ownershipForTarget(entry.root);
     },
   };
 }

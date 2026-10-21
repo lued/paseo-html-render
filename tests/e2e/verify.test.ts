@@ -535,6 +535,9 @@ test("G3 real MCP adapter and history rebuild", { timeout: 180_000 }, async () =
         async workspaceForAgent() {
           return WORKSPACE_ID;
         },
+        async workspaceForAgentOwnership() {
+          return { workspaceId: WORKSPACE_ID, root: workspace };
+        },
       };
       let bridge: Bridge | null = null;
       let adapter: Adapter | null = null;

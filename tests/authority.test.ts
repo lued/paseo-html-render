@@ -56,6 +56,8 @@ test("cwd resolution prefers the deepest workspace and rejects outsiders", async
   assert.equal(await authority.workspaceForAgent("agent_ok"), "wks_worktree");
   assert.equal(await authority.workspaceForAgent("agent_bad"), null);
   assert.equal(await authority.workspaceForAgent("agent_missing"), null);
+  assert.equal((await authority.workspaceForAgentOwnership("agent_ok"))?.workspaceId, "wks_worktree");
+  assert.equal(await authority.workspaceForAgentOwnership("agent_bad"), null);
 });
 
 test("a transient missing agent does not poison a successful ownership retry", async () => {
@@ -87,10 +89,15 @@ test("two workspaces sharing one directory resolve to a stable owner", async (t)
         { id: "wks_zzz", path: root },
         { id: "wks_aaa", path: root },
       ],
-      {},
+      { agent_zzz: "wks_zzz", agent_aaa: "wks_aaa" },
     ),
   );
   // Same directory, two ids: ownership must not flip between calls.
   assert.equal((await authority.workspaceForCwd(root))?.workspaceId, "wks_aaa");
   assert.equal(await authority.workspaceForCwd("/etc"), null);
+  // Reads follow the same owner as publish, whichever sibling workspace owns
+  // the agent. Otherwise the agent cannot read the card it just published.
+  assert.equal((await authority.workspaceForAgentOwnership("agent_zzz"))?.workspaceId, "wks_aaa");
+  assert.equal((await authority.workspaceForAgentOwnership("agent_aaa"))?.workspaceId, "wks_aaa");
+  assert.equal(await authority.workspaceForAgentOwnership("agent_missing"), null);
 });

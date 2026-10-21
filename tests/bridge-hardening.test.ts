@@ -24,6 +24,7 @@ test("bridge preserves split UTF-8 and dispatches only one request per socket", 
   const bridge = await startBridge({ dataRoot: dir, tools, authority: {
     workspaceForCwd: async () => ({workspaceId:"wks_wire", root:dir}),
     workspaceForAgent: async () => "wks_wire",
+    workspaceForAgentOwnership: async () => ({workspaceId:"wks_wire", root:dir}),
   } }, "token");
   try {
     const request = Buffer.from(JSON.stringify({token:"token",tool:"html_render",cwd:dir,input:{title:"Unicode 😀 café",html:"<p>日本語</p>"}})+"\n");

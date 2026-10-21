@@ -15,11 +15,18 @@ type EventHook = (event: unknown, context: unknown) => Promise<void> | void;
 
 const PNG = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
 
-function fakePaseo(workspaceRoot: string): PaseoApi {
+function fakePaseoWorkspaces(
+  workspaces: Array<{ id: string; path: string }>,
+  agents: Record<string, string | null>,
+): PaseoApi {
   return {
     workspaces: {
       list: async () => ({
-        entries: [{ id: "wks_test", projectRootPath: workspaceRoot, workspaceDirectory: workspaceRoot }],
+        entries: workspaces.map((workspace) => ({
+          id: workspace.id,
+          projectRootPath: workspace.path,
+          workspaceDirectory: workspace.path,
+        })),
         pageInfo: {},
         requestId: "test",
       }),
@@ -30,11 +37,15 @@ function fakePaseo(workspaceRoot: string): PaseoApi {
           return null;
         },
         get workspaceId() {
-          return agentId === "agent_ok" ? "wks_test" : null;
+          return agents[agentId] ?? null;
         },
       }),
     },
   } as unknown as PaseoApi;
+}
+
+function fakePaseo(workspaceRoot: string): PaseoApi {
+  return fakePaseoWorkspaces([{ id: "wks_test", path: workspaceRoot }], { agent_ok: "wks_test" });
 }
 
 test("daemon entry injects MCP into new agents, serves owned artifacts, and cleans up", async (t) => {
@@ -154,6 +165,71 @@ test("daemon entry injects MCP into new agents, serves owned artifacts, and clea
 
   await cleanup();
   await assert.rejects(() => fs.stat(join(dataRoot, "bridge.sock")));
+});
+
+test("an agent can read a card published under a sibling workspace on the same cwd", async (t) => {
+  const dataRoot = await fs.mkdtemp(join(tmpdir(), "hr-contribute-shared-"));
+  const workspace = await fs.mkdtemp(join(tmpdir(), "hr-contribute-shared-ws-"));
+  const previous = process.env.PASEO_HTML_RENDER_DATA_DIR;
+  process.env.PASEO_HTML_RENDER_DATA_DIR = dataRoot;
+  t.after(async () => {
+    if (previous === undefined) delete process.env.PASEO_HTML_RENDER_DATA_DIR;
+    else process.env.PASEO_HTML_RENDER_DATA_DIR = previous;
+    await fs.rm(dataRoot, { recursive: true, force: true });
+    await fs.rm(workspace, { recursive: true, force: true });
+  });
+
+  const handlers = new Map<string, Handler>();
+  const server = {
+    handle(contract: { name: string }, handler: Handler) {
+      handlers.set(contract.name, handler);
+    },
+    before() {
+      return () => {};
+    },
+    on() {
+      return () => {};
+    },
+  } as unknown as PluginServerContext;
+
+  const cleanup = contribute(server);
+  // Two real Paseo workspaces can share one directory. Publish tie-breaks to
+  // wks_aaa; the agent belongs to wks_zzz and must still read its own card.
+  const paseo = fakePaseoWorkspaces(
+    [
+      { id: "wks_zzz", path: workspace },
+      { id: "wks_aaa", path: workspace },
+    ],
+    { agent_sibling: "wks_zzz" },
+  );
+
+  const store = new ArtifactStore(dataRoot);
+  const saved = await store.save({
+    html: "<!doctype html><p>shared owner</p>",
+    title: "Shared owner",
+    summary: null,
+    width: 728,
+    height: 200,
+    workspaceId: "wks_aaa",
+    ownerCwd: workspace,
+    previewPng: PNG,
+  });
+
+  const read = handlers.get(readArtifactRpc.name);
+  assert.ok(read);
+  const artifact = (await read(
+    { artifactId: saved.manifest.artifactId, agentId: "agent_sibling" },
+    { paseo },
+  )) as { title: string; preview: { base64: string } };
+  assert.equal(artifact.title, "Shared owner");
+  assert.deepEqual(Buffer.from(artifact.preview.base64, "base64"), PNG);
+
+  await assert.rejects(
+    () => read({ artifactId: saved.manifest.artifactId, agentId: "agent_unknown" }, { paseo }) as Promise<unknown>,
+    /not available for that agent/,
+  );
+
+  await cleanup();
 });
 
 test("report, asset, and interactive reads are exposed with ownership checks", async (t) => {

@@ -55,6 +55,7 @@ test("a disconnected publish cancels its renderer and never commits an artifact"
   const tools = createHtmlTools({renderer,store});
   const bridge = await startBridge({dataRoot:root,tools,authority:{
     workspaceForCwd:async()=>({workspaceId:"wks_cancel",root}),workspaceForAgent:async()=>"wks_cancel",
+    workspaceForAgentOwnership:async()=>({workspaceId:"wks_cancel",root}),
   }},"token");
   const socket = net.createConnection(bridge.socketPath);
   try {

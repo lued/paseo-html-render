@@ -50,7 +50,7 @@ export default function contribute(server: PluginServerContext, options: Contrib
   const warmAuthority = async (paseo: PaseoApi, agentId: string, cwd?: string | null) => {
     const current = getAuthority(paseo);
     await Promise.allSettled([
-      current.workspaceForAgent(agentId),
+      current.workspaceForAgentOwnership(agentId),
       cwd ? current.workspaceForCwd(cwd) : Promise.resolve(null),
     ]);
   };
@@ -69,6 +69,10 @@ export default function contribute(server: PluginServerContext, options: Contrib
           if (!authority) return Promise.resolve(null);
           return authority.workspaceForAgent(agentId);
         },
+        workspaceForAgentOwnership(agentId) {
+          if (!authority) return Promise.resolve(null);
+          return authority.workspaceForAgentOwnership(agentId);
+        },
       },
       identity,
       onLog: log,
@@ -79,9 +83,9 @@ export default function contribute(server: PluginServerContext, options: Contrib
   });
 
   const requireWorkspace = async (paseo: PaseoApi, agentId: string): Promise<string> => {
-    const workspaceId = await getAuthority(paseo).workspaceForAgent(agentId);
-    if (!workspaceId) throw new Error("This report is not available for that agent");
-    return workspaceId;
+    const workspace = await getAuthority(paseo).workspaceForAgentOwnership(agentId);
+    if (!workspace) throw new Error("This report is not available for that agent");
+    return workspace.workspaceId;
   };
 
   server.handle(readArtifactRpc, async ({ artifactId, agentId }, { paseo }) => {
