@@ -58,9 +58,15 @@ function currentBridgeToken() {
   return bridgeToken;
 }
 
+const LAYOUT_DESCRIPTION =
+  "The live card is fluid: it fills the reader's thread column, which is typically about 600-1100 CSS pixels wide, so 728 is only the default preview width and never a card cap. " +
+  "Do not hard-code a max-width below 1000px. Use responsive CSS such as grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)) and stack columns below about 720px. " +
+  "Keep outer padding small, and prefer one full-width visual, such as a vertical flow or timeline with callouts, over fixed side-by-side columns that leave each column narrow.";
+
 const HTML_DESCRIPTION =
   "A complete, self-contained HTML document. Lead with something visual: a diagram, chart, flow, " +
-  "comparison, timeline or small interactive. Keep labels short; the page is not an essay. Any prose " +
+  "comparison, timeline or small interactive. Keep labels short; the page is not an essay. " +
+  LAYOUT_DESCRIPTION + " Any prose " +
   "on the page must be essential to reading the visual, because the explanation belongs in your reply " +
   "below the card. Inline <style> and inline SVG are supported. " +
   "Remote http(s) resources and local file:// paths are blocked. Workspace-local raster images " +
@@ -78,7 +84,8 @@ const REPORT_DESCRIPTION =
 const RENDER_DESCRIPTION =
   "Publish a visual HTML card when the answer has structure: a comparison, several findings, status, " +
   "steps, a flow, an architecture, or numbers a reader will scan. The card is the picture: a diagram, " +
-  "chart, flow, timeline or interactive, not a styled essay or a wall of bullets. Skip it for a single " +
+  "chart, flow, timeline or interactive, not a styled essay or a wall of bullets. " +
+  LAYOUT_DESCRIPTION + " Skip it for a single " +
   "fact, one sentence, code, file contents or config, and anything the reader will copy as text. " +
   "Publish the finished page above your final reply. " +
   "renderMode auto is the default: it renders live, sandboxed HTML on web and desktop and a static " +
@@ -112,7 +119,7 @@ const TOOLS = [
           type: "integer",
           minimum: 240,
           maximum: 1600,
-          description: "Viewport width in CSS pixels, 240-1600. Defaults to 728; use about 390 for phones.",
+          description: "Viewport width in CSS pixels, 240-1600. Defaults to 728. This is the capture width, not the live card width, which is fluid; use about 390 for phones and 1000-1200 to check the wide layout.",
         },
         appearance: {
           type: "string",
@@ -355,6 +362,7 @@ async function handle(message) {
         serverInfo: { name: __PASEO_SERVER_NAME__, version: "1.0.0" },
         instructions:
           "If the answer has structure (comparison, several findings, status, steps, flow, architecture, numbers), render a visual HTML card led by a diagram, chart, flow or interactive with only essential labels; keep the explanation in your reply below it. Answer in text only for one fact, a sentence, code, file contents or config. " +
+          "The live card is fluid (typically about 600-1100 CSS pixels); 728 is only the default preview width, not a card cap. Fill the width with responsive, reflowing visuals. " +
           "html_preview returns a script-disabled PNG screenshot and content height; " +
           "html_render publishes a visual card with a private byte-identical original HTML, a static preview, " +
           "an absolute interactive.html path for Paseo file preview, and an optional bounded native report. " +

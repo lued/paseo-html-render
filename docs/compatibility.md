@@ -13,7 +13,7 @@ See `verification.md` for exact tests and remaining client gates.
 | Input | T3-shaped plugin contract |
 | --- | --- |
 | `html_preview.html` | 1–512,000 characters; original page byte budget also applies when publishing |
-| `html_preview.width` | Integer 240–1600, default 728 |
+| `html_preview.width` | Integer 240–1600, default 728. Capture width only; the live frame is fluid and has no plugin-side max-width |
 | `html_preview.appearance` | `light` or `dark`, default `dark` |
 | `html_render.html`, `title`, `height` | Required HTML; title 1–200 characters; requested frame cap 80–2000 |
 | Additive plugin fields | `summary` <=280 characters; `renderMode` static/auto/iframe (default auto); bounded `report` v1 JSON |
@@ -49,6 +49,7 @@ link/path; copying is not represented as opening a file tab.
 | Live inline HTML | Web/desktop raw `srcDoc` iframe, unsupported by public SDK; no inline HTML on native |
 | Theme | T3-like token names mapped to Paseo palette; initial theme plus live messages without reload. Exported file follows OS color preference |
 | Height | T3-style nearest-width fitting and requested cap semantics; measurements at 390/728/1024 rather than T3's nine widths |
+| Layout width | Live iframe is 100% of the host thread column (roughly 600–1100 CSS px); 728 is only the default capture width. No plugin-side max-width, and no expand/fullscreen surface |
 | Fullscreen | Removed at user request. No expand button, viewport overlay, fullscreen zoom toolbar, or Escape-dismiss channel; iframe fullscreen permission explicitly denied |
 | Native | Structured report views when `report` exists; otherwise static PNG. Full arbitrary HTML via assistant file link where client supports it |
 | Static fallback | Light/dark PNGs, requested frame cap distinct from actual screenshot dimensions; missing/live-failed states remain readable |

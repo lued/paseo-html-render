@@ -126,9 +126,11 @@ test("adapter initializes and advertises the T3-shaped render tools", async () =
       protocolVersion: "2024-11-05",
       capabilities: {},
       clientInfo: { name: "test", version: "1" },
-    })) as { protocolVersion: string; serverInfo: { name: string } };
+    })) as { protocolVersion: string; serverInfo: { name: string }; instructions?: string };
     assert.equal(init.protocolVersion, "2024-11-05");
     assert.equal(init.serverInfo.name, "html-render");
+    assert.match(init.instructions ?? "", /fluid/);
+    assert.match(init.instructions ?? "", /728/);
     client.notify("notifications/initialized");
     const list = (await client.request("tools/list", {})) as {
       tools: Array<{ name: string; description: string; inputSchema: Record<string, unknown> }>;
@@ -141,6 +143,14 @@ test("adapter initializes and advertises the T3-shaped render tools", async () =
     assert.ok(render);
     assert.ok(render.description.includes("sandboxed"));
     assert.ok(render.description.includes("renderMode"));
+    assert.match(render.description, /fluid/);
+    assert.match(render.description, /repeat\(auto-fit/);
+    const preview = list.tools.find((tool) => tool.name === "html_preview");
+    assert.ok(preview);
+    const previewSchema = preview.inputSchema as {
+      properties: Record<string, { description?: string }>;
+    };
+    assert.match(previewSchema.properties.width?.description ?? "", /not the live card width/);
     const schema = render.inputSchema as {
       required: string[];
       properties: Record<string, { maximum?: number }>;

@@ -19,6 +19,16 @@ Verification is fully autonomous: `npm run verify:e2e` renders with real Chromiu
 runs the real MCP adapter, and captures the hosted client. Results and remaining
 gaps are in [`docs/verification.md`](docs/verification.md).
 
+## Layout width
+
+The live frame is fluid: it fills the host's thread column (roughly 600-1100 CSS
+pixels on web/desktop) and carries no plugin-side `max-width`. The `728` default on
+`html_preview.width` is only the Chromium capture width; `html_render` has no width
+input, and that capture is displayed at card width on static surfaces. The MCP
+guidance therefore tells authors to fill the width with responsive, reflowing
+visuals rather than design only for 728, and to check both ends with `html_preview`
+at about 390 and 1000-1200.
+
 ## Tools
 
 1. `html_preview({ html, width?, appearance? })` returns a static PNG and measured
