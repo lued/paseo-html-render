@@ -30,6 +30,19 @@ const PARTIAL_ESCAPE = /%(?:[0-9A-Fa-f]{0,1})$/;
 const REPAIRED_FRAME_HEIGHT = 600;
 
 /**
+ * Some providers drop the marker entirely while preserving the human-readable
+ * tool text, which still names the private artifact directory. This is the only
+ * fallback that can rebuild a card from such a row: an exact artifact id under
+ * `artifacts/<id>/`. It is deliberately narrow, bounded, and only considered
+ * for this plugin's render rows and nested codemode render calls.
+ */
+const ARTIFACT_PATH_ID = /artifacts[\\/]([0-9a-f]{32})(?=[\\/]|$)/g;
+const MAX_ARTIFACT_PATH_REFERENCES = 8;
+const PUBLISHED_TITLE = /Published a report card titled ("(?:[^"\\]|\\.)*")/;
+const REPORT_STORED = /\breportStored:\s*(yes|no)\b/;
+const MEASURED_HEIGHTS = /\bmeasuredHeights:\s*((?:\d+\s*x\s*\d+)(?:\s*,\s*\d+\s*x\s*\d+)*)/;
+
+/**
  * Match a top-level field, not a key that happens to appear inside a string
  * value (a summary can quote JSON). The cheap marker is flat, so `{` or `,`
  * before the key is the whole structure we need.
@@ -114,6 +127,80 @@ export function repairReportReference(payload: string): ReportCardData | null {
   return parsed.success ? parsed.data : null;
 }
 
+/**
+ * Extracts exactly one artifact id from a bounded scan of render-tool output.
+ * Multiple distinct ids are ambiguous, so no card is invented.
+ */
+function artifactIdFromPathReference(text: string): string | null {
+  const ids = new Set<string>();
+  let scanned = 0;
+  for (const match of text.matchAll(ARTIFACT_PATH_ID)) {
+    scanned += 1;
+    if (scanned > MAX_ARTIFACT_PATH_REFERENCES) break;
+    const id = match[1];
+    if (id) ids.add(id);
+  }
+  return ids.size === 1 ? [...ids][0]! : null;
+}
+
+function publishedTitle(text: string): string | null {
+  const match = PUBLISHED_TITLE.exec(text);
+  if (!match?.[1]) return null;
+  try {
+    const value: unknown = JSON.parse(match[1]);
+    return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+function measuredHeightsFromText(text: string): MeasuredHeight[] | undefined {
+  const match = MEASURED_HEIGHTS.exec(text);
+  if (!match?.[1]) return undefined;
+  const byWidth = new Map<number, number>();
+  for (const pair of match[1].matchAll(/(\d+)\s*x\s*(\d+)/g)) {
+    const width = Number(pair[1]);
+    const height = Number(pair[2]);
+    if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height)) continue;
+    if (!byWidth.has(width)) byWidth.set(width, height);
+  }
+  if (byWidth.size === 0) return undefined;
+  return [...byWidth.entries()].sort((left, right) => left[0] - right[0]);
+}
+
+/**
+ * Rebuilds a card reference from the artifact path in a render tool result when
+ * the marker is gone. Only an exact `artifacts/<32 hex>/` id is used, and the
+ * result is schema-validated like any other reference. Metadata that the text
+ * still carries (title, stored-report flag, measured heights) is preserved; the
+ * artifact RPC remains authoritative for everything else.
+ */
+export function recoverReportReferenceFromArtifactPath(
+  text: string,
+): ReportCardData | null {
+  if (typeof text !== "string" || text.length === 0) return null;
+  const artifactId = artifactIdFromPathReference(text);
+  if (!artifactId) return null;
+  const heights = measuredHeightsFromText(text);
+  const measuredAtDefault = heights?.find(([width]) => width === PREVIEW_DEFAULT_WIDTH)?.[1];
+  const stored = REPORT_STORED.exec(text)?.[1];
+  const candidate = {
+    artifactId,
+    title: publishedTitle(text) ?? "HTML report",
+    summary: null,
+    width: PREVIEW_DEFAULT_WIDTH,
+    height: measuredAtDefault ?? REPAIRED_FRAME_HEIGHT,
+    // `auto` is the tool's default. An explicit static render whose marker was
+    // lost still has a durable card sidecar; the artifact read restores it.
+    renderMode: "auto" as const,
+    ...(stored === undefined ? {} : { hasReport: stored === "yes" }),
+    ...(measuredAtDefault === undefined ? {} : { measuredHeight: measuredAtDefault }),
+    ...(heights === undefined ? {} : { heights }),
+  };
+  const parsed = reportCardSchema.safeParse(candidate);
+  return parsed.success ? parsed.data : null;
+}
+
 function sortedHeights(heights: readonly MeasuredHeight[] | undefined): MeasuredHeight[] | undefined {
   if (!heights || heights.length === 0) return undefined;
   return [...heights].sort((left, right) => left[0] - right[0]);
@@ -179,33 +266,44 @@ export function findReportReference(
 ): ReportCardData | null {
   const marker = identity.markerPrefix;
   let visited = 0;
+  let pathCandidate: ReportCardData | null = null;
   const seen = new Set<unknown>();
 
-  const walk = (node: unknown, depth: number): ReportCardData | null => {
+  // `allowPath` is false under an `input` key: a model-supplied HTML argument
+  // must never be mistaken for this render's own artifact path. The marker scan
+  // remains unchanged and is still allowed in every string.
+  const walk = (node: unknown, depth: number, allowPath: boolean): ReportCardData | null => {
     if (visited >= MAX_SCAN_STRINGS || depth > MAX_SCAN_DEPTH) return null;
     if (typeof node === "string") {
       visited += 1;
       const text = node.length > MAX_SCANNED_STRING_CHARS ? node.slice(0, MAX_SCANNED_STRING_CHARS) : node;
-      return text.includes(marker) ? decodeReportReference(text, identity) : null;
+      if (text.includes(marker)) {
+        const found = decodeReportReference(text, identity);
+        if (found) return found;
+      }
+      if (allowPath && pathCandidate === null && text.includes("artifacts/")) {
+        pathCandidate = recoverReportReferenceFromArtifactPath(text);
+      }
+      return null;
     }
     if (typeof node !== "object" || node === null) return null;
     if (seen.has(node)) return null;
     seen.add(node);
     if (Array.isArray(node)) {
       for (const entry of node) {
-        const found = walk(entry, depth + 1);
+        const found = walk(entry, depth + 1, allowPath);
         if (found) return found;
       }
       return null;
     }
-    for (const entry of Object.values(node as Record<string, unknown>)) {
-      const found = walk(entry, depth + 1);
+    for (const [key, entry] of Object.entries(node as Record<string, unknown>)) {
+      const found = walk(entry, depth + 1, allowPath && key !== "input");
       if (found) return found;
     }
     return null;
   };
 
-  return walk(value, 0);
+  return walk(value, 0, true) ?? pathCandidate;
 }
 
 /**

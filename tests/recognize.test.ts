@@ -353,3 +353,66 @@ test("nested codemode rows with report metadata still yield exactly one card", (
   assert.deepEqual(replacement?.items[0]?.data, enhanced);
   assert.equal(replacement?.items[0]?.version, 1);
 });
+
+test("the real b49e8050 row recovers a card from the artifact path when the marker is gone", () => {
+  // Real row: the provider kept the human-readable tool text and the absolute
+  // interactivePath but dropped the encoded marker entirely. The artifact id is
+  // the only durable reference left, so recognition falls back to it.
+  const text = String(
+    readFileSync(
+      fileURLToPath(new URL("./fixtures/pi-codemode-b49e8050-path-only.txt", import.meta.url).href),
+      "utf8",
+    ),
+  );
+  const content = [{ type: "text", text }];
+  const details = { calls: [{ name: "mcp__html_render__html_render" }] };
+  const out = transformTimelineToolCall(
+    {
+      name: "codemode",
+      detail: { type: "unknown", input: null, output: { content, details } },
+      callId: "call_b49e8050",
+    },
+    undefined,
+    createTimelineTransformState(),
+  );
+  const data = out?.items[0]?.data;
+  assert.equal(data?.artifactId, "b49e8050d7e14f0c9b2a6f3c8e1d4a72");
+  assert.equal(data?.title, "Weekly pipeline health");
+  assert.equal(data?.renderMode, "auto");
+  assert.equal(data?.hasReport, true);
+  assert.deepEqual(data?.heights, [
+    [390, 512],
+    [728, 604],
+  ]);
+  assert.equal(data?.measuredHeight, 604);
+});
+
+test("path recovery is limited to render rows and never reads the HTML argument", () => {
+  const id = "b49e8050d7e14f0c9b2a6f3c8e1d4a72";
+  const path = `/private/artifacts/${id}/interactive.html`;
+  // The same path in a non-render tool stays a native row.
+  assert.equal(recognizeToolCall({ name: "bash", detail: { output: { text: path } } }), null);
+  // A render row whose HTML input mentions an artifact path does not become a
+  // card unless its output actually names one.
+  assert.equal(
+    recognizeToolCall({ name: "html_render", detail: { input: { html: `<a href="${path}">x</a>` }, output: "done" } }),
+    null,
+  );
+  // Two different artifact ids in one output are ambiguous.
+  assert.equal(
+    recognizeToolCall({
+      name: "html_render",
+      detail: { output: `artifacts/${id}/interactive.html artifacts/${"a".repeat(32)}/interactive.html` },
+    }),
+    null,
+  );
+  // A valid marker always wins over a path in the same or a later string.
+  const card = { ...({ artifactId: id, title: "Marker", summary: null, width: 728, height: 600 } as const) };
+  const encoded = encodeReportReference(card);
+  const recovered = recognizeToolCall({
+    name: "html_render",
+    detail: { output: [`artifacts/${"a".repeat(32)}/interactive.html`, encoded] },
+  });
+  assert.equal(recovered?.artifactId, id);
+  assert.equal(recovered?.title, "Marker");
+});
