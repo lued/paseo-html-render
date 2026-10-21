@@ -40,6 +40,10 @@ test("cwd resolution prefers the deepest workspace and rejects outsiders", async
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const nested = join(root, "worktree");
   await fs.mkdir(nested);
+  // The probe path must exist so canonicalPath resolves it; on macOS the temp
+  // root (/var/...) is a symlink to /private/var/... and a missing path keeps
+  // its lexical form instead.
+  await fs.mkdir(join(nested, "src"));
   const paseo = fakePaseo(
     [
       { id: "wks_project", path: root },
