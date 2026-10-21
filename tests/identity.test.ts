@@ -76,3 +76,13 @@ test("adapter source matches the identity and embeds no credentials", () => {
   }
   assert.ok(!/token-[0-9a-f]{32}/.test(ADAPTER_SOURCE));
 });
+
+test("adapter writes the marker first so a prefix slice cannot cut it", () => {
+  // Regression: an agent logged link.slice(0, 1200) and destroyed the marker
+  // that used to be appended last.
+  assert.ok(ADAPTER_SOURCE.includes('let text = MARKER + reference + "\\n" +'));
+  assert.ok(!ADAPTER_SOURCE.includes('" + MARKER + reference'));
+  const markerAt = ADAPTER_SOURCE.indexOf("let text = MARKER + reference");
+  const proseAt = ADAPTER_SOURCE.indexOf('"Published a report card titled "');
+  assert.ok(markerAt >= 0 && proseAt > markerAt);
+});

@@ -39,8 +39,16 @@ Keep the outer page fluid, transparent and without duplicate card/title chrome.
 
 Artifacts live under `$PASEO_HOME/plugin-data/html-render/artifacts/<id>/`
 (default `~/.paseo/...`), with directories `0700` and files `0600`. Plugin reads
-check the requesting agent's workspace. Original HTML is preserved byte-for-byte.
+check the requesting agent's workspace. A read is allowed for the recorded owner
+id or for any active workspace whose canonical root matches the publisher's root,
+so a sibling workspace created later on the same directory cannot invalidate an
+existing card. Original HTML is preserved byte-for-byte.
 The interactive copy contains CSP and inlined workspace-local raster images.
+
+The render tool writes the persisted marker first in its result text, and a marker
+cut short by a provider output cap or by an agent slicing the result is repaired
+from its artifact id; the artifact read supplies the authoritative title and
+dimensions. Unknown or oversized markers stay rejected.
 
 Network resources, forms, local file URLs, frames, objects and workers are blocked.
 Inline scripts execute only in live/file-preview HTML, never screenshots or native
@@ -73,7 +81,7 @@ npm ci --ignore-scripts
 npm run verify:e2e     # G1-G6: renderer, mounted card, MCP, dedupe, install, client
 npm run check:trigger  # 10-prompt corpus: structured renders, plain stays text
 npm run typecheck
-npm test               # 158 unit/integration tests
+npm test               # 166 unit/integration tests
 npm run check:bundles
 npm pack --dry-run --json
 paseo plugin install /absolute/path/to/plugin-v2

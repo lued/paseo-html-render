@@ -5,6 +5,17 @@ import { canonicalPath } from "./canonical.ts";
 export interface WorkspaceRoot {
   workspaceId: string;
   root: string;
+  /**
+   * Every active workspace id rooted at `root`. Reads accept any sibling, so a
+   * workspace created later cannot invalidate artifacts published by another
+   * workspace sharing the same directory.
+   */
+  workspaceIds: readonly string[];
+}
+
+interface WorkspaceEntry {
+  workspaceId: string;
+  root: string;
 }
 
 export interface Authority {
@@ -40,9 +51,9 @@ export function createAuthority(paseo: PaseoApi, options: AuthorityOptions = {})
   const now = options.now ?? Date.now;
   const ttlMs = options.ttlMs ?? 15_000;
 
-  const list = async (): Promise<WorkspaceRoot[]> => {
+  const list = async (): Promise<WorkspaceEntry[]> => {
     const result = await paseo.workspaces.list({});
-    const value: WorkspaceRoot[] = [];
+    const value: WorkspaceEntry[] = [];
     for (const workspace of result.entries) {
       const path = workspace.workspaceDirectory ?? workspace.projectRootPath;
       if (!path) continue;
@@ -53,8 +64,8 @@ export function createAuthority(paseo: PaseoApi, options: AuthorityOptions = {})
     return value;
   };
 
-  let cachedWorkspaces: { at: number; value: WorkspaceRoot[] } | null = null;
-  const workspaces = async (): Promise<WorkspaceRoot[]> => {
+  let cachedWorkspaces: { at: number; value: WorkspaceEntry[] } | null = null;
+  const workspaces = async (): Promise<WorkspaceEntry[]> => {
     if (cachedWorkspaces && now() - cachedWorkspaces.at < ttlMs) return cachedWorkspaces.value;
     const value = await list();
     cachedWorkspaces = { at: now(), value };
@@ -84,7 +95,13 @@ export function createAuthority(paseo: PaseoApi, options: AuthorityOptions = {})
       .filter((entry) => target === entry.root || target.startsWith(entry.root + sep))
       .sort((left, right) =>
         right.root.length - left.root.length || left.workspaceId.localeCompare(right.workspaceId));
-    return matches[0] ?? null;
+    const owner = matches[0];
+    if (!owner) return null;
+    return {
+      workspaceId: owner.workspaceId,
+      root: owner.root,
+      workspaceIds: matches.map((entry) => entry.workspaceId),
+    };
   };
 
   return {

@@ -319,7 +319,11 @@ async function callTool(name, args) {
       ? result.htmlRender.heights.map(function (entry) { return entry[0] + "x" + entry[1]; }).join(", ")
       : "unavailable";
     const path = typeof result.interactivePath === "string" ? result.interactivePath : "";
-    let text = "Published a report card titled " + JSON.stringify(result.htmlRender.title) +
+    // The marker is first so a provider output cap or an agent slicing the
+    // result (for example link.slice(0, 1200)) cannot cut the reference. The
+    // artifact id survives any prefix; the rest is for the model to read.
+    let text = MARKER + reference + "\n" +
+      "Published a report card titled " + JSON.stringify(result.htmlRender.title) +
       ". The reader sees it above your reply.\n" +
       "interactivePath: " + path + "\n" +
       "measuredHeights: " + heights + "\n" +
@@ -331,7 +335,7 @@ async function callTool(name, args) {
     }
     const missing = missingText(result.missingImages);
     if (missing) text += "Images not inlined:" + missing + "\n";
-    text += "Do not repeat or describe the page in your reply.\n" + MARKER + reference;
+    text += "Do not repeat or describe the page in your reply.\n";
     return textResult(text, false);
   }
   return textResult("Unknown tool: " + name, true);

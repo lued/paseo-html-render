@@ -319,7 +319,7 @@ export function createHtmlTools(deps: { renderer: Renderer; store: ArtifactStore
           width: rendered.width,
           height,
           workspaceId: context.workspaceId,
-          ownerCwd: context.cwd,
+          ownerCwd: context.workspaceRoot ?? context.cwd,
           signal: context.signal,
           measuredHeight: rendered.capturedHeight,
           ...heights.length === 0 ? {} : { heights },

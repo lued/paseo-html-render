@@ -10,7 +10,7 @@ import {
 } from "../shared/protocol.ts";
 import type { Authority } from "./authority.ts";
 import { createAuthority } from "./authority.ts";
-import { ArtifactError, ArtifactStore, pngDimensions } from "./artifacts.ts";
+import { ArtifactError, ArtifactStore, pngDimensions, type ArtifactRequester } from "./artifacts.ts";
 import { startBridge, type Bridge } from "./bridge.ts";
 import { archiveCleanupEnabled, resolveDataRoot } from "./paths.ts";
 import { createRenderer } from "./renderer.ts";
@@ -82,21 +82,21 @@ export default function contribute(server: PluginServerContext, options: Contrib
     log(`bridge failed to start: ${error instanceof Error ? error.message : String(error)}`);
   });
 
-  const requireWorkspace = async (paseo: PaseoApi, agentId: string): Promise<string> => {
+  const requireWorkspace = async (paseo: PaseoApi, agentId: string): Promise<ArtifactRequester> => {
     const workspace = await getAuthority(paseo).workspaceForAgentOwnership(agentId);
     if (!workspace) throw new Error("This report is not available for that agent");
-    return workspace.workspaceId;
+    return { workspaceIds: workspace.workspaceIds, root: workspace.root };
   };
 
   server.handle(readArtifactRpc, async ({ artifactId, agentId }, { paseo }) => {
-    const workspaceId = await requireWorkspace(paseo, agentId);
+    const requester = await requireWorkspace(paseo, agentId);
     try {
-      const { manifest, png } = await store.readPreview(artifactId, workspaceId);
+      const { manifest, png } = await store.readPreview(artifactId, requester);
       const hasReport = manifest.report !== undefined || manifest.reportBytes !== undefined;
       const report = hasReport
-        ? (await store.readReport(artifactId, workspaceId)).report
+        ? (await store.readReport(artifactId, requester)).report
         : null;
-      const interactivePath = await store.interactivePath(artifactId, workspaceId);
+      const interactivePath = await store.interactivePath(artifactId, requester);
       return {
         artifactId: manifest.artifactId,
         title: manifest.title,
@@ -125,10 +125,10 @@ export default function contribute(server: PluginServerContext, options: Contrib
   });
 
   server.handle(readOriginalArtifactRpc, async ({ artifactId, agentId }, { paseo }) => {
-    const workspaceId = await requireWorkspace(paseo, agentId);
+    const requester = await requireWorkspace(paseo, agentId);
     try {
-      const { manifest, html } = await store.readOriginal(artifactId, workspaceId);
-      const interactive = await store.readInteractive(artifactId, workspaceId);
+      const { manifest, html } = await store.readOriginal(artifactId, requester);
+      const interactive = await store.readInteractive(artifactId, requester);
       return {
         artifactId: manifest.artifactId,
         title: manifest.title,
@@ -142,9 +142,9 @@ export default function contribute(server: PluginServerContext, options: Contrib
   });
 
   server.handle(readReportRpc, async ({ artifactId, agentId }, { paseo }) => {
-    const workspaceId = await requireWorkspace(paseo, agentId);
+    const requester = await requireWorkspace(paseo, agentId);
     try {
-      const { manifest, report } = await store.readReport(artifactId, workspaceId);
+      const { manifest, report } = await store.readReport(artifactId, requester);
       return { artifactId: manifest.artifactId, report };
     } catch (error) {
       if (error instanceof ArtifactError) throw new Error(error.message);
@@ -153,9 +153,9 @@ export default function contribute(server: PluginServerContext, options: Contrib
   });
 
   server.handle(readAssetRpc, async ({ artifactId, agentId, asset }, { paseo }) => {
-    const workspaceId = await requireWorkspace(paseo, agentId);
+    const requester = await requireWorkspace(paseo, agentId);
     try {
-      const { manifest, png, asset: name } = await store.readAsset(artifactId, workspaceId, asset);
+      const { manifest, png, asset: name } = await store.readAsset(artifactId, requester, asset);
       // Report actual PNG dimensions when readable; the requested frame height
       // stays separate in the manifest and the card reference.
       const dimensions = pngDimensions(png) ??

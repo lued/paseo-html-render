@@ -1,6 +1,6 @@
 import { SELECTED_IDENTITY } from "./selected-identity.ts";
 import type { PluginIdentity } from "./identity.ts";
-import { MAX_MARKER_CHARS } from "./limits.ts";
+import { MAX_MARKER_CHARS, PREVIEW_DEFAULT_WIDTH } from "./limits.ts";
 import { reportCardSchema, type MeasuredHeight, type ReportCardData } from "./protocol.ts";
 
 /**
@@ -16,7 +16,103 @@ export const REPORT_MARKER = SELECTED_IDENTITY.markerPrefix;
 /** Kept equal to the historical 8192-character decode budget. */
 export const MARKER_MAX_PAYLOAD_CHARS = MAX_MARKER_CHARS;
 
-const MARKER_PAYLOAD = new RegExp(`^[^\\s"'<>]{8,${MARKER_MAX_PAYLOAD_CHARS}}`);
+/**
+ * The exact alphabet `encodeURIComponent` can emit: unreserved characters,
+ * digits, `%` escapes, and the sub-delimiters it leaves alone. Single quotes
+ * are in that set (`employer's`), so excluding them truncated real markers.
+ */
+const MARKER_PAYLOAD = new RegExp(`^[A-Za-z0-9%._!~*'()-]{8,${MARKER_MAX_PAYLOAD_CHARS}}`);
+
+/** A trailing `%` or `%A` is an escape cut in half by truncation. */
+const PARTIAL_ESCAPE = /%(?:[0-9A-Fa-f]{0,1})$/;
+
+/** Fallback frame height when a truncated marker lost its `height` field. */
+const REPAIRED_FRAME_HEIGHT = 600;
+
+/**
+ * Match a top-level field, not a key that happens to appear inside a string
+ * value (a summary can quote JSON). The cheap marker is flat, so `{` or `,`
+ * before the key is the whole structure we need.
+ */
+function fieldPattern(key: string, value: string): RegExp {
+  return new RegExp(`(?:^|[,{])\\s*"${key}"\\s*:\\s*(${value})`);
+}
+
+function jsonStringField(text: string, key: string): string | null {
+  const match = fieldPattern(key, '"(?:[^"\\\\]|\\\\.)*"').exec(text);
+  if (!match?.[1]) return null;
+  try {
+    const value: unknown = JSON.parse(match[1]);
+    return typeof value === "string" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function jsonNumberField(text: string, key: string): number | undefined {
+  const match = fieldPattern(key, "-?\\d+").exec(text);
+  if (!match?.[1]) return undefined;
+  const value = Number(match[1]);
+  return Number.isSafeInteger(value) ? value : undefined;
+}
+
+function jsonBooleanField(text: string, key: string): boolean | undefined {
+  const match = fieldPattern(key, "true|false").exec(text);
+  return match?.[1] === undefined ? undefined : match[1] === "true";
+}
+
+/** Only complete `[width,height]` pairs; a pair cut by truncation is ignored. */
+function completeHeights(text: string): Array<[number, number]> | undefined {
+  const key = /(?:^|[,{])\s*"heights"\s*:/.exec(text);
+  if (!key) return undefined;
+  const values: Array<[number, number]> = [];
+  for (const match of text.slice(key.index).matchAll(/\[\s*(-?\d+)\s*,\s*(-?\d+)\s*\]/g)) {
+    const width = Number(match[1]);
+    const height = Number(match[2]);
+    if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height)) continue;
+    values.push([width, height]);
+  }
+  return values.length > 0 ? values : undefined;
+}
+
+/**
+ * Recover a reference whose tail was cut off by a provider output cap or by an
+ * agent slicing the tool result. The required artifact id and the leading
+ * fields survive any prefix; the artifact RPC supplies the authoritative
+ * metadata afterwards. Returns null unless a real artifact id is present, so
+ * prose that merely mentions the marker cannot become a card.
+ */
+export function repairReportReference(payload: string): ReportCardData | null {
+  const trimmed = payload.replace(PARTIAL_ESCAPE, "");
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(trimmed);
+  } catch {
+    return null;
+  }
+  if (!decoded.startsWith("{")) return null;
+  const artifactId = fieldPattern("artifactId", '"[0-9a-f]{32}"').exec(decoded)?.[1]?.slice(1, 33);
+  if (!artifactId) return null;
+  const renderMode = jsonStringField(decoded, "renderMode");
+  const hasReport = jsonBooleanField(decoded, "hasReport");
+  const measuredHeight = jsonNumberField(decoded, "measuredHeight");
+  const heights = completeHeights(decoded);
+  const candidate = {
+    artifactId,
+    title: jsonStringField(decoded, "title") ?? "HTML report",
+    summary: jsonStringField(decoded, "summary"),
+    width: jsonNumberField(decoded, "width") ?? PREVIEW_DEFAULT_WIDTH,
+    height: jsonNumberField(decoded, "height") ?? REPAIRED_FRAME_HEIGHT,
+    ...renderMode === "static" || renderMode === "auto" || renderMode === "iframe"
+      ? { renderMode }
+      : {},
+    ...hasReport === undefined ? {} : { hasReport },
+    ...measuredHeight === undefined ? {} : { measuredHeight },
+    ...heights === undefined ? {} : { heights },
+  };
+  const parsed = reportCardSchema.safeParse(candidate);
+  return parsed.success ? parsed.data : null;
+}
 
 function sortedHeights(heights: readonly MeasuredHeight[] | undefined): MeasuredHeight[] | undefined {
   if (!heights || heights.length === 0) return undefined;
@@ -52,12 +148,20 @@ export function decodeReportReference(
   const tail = text.slice(at + marker.length);
   const match = MARKER_PAYLOAD.exec(tail);
   if (!match) return null;
+  // A payload longer than the budget is hostile, not truncated: the match
+  // stopped at the cap while payload characters still follow. Do not repair it.
+  if (
+    match[0].length === MARKER_MAX_PAYLOAD_CHARS &&
+    /[A-Za-z0-9%._!~*'()-]/.test(tail.charAt(match[0].length))
+  ) {
+    return null;
+  }
   try {
     const parsed: unknown = JSON.parse(decodeURIComponent(match[0]));
     const result = reportCardSchema.safeParse(parsed);
     return result.success ? result.data : null;
   } catch {
-    return null;
+    return repairReportReference(match[0]);
   }
 }
 

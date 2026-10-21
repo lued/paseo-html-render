@@ -21,13 +21,15 @@ const store = new ArtifactStore(dataRoot);
 const renderer = createRenderer({ timeoutMs: 10_000 });
 const authority: Authority = {
   async workspaceForCwd(cwd) {
-    return cwd === workspace ? { workspaceId: WORKSPACE_ID, root: workspace } : null;
+    return cwd === workspace
+      ? { workspaceId: WORKSPACE_ID, root: workspace, workspaceIds: [WORKSPACE_ID] }
+      : null;
   },
   async workspaceForAgent() {
     return WORKSPACE_ID;
   },
   async workspaceForAgentOwnership() {
-    return { workspaceId: WORKSPACE_ID, root: workspace };
+    return { workspaceId: WORKSPACE_ID, root: workspace, workspaceIds: [WORKSPACE_ID] };
   },
 };
 const tools = createHtmlTools({ renderer, store });

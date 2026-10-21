@@ -24,6 +24,7 @@ import {
 } from "../shared/report-model.ts";
 import { assertInteractiveDocumentBudget } from "../shared/html-document.ts";
 import type { MeasuredHeight } from "../shared/protocol.ts";
+import { canonicalPath } from "./canonical.ts";
 
 export class ArtifactError extends Error {
   readonly code: "invalid_input" | "not_found" | "denied" | "too_large" | "store_failed";
@@ -72,6 +73,32 @@ export interface PurgeResult {
   dryRun: boolean;
   artifactIds: string[];
   bytes: number;
+}
+
+export interface ArtifactRequester {
+  readonly workspaceIds: readonly string[];
+  readonly root: string;
+}
+
+/** Single ids stay supported for tests and for callers without a resolved root. */
+export type RequesterScope = string | readonly string[] | ArtifactRequester | null;
+
+function isArtifactRequester(value: unknown): value is ArtifactRequester {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const candidate = value as { workspaceIds?: unknown; root?: unknown };
+  return Array.isArray(candidate.workspaceIds) && typeof candidate.root === "string";
+}
+
+function normalizeRequester(requester: RequesterScope): {
+  workspaceIds: readonly string[];
+  root: string | null;
+} {
+  if (typeof requester === "string") return { workspaceIds: [requester], root: null };
+  if (isArtifactRequester(requester)) {
+    return { workspaceIds: requester.workspaceIds, root: requester.root };
+  }
+  if (Array.isArray(requester)) return { workspaceIds: requester, root: null };
+  return { workspaceIds: [], root: null };
 }
 
 const MANIFEST_FILE = "manifest.json";
@@ -352,13 +379,23 @@ export class ArtifactStore {
     return parsed.data;
   }
 
-  /** Ownership check shared by every read. The caller's workspace must match. */
+  /**
+   * Ownership check shared by every read. An artifact is readable by a
+   * workspace that shares the publisher's canonical root, or by the recorded
+   * owner id. The root comparison keeps reads stable when sibling workspaces
+   * are created (or the owner is archived) after the artifact was published.
+   */
   async openForWorkspace(
     artifactId: string,
-    requesterWorkspaceId: string | null,
+    requester: RequesterScope,
   ): Promise<{ manifest: ArtifactManifest; dir: string }> {
     const manifest = await this.readManifest(artifactId);
-    if (!requesterWorkspaceId || manifest.workspaceId !== requesterWorkspaceId) {
+    const scope = normalizeRequester(requester);
+    const ownedById = scope.workspaceIds.includes(manifest.workspaceId);
+    const ownedByRoot =
+      scope.root !== null &&
+      canonicalPath(manifest.ownerCwd) === canonicalPath(scope.root);
+    if (!ownedById && !ownedByRoot) {
       throw new ArtifactError("denied", "This report belongs to another workspace");
     }
     const dir = this.dirFor(artifactId);
@@ -366,20 +403,20 @@ export class ArtifactStore {
     return { manifest, dir };
   }
 
-  async readPreview(artifactId: string, requesterWorkspaceId: string | null): Promise<{
+  async readPreview(artifactId: string, requester: RequesterScope): Promise<{
     manifest: ArtifactManifest;
     png: Buffer;
   }> {
-    return this.readAsset(artifactId, requesterWorkspaceId, "preview");
+    return this.readAsset(artifactId, requester, "preview");
   }
 
   /** Named PNG assets. Legacy artifacts only have `preview`. */
   async readAsset(
     artifactId: string,
-    requesterWorkspaceId: string | null,
+    requester: RequesterScope,
     asset: ReportAssetName,
   ): Promise<{ manifest: ArtifactManifest; png: Buffer; asset: ReportAssetName }> {
-    const { manifest, dir } = await this.openForWorkspace(artifactId, requesterWorkspaceId);
+    const { manifest, dir } = await this.openForWorkspace(artifactId, requester);
     const file = asset === "preview"
       ? PREVIEW_FILE
       : asset === "previewLight"
@@ -392,22 +429,22 @@ export class ArtifactStore {
     return { manifest, png, asset };
   }
 
-  async readOriginal(artifactId: string, requesterWorkspaceId: string | null): Promise<{
+  async readOriginal(artifactId: string, requester: RequesterScope): Promise<{
     manifest: ArtifactManifest;
     html: string;
   }> {
-    const { manifest, dir } = await this.openForWorkspace(artifactId, requesterWorkspaceId);
+    const { manifest, dir } = await this.openForWorkspace(artifactId, requester);
     const html = (await readStoredFile(dir, ORIGINAL_FILE, MAX_ORIGINAL_HTML_BYTES)).toString("utf8");
     return { manifest, html };
   }
 
   /** Prepared interactive document; `null` for artifacts written before it existed. */
-  async readInteractive(artifactId: string, requesterWorkspaceId: string | null): Promise<{
+  async readInteractive(artifactId: string, requester: RequesterScope): Promise<{
     manifest: ArtifactManifest;
     html: string;
     path: string;
   } | null> {
-    const { manifest, dir } = await this.openForWorkspace(artifactId, requesterWorkspaceId);
+    const { manifest, dir } = await this.openForWorkspace(artifactId, requester);
     if (manifest.interactiveBytes === undefined) return null;
     try {
       const html = (
@@ -422,19 +459,19 @@ export class ArtifactStore {
 
   async interactivePath(
     artifactId: string,
-    requesterWorkspaceId: string | null,
+    requester: RequesterScope,
   ): Promise<string | null> {
-    const { manifest, dir } = await this.openForWorkspace(artifactId, requesterWorkspaceId);
+    const { manifest, dir } = await this.openForWorkspace(artifactId, requester);
     if (manifest.interactiveBytes === undefined) return null;
     return join(dir, INTERACTIVE_FILE);
   }
 
   /** Bounded native report read; `null` for artifacts written before reports. */
-  async readReport(artifactId: string, requesterWorkspaceId: string | null): Promise<{
+  async readReport(artifactId: string, requester: RequesterScope): Promise<{
     manifest: ArtifactManifest;
     report: ReportModelV1 | null;
   }> {
-    const { manifest, dir } = await this.openForWorkspace(artifactId, requesterWorkspaceId);
+    const { manifest, dir } = await this.openForWorkspace(artifactId, requester);
     if (manifest.report !== undefined) return { manifest, report: manifest.report };
     if (manifest.reportBytes === undefined) return { manifest, report: null };
     let raw: string;

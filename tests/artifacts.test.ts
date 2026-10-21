@@ -34,6 +34,51 @@ test("saves and reads the preview and the original HTML", async (t) => {
   assert.equal(original.html, base.html);
 });
 
+test("a sibling workspace created after publish still reads the artifact", async (t) => {
+  const { root, store } = await tempStore();
+  const owner = await fs.mkdtemp(join(tmpdir(), "html-render-owner-"));
+  t.after(async () => {
+    await fs.rm(root, { recursive: true, force: true });
+    await fs.rm(owner, { recursive: true, force: true });
+  });
+  const saved = await store.save({
+    ...base,
+    workspaceId: "wks_546fb8529e094f50",
+    ownerCwd: owner,
+  });
+  // Exact scope for agent 8d12d06c after wks_4201e411d5936f56 appeared; the
+  // recorded owner id is still in the sibling set.
+  const preview = await store.readPreview(saved.manifest.artifactId, {
+    workspaceIds: ["wks_4201e411d5936f56", "wks_546fb8529e094f50"],
+    root: owner,
+  });
+  assert.deepEqual(preview.png, PNG);
+  // The root alone authorizes even if the recorded owner was archived and is
+  // no longer in the active sibling list.
+  await store.readPreview(saved.manifest.artifactId, {
+    workspaceIds: ["wks_4201e411d5936f56"],
+    root: owner,
+  });
+  // A lexically similar root is not the same directory.
+  await assert.rejects(
+    () =>
+      store.readPreview(saved.manifest.artifactId, {
+        workspaceIds: ["wks_4201e411d5936f56"],
+        root: `${owner}-evil`,
+      }),
+    /another workspace/,
+  );
+  // An unrelated id and root stay denied.
+  await assert.rejects(
+    () =>
+      store.readPreview(saved.manifest.artifactId, {
+        workspaceIds: ["wks_other"],
+        root: "/tmp/unrelated-workspace",
+      }),
+    /another workspace/,
+  );
+});
+
 test("artifact directories and files are owner-only", async (t) => {
   const { root, store } = await tempStore();
   t.after(() => fs.rm(root, { recursive: true, force: true }));

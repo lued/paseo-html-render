@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
   createTimelineTransformState,
@@ -250,6 +252,68 @@ test("a legacy reference without new fields still decodes unchanged", () => {
     recognizeToolCall({ name: "html_render", detail: { output: `paseo-html-render:v1:${legacyPayload}` } }),
     card,
   );
+});
+
+test("a single quote in a summary round-trips (the 52aa5b83 failure)", () => {
+  const employer = encodeReportReference({
+    ...card,
+    summary: "two that need an employer's consent",
+  });
+  assert.deepEqual(decodeReportReference(employer)?.summary, "two that need an employer's consent");
+});
+
+test("the real 8d12d06c / 52aa5b83 row decodes despite its summary apostrophe", () => {
+  // Real row: agent 8d12d06c-19ed-4ef0-91c5-df3e0c322782, artifact 52aa5b83...,
+  // whose summary contains "employer's". encodeURIComponent leaves the quote
+  // raw; the old payload class stopped there and produced no card.
+  const text = String(
+    readFileSync(
+      fileURLToPath(new URL("./fixtures/pi-codemode-52aa5b83-apostrophe.txt", import.meta.url).href),
+      "utf8",
+    ),
+  );
+  const content = [{ type: "text", text }];
+  const details = { calls: [{ name: "mcp__html_render__html_render" }] };
+  const out = transformTimelineToolCall(
+    {
+      name: "codemode",
+      detail: { type: "unknown", input: null, output: { content, details } },
+      callId: "call_00_hj6zt8qqk1q5cuyal18xixqv|fc_8e87c34ee15e41cfaa0c75d1b2bb9328",
+    },
+    undefined,
+    createTimelineTransformState(),
+  );
+  assert.equal(out?.items[0]?.data.artifactId, "52aa5b8368f9030ccf1e6c1719a2c6b0");
+  assert.match(out?.items[0]?.data.summary ?? "", /employer's consent/);
+  assert.equal(decodeReportReference(text)?.artifactId, "52aa5b8368f9030ccf1e6c1719a2c6b0");
+});
+
+test("the real dfc70a9f / 9e76abbf truncated row recovers its id and dimensions", () => {
+  // Real row: agent dfc70a9f-4f0d-45bf-b5cc-bc1fec97827f sliced the tool
+  // result to 1200 chars, cutting the marker mid-heights.
+  const text = String(
+    readFileSync(
+      fileURLToPath(new URL("./fixtures/pi-codemode-9e76abbf-truncated.txt", import.meta.url).href),
+      "utf8",
+    ),
+  );
+  const content = [{ type: "text", text }];
+  const details = { calls: [{ name: "mcp__html_render__html_render" }] };
+  const out = transformTimelineToolCall(
+    {
+      name: "codemode",
+      detail: { type: "unknown", input: null, output: { content, details } },
+      callId: "call_dd7cb254cbb843c8b524ffde|fc_62aff0bbd806487c8ad4f38302c49b6a",
+    },
+    undefined,
+    createTimelineTransformState(),
+  );
+  const data = out?.items[0]?.data;
+  assert.equal(data?.artifactId, "9e76abbfb06266011a847caf967794fc");
+  assert.equal(data?.title, "accrue HA resilience plan (NFS SPOF preserved)");
+  assert.equal(data?.width, 728);
+  assert.equal(data?.height, 1050);
+  assert.deepEqual(data?.heights?.at(-1), [728, 996]);
 });
 
 test("a payload beyond the 8192-character marker budget is rejected", () => {

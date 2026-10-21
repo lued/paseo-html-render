@@ -1,0 +1,11 @@
+Script completed
+Wall time 1.3 seconds
+Output:
+
+Published a report card titled "Seven roads out, not one". The reader sees it above your reply.
+interactivePath: /home/xander/.paseo/plugin-data/html-render/artifacts/52aa5b8368f9030ccf1e6c1719a2c6b0/interactive.html
+measuredHeights: 320x583, 375x658, 430x712, 520x834, 640x976, 728x1095, 860x1106, 1000x1106, 1144x1106
+reportStored: no
+In your final reply include exactly this Markdown link on its own line: [Open interactive report](</home/xander/.paseo/plugin-data/html-render/artifacts/52aa5b8368f9030ccf1e6c1719a2c6b0/interactive.html>)
+Do not repeat or describe the page in your reply.
+paseo-html-render:v1:%7B%22artifactId%22%3A%2252aa5b8368f9030ccf1e6c1719a2c6b0%22%2C%22title%22%3A%22Seven%20roads%20out%2C%20not%20one%22%2C%22summary%22%3A%22Every%20route%20your%20constraints%20define%3A%20two%20that%20need%20an%20employer's%20consent%2C%20one%20self-petition%2C%20one%20capital%20route%2C%20one%20fast-but-she-can't-work%20route%2C%20one%20that%20reopens%20closed%20doors%2C%20and%20one%20nobody%20can%20veto.%22%2C%22width%22%3A728%2C%22height%22%3A1095%2C%22renderMode%22%3A%22auto%22%2C%22measuredHeight%22%3A1095%2C%22heights%22%3A%5B%5B320%2C583%5D%2C%5B375%2C658%5D%2C%5B430%2C712%5D%2C%5B520%2C834%5D%2C%5B640%2C976%5D%2C%5B728%2C1095%5D%2C%5B860%2C1106%5D%2C%5B1000%2C1106%5D%2C%5B1144%2C1106%5D%5D%7D

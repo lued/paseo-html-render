@@ -530,13 +530,15 @@ test("G3 real MCP adapter and history rebuild", { timeout: 180_000 }, async () =
       const tools = createHtmlTools({ renderer, store });
       const authority: Authority = {
         async workspaceForCwd(cwd: string) {
-          return cwd === workspace ? { workspaceId: WORKSPACE_ID, root: workspace } : null;
+          return cwd === workspace
+            ? { workspaceId: WORKSPACE_ID, root: workspace, workspaceIds: [WORKSPACE_ID] }
+            : null;
         },
         async workspaceForAgent() {
           return WORKSPACE_ID;
         },
         async workspaceForAgentOwnership() {
-          return { workspaceId: WORKSPACE_ID, root: workspace };
+          return { workspaceId: WORKSPACE_ID, root: workspace, workspaceIds: [WORKSPACE_ID] };
         },
       };
       let bridge: Bridge | null = null;
