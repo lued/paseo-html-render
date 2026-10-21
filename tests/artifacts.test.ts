@@ -338,3 +338,52 @@ test("PNG dimensions are read only from a valid IHDR", () => {
   assert.equal(pngDimensions(Buffer.from("not a png")), null);
   assert.equal(pngDimensions(PNG), null);
 });
+
+test("the durable card sidecar survives a lost marker and restores renderMode", async (t) => {
+  const { root, store } = await tempStore();
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const saved = await store.save({
+    ...base,
+    renderMode: "static",
+    measuredHeight: 200,
+    heights: [
+      [390, 180],
+      [728, 200],
+    ],
+  });
+  const dir = join(root, "artifacts", saved.manifest.artifactId);
+  const cardPath = join(dir, "card.json");
+  assert.equal((await fs.stat(cardPath)).mode & 0o777, 0o600);
+  const durable = await store.readCard(saved.manifest.artifactId, "wks_a");
+  assert.deepEqual(durable.card, {
+    artifactId: saved.manifest.artifactId,
+    title: "Report",
+    summary: "One line",
+    width: 728,
+    height: 480,
+    renderMode: "static",
+    measuredHeight: 200,
+    heights: [
+      [390, 180],
+      [728, 200],
+    ],
+  });
+
+  // A missing sidecar falls back to the manifest (legacy stores).
+  await fs.rm(cardPath);
+  assert.deepEqual((await store.readCard(saved.manifest.artifactId, "wks_a")).card, durable.card);
+
+  // A corrupt or mismatched sidecar never makes the artifact unreadable.
+  await fs.writeFile(cardPath, "{not json", { mode: 0o600 });
+  assert.deepEqual((await store.readCard(saved.manifest.artifactId, "wks_a")).card, durable.card);
+  const mismatched = {
+    version: 1,
+    card: { ...durable.card, artifactId: "f".repeat(32), renderMode: "iframe" },
+    workspaceId: "wks_a",
+    ownerCwd: "/tmp/workspace",
+    createdAt: new Date().toISOString(),
+  };
+  await fs.writeFile(cardPath, JSON.stringify(mismatched), { mode: 0o600 });
+  assert.equal((await store.readCard(saved.manifest.artifactId, "wks_a")).card.renderMode, "static");
+  await assert.rejects(() => store.readCard(saved.manifest.artifactId, "wks_b"), /another workspace/);
+});

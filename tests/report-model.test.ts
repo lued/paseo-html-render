@@ -478,3 +478,11 @@ test("measured heights are bounded, sorted and unique", () => {
     false,
   );
 });
+
+test("durable card renderMode wins over a marker that lost it", async () => {
+  const { cardRenderMode } = await import("../client/report-view-model.ts");
+  assert.equal(cardRenderMode("auto", "static"), "static");
+  assert.equal(cardRenderMode(undefined, "auto"), "auto");
+  assert.equal(cardRenderMode("iframe", undefined), "iframe");
+  assert.equal(cardRenderMode(undefined, undefined), undefined);
+});

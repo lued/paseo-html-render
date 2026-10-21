@@ -68,6 +68,18 @@ export function reportCardMode(input: ReportCardModeInput): ReportCardMode {
   return "image";
 }
 
+/**
+ * Durable artifact metadata wins over the persisted marker. The marker is a
+ * cache that a provider can truncate; `card.json` and the manifest are not.
+ * Absent on both sides stays absent, which the frame treats as static.
+ */
+export function cardRenderMode(
+  markerMode: HtmlFrameRenderMode,
+  durableMode: HtmlFrameRenderMode,
+): HtmlFrameRenderMode {
+  return durableMode ?? markerMode;
+}
+
 /** Light preview when the artifact has one; the dark preview is the default. */
 export function previewAssetName(
   appearance: ThemeAppearance,

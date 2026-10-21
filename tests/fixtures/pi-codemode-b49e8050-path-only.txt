@@ -2,5 +2,6 @@ Published a report card titled "Weekly pipeline health". The reader sees it abov
 interactivePath: /home/xander/.paseo/plugin-data/html-render/artifacts/b49e8050d7e14f0c9b2a6f3c8e1d4a72/interactive.html
 measuredHeights: 390x512, 728x604
 reportStored: yes
+renderMode: auto
 In your final reply include exactly this Markdown link on its own line: [Open interactive report](</home/xander/.paseo/plugin-data/html-render/artifacts/b49e8050d7e14f0c9b2a6f3c8e1d4a72/interactive.html>)
 Do not repeat or describe the page in your reply.

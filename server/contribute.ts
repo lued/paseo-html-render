@@ -92,6 +92,7 @@ export default function contribute(server: PluginServerContext, options: Contrib
     const requester = await requireWorkspace(paseo, agentId);
     try {
       const { manifest, png } = await store.readPreview(artifactId, requester);
+      const durable = await store.readCard(artifactId, requester);
       const hasReport = manifest.report !== undefined || manifest.reportBytes !== undefined;
       const report = hasReport
         ? (await store.readReport(artifactId, requester)).report
@@ -109,6 +110,8 @@ export default function contribute(server: PluginServerContext, options: Contrib
         ...manifest.heights === undefined ? {} : { heights: manifest.heights },
         hasReport,
         report,
+        card: durable.card,
+        ...durable.card.renderMode === undefined ? {} : { renderMode: durable.card.renderMode },
         ...interactivePath === null ? {} : { interactivePath },
         ...manifest.themePreview === undefined ? {} : { themePreview: manifest.themePreview },
         ...manifest.graph === undefined ? {} : { graph: manifest.graph },

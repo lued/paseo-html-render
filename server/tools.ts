@@ -323,6 +323,7 @@ export function createHtmlTools(deps: { renderer: Renderer; store: ArtifactStore
           signal: context.signal,
           measuredHeight: rendered.capturedHeight,
           ...heights.length === 0 ? {} : { heights },
+          renderMode: parsed.data.renderMode,
           previewPng: rendered.png,
           ...previewLightPng === undefined ? {} : { previewLightPng },
           interactiveHtml,

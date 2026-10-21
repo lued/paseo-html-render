@@ -40,6 +40,7 @@ const ARTIFACT_PATH_ID = /artifacts[\\/]([0-9a-f]{32})(?=[\\/]|$)/g;
 const MAX_ARTIFACT_PATH_REFERENCES = 8;
 const PUBLISHED_TITLE = /Published a report card titled ("(?:[^"\\]|\\.)*")/;
 const REPORT_STORED = /\breportStored:\s*(yes|no)\b/;
+const RENDER_MODE = /\brenderMode:\s*(static|auto|iframe)\b/;
 const MEASURED_HEIGHTS = /\bmeasuredHeights:\s*((?:\d+\s*x\s*\d+)(?:\s*,\s*\d+\s*x\s*\d+)*)/;
 
 /**
@@ -184,15 +185,19 @@ export function recoverReportReferenceFromArtifactPath(
   const heights = measuredHeightsFromText(text);
   const measuredAtDefault = heights?.find(([width]) => width === PREVIEW_DEFAULT_WIDTH)?.[1];
   const stored = REPORT_STORED.exec(text)?.[1];
+  const renderMode = RENDER_MODE.exec(text)?.[1];
   const candidate = {
     artifactId,
     title: publishedTitle(text) ?? "HTML report",
     summary: null,
     width: PREVIEW_DEFAULT_WIDTH,
     height: measuredAtDefault ?? REPAIRED_FRAME_HEIGHT,
-    // `auto` is the tool's default. An explicit static render whose marker was
-    // lost still has a durable card sidecar; the artifact read restores it.
-    renderMode: "auto" as const,
+    // New rows print renderMode; `auto` is the tool's default for older rows.
+    // The durable card sidecar still has the final say after the artifact read.
+    renderMode: (renderMode === "static" || renderMode === "iframe" ? renderMode : "auto") as
+      | "static"
+      | "auto"
+      | "iframe",
     ...(stored === undefined ? {} : { hasReport: stored === "yes" }),
     ...(measuredAtDefault === undefined ? {} : { measuredHeight: measuredAtDefault }),
     ...(heights === undefined ? {} : { heights }),

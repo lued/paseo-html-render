@@ -335,6 +335,7 @@ async function callTool(name, args) {
       "interactivePath: " + path + "\n" +
       "measuredHeights: " + heights + "\n" +
       "reportStored: " + (result.hasReport === true ? "yes" : "no") + "\n" +
+      "renderMode: " + (result.renderMode === undefined ? "auto" : result.renderMode) + "\n" +
       "In your final reply include exactly this Markdown link on its own line: [Open interactive report](<" +
       path + ">)\n";
     if (Array.isArray(result.warnings) && result.warnings.length > 0) {

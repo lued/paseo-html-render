@@ -134,6 +134,7 @@ test("daemon entry injects MCP into new agents, serves owned artifacts, and clea
     summary: null,
     width: 728,
     height: 200,
+    renderMode: "auto",
     workspaceId: "wks_test",
     ownerCwd: workspace,
     previewPng: PNG,
@@ -149,10 +150,17 @@ test("daemon entry injects MCP into new agents, serves owned artifacts, and clea
   assert.ok(assetRead);
   const artifact = (await read({ artifactId: saved.manifest.artifactId, agentId: "agent_ok" }, { paseo })) as {
     title: string;
+    renderMode?: string;
+    card?: { artifactId: string; renderMode?: string };
     preview: { base64: string };
   };
   assert.equal(artifact.title, "Owned");
   assert.deepEqual(Buffer.from(artifact.preview.base64, "base64"), PNG);
+  // The durable card projection is part of the artifact read, so a marker that
+  // lost renderMode cannot change the display.
+  assert.equal(artifact.renderMode, "auto");
+  assert.equal(artifact.card?.artifactId, saved.manifest.artifactId);
+  assert.equal(artifact.card?.renderMode, "auto");
   const html = (await original({ artifactId: saved.manifest.artifactId, agentId: "agent_ok" }, { paseo })) as {
     html: string;
   };

@@ -14,9 +14,12 @@ import {
 import {
   artifactIdSchema,
   artifactManifestSchema,
+  durableCardSchema,
+  reportCardSchema,
   type ArtifactManifest,
   type GraphMetadata,
   type ReportAssetName,
+  type ReportCardData,
 } from "../shared/protocol.ts";
 import {
   reportModelSchema,
@@ -49,6 +52,8 @@ export interface SaveArtifactInput {
   measuredHeight?: number;
   /** Optional multi-width measurements, already sorted by the renderer. */
   heights?: MeasuredHeight[];
+  /** Requested display mode; persisted so a lost marker cannot change it. */
+  renderMode?: "static" | "auto" | "iframe";
   previewPng: Buffer;
   /** Optional light-theme static preview. */
   previewLightPng?: Buffer;
@@ -102,6 +107,8 @@ function normalizeRequester(requester: RequesterScope): {
 }
 
 const MANIFEST_FILE = "manifest.json";
+const CARD_FILE = "card.json";
+const MAX_CARD_BYTES = 64 * 1024;
 const ORIGINAL_FILE = "original.html";
 const PREVIEW_FILE = "preview.png";
 const PREVIEW_LIGHT_FILE = "preview-light.png";
@@ -185,9 +192,29 @@ export function pngDimensions(png: Buffer): { width: number; height: number } | 
 }
 
 /**
+ * The client timeline payload derived from a manifest. Legacy artifacts (and a
+ * missing or corrupt card sidecar) still produce a complete reference, so a
+ * durable card can never make an older artifact unreadable.
+ */
+export function cardFromManifest(manifest: ArtifactManifest): ReportCardData {
+  return reportCardSchema.parse({
+    artifactId: manifest.artifactId,
+    title: manifest.title,
+    summary: manifest.summary,
+    width: manifest.width,
+    height: manifest.height,
+    ...(manifest.renderMode === undefined ? {} : { renderMode: manifest.renderMode }),
+    ...(manifest.report !== undefined || manifest.reportBytes !== undefined ? { hasReport: true } : {}),
+    ...(manifest.measuredHeight === undefined ? {} : { measuredHeight: manifest.measuredHeight }),
+    ...(manifest.heights === undefined ? {} : { heights: manifest.heights }),
+  });
+}
+
+/**
  * Owner-only artifact store. One directory per artifact holding the manifest,
- * the original HTML exactly as supplied, the static preview PNGs, the optional
- * interactive HTML, report JSON, and optional graph PNGs.
+ * the durable card projection, the original HTML exactly as supplied, the
+ * static preview PNGs, the optional interactive HTML, report JSON, and optional
+ * graph PNGs.
  *
  * Manifest version 1 remains readable without any of the optional fields, so
  * artifacts written by the static-only plugin keep working.
@@ -305,6 +332,7 @@ export class ArtifactStore {
       ownerCwd: input.ownerCwd,
       ...input.measuredHeight === undefined ? {} : { measuredHeight: input.measuredHeight },
       ...heights === undefined ? {} : { heights },
+      ...input.renderMode === undefined ? {} : { renderMode: input.renderMode },
       ...report === undefined ? {} : { report, ...(reportBytes === undefined ? {} : { reportBytes }) },
       ...interactiveBytes === undefined ? {} : { interactiveBytes },
       ...themePreview === undefined ? {} : { themePreview },
@@ -334,6 +362,18 @@ export class ArtifactStore {
       if (report !== undefined) {
         await write(REPORT_FILE, JSON.stringify(report));
       }
+      // The durable card is written before the manifest for the same reason:
+      // a reader that sees a manifest can always reconstruct the card.
+      await write(
+        CARD_FILE,
+        JSON.stringify({
+          version: 1,
+          card: cardFromManifest(manifest),
+          workspaceId: input.workspaceId,
+          ownerCwd: input.ownerCwd,
+          createdAt: manifest.createdAt,
+        }),
+      );
       // Manifest last: a reader never sees a manifest for an incomplete artifact.
       await write(MANIFEST_FILE, JSON.stringify(manifest));
     } catch (error) {
@@ -492,6 +532,37 @@ export class ArtifactStore {
     const parsed = reportModelSchema.safeParse(parsedJson);
     if (!parsed.success) throw new ArtifactError("store_failed", "Stored report body is invalid");
     return { manifest, report: parsed.data };
+  }
+
+  /**
+   * Durable card projection. The sidecar wins; a missing or invalid sidecar
+   * falls back to the manifest so legacy and manually repaired stores still
+   * render. Ownership is identical to every other read.
+   */
+  async readCard(artifactId: string, requester: RequesterScope): Promise<{
+    manifest: ArtifactManifest;
+    card: ReportCardData;
+  }> {
+    const { manifest, dir } = await this.openForWorkspace(artifactId, requester);
+    const fallback = cardFromManifest(manifest);
+    let raw: string;
+    try {
+      raw = (await readStoredFile(dir, CARD_FILE, MAX_CARD_BYTES)).toString("utf8");
+    } catch (error) {
+      if (error instanceof ArtifactError && error.code === "not_found") {
+        return { manifest, card: fallback };
+      }
+      throw error;
+    }
+    try {
+      const parsed = durableCardSchema.safeParse(JSON.parse(raw) as unknown);
+      if (!parsed.success || parsed.data.card.artifactId !== manifest.artifactId) {
+        return { manifest, card: fallback };
+      }
+      return { manifest, card: parsed.data.card };
+    } catch {
+      return { manifest, card: fallback };
+    }
   }
 
   /**

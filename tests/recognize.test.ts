@@ -416,3 +416,20 @@ test("path recovery is limited to render rows and never reads the HTML argument"
   assert.equal(recovered?.artifactId, id);
   assert.equal(recovered?.title, "Marker");
 });
+
+test("path recovery honors an explicit static or iframe renderMode line", () => {
+  const id = "a".repeat(32);
+  const base = `Published a report card titled "Static row".\ninteractivePath: /tmp/artifacts/${id}/interactive.html\n`;
+  assert.equal(
+    recognizeToolCall({ name: "html_render", detail: { output: base + "renderMode: static" } })?.renderMode,
+    "static",
+  );
+  assert.equal(
+    recognizeToolCall({ name: "html_render", detail: { output: base + "renderMode: iframe" } })?.renderMode,
+    "iframe",
+  );
+  assert.equal(
+    recognizeToolCall({ name: "html_render", detail: { output: base } })?.renderMode,
+    "auto",
+  );
+});

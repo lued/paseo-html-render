@@ -29,6 +29,7 @@ import { HtmlFrame } from "./html-frame.tsx";
 import { FileLinkSection, toneColor } from "./report-blocks.tsx";
 import {
   cardHighlights,
+  cardRenderMode,
   graphAssetName,
   imageAspectRatio,
   interactivePathOf,
@@ -61,11 +62,6 @@ export function ReportCard({ item, agentId, theme, layout }: PluginTimelineItemP
   }, [data.artifactId]);
 
   const appearance = appearanceFromColors(theme.colors);
-  const wantsLive =
-    ARTIFACT_ID.test(data.artifactId) &&
-    agentId.length > 0 &&
-    selectHtmlFrameKind({ platform: layout.platform, renderMode: data.renderMode }) === "live";
-
   const artifact = useQuery({
     queryKey: ["html-render", "artifact", data.artifactId, agentId],
     queryFn: () => readArtifact({ artifactId: data.artifactId, agentId }),
@@ -77,13 +73,25 @@ export function ReportCard({ item, agentId, theme, layout }: PluginTimelineItemP
     queryFn: () => readOriginal({ artifactId: data.artifactId, agentId }),
     staleTime: Number.POSITIVE_INFINITY,
     retry: 1,
-    enabled: wantsLive && ARTIFACT_ID.test(data.artifactId) && agentId.length > 0,
+    enabled:
+      layout.platform === "web" &&
+      data.renderMode !== "static" &&
+      ARTIFACT_ID.test(data.artifactId) &&
+      agentId.length > 0,
   });
 
+  // The durable card is authoritative: a marker recovered from a path (or a
+  // legacy marker without the field) must not silently turn a static card live
+  // or a live card static.
+  const effectiveRenderMode = cardRenderMode(data.renderMode, artifact.data?.renderMode);
+  const wantsLive =
+    ARTIFACT_ID.test(data.artifactId) &&
+    agentId.length > 0 &&
+    selectHtmlFrameKind({ platform: layout.platform, renderMode: effectiveRenderMode }) === "live";
   const hasReport = artifact.data?.report !== undefined && artifact.data.report !== null;
   const mode = reportCardMode({
     platform: layout.platform,
-    renderMode: data.renderMode,
+    renderMode: effectiveRenderMode,
     hasHtml: original.data !== undefined,
     hasReport,
   });
@@ -191,7 +199,7 @@ export function ReportCard({ item, agentId, theme, layout }: PluginTimelineItemP
           requestedHeight={data.height}
           heights={data.heights}
           platform={layout.platform}
-          renderMode={data.renderMode}
+          renderMode={effectiveRenderMode}
           onOpenLink={openLink}
           onOpenImage={setZoom}
         />

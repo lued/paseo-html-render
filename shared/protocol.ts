@@ -161,6 +161,10 @@ export const readArtifactRpc = defineRpc({
     hasReport: z.boolean().optional(),
     /** The report itself, or null when this artifact predates reports. */
     report: reportModelSchema.nullable().optional(),
+    /** Durable card projection; restores renderMode even when the marker was lost. */
+    card: reportCardSchema.optional(),
+    /** Convenience alias for `card.renderMode`, absent on legacy artifacts. */
+    renderMode: renderModeSchema,
     interactivePath: interactivePathSchema.optional(),
     themePreview: themePreviewMetadataSchema.optional(),
     graph: graphMetadataSchema.optional(),
@@ -210,6 +214,20 @@ export const readAssetRpc = defineRpc({
   }),
 });
 
+/**
+ * Durable card projection stored beside the artifact. The marker in provider
+ * output is a cache; this file is the source of truth and survives a marker
+ * dropped by an output cap. It is validated on read like any other input.
+ */
+export const durableCardSchema = z.object({
+  version: z.literal(1),
+  card: reportCardSchema,
+  workspaceId: z.string().min(1).max(200),
+  ownerCwd: z.string().min(1).max(MAX_PATH_CHARS),
+  createdAt: z.string(),
+});
+export type DurableCard = z.output<typeof durableCardSchema>;
+
 /** Internal: shape of a stored artifact manifest. Never sent to a client verbatim. */
 export const artifactManifestSchema = z.object({
   version: z.literal(1),
@@ -224,6 +242,8 @@ export const artifactManifestSchema = z.object({
   ownerCwd: z.string().min(1),
   measuredHeight: z.number().int().min(1).max(MAX_CAPTURED_HEIGHT).optional(),
   heights: measuredHeightsSchema.optional(),
+  /** Requested display mode; absent for legacy artifacts (treated as static). */
+  renderMode: renderModeSchema,
   /** Stored report body. Bounded by MAX_REPORT_BYTES; absent for legacy artifacts. */
   report: reportModelSchema.optional(),
   reportBytes: z.number().int().min(1).max(MAX_REPORT_BYTES).optional(),
