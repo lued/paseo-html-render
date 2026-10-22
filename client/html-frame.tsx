@@ -311,6 +311,9 @@ export function HtmlFrame(props: HtmlFrameProps) {
     "div" as never,
     {
       ref: wrapperRef as never,
+      // A real readiness probe for tests and the host: set only after the page
+      // has posted its handshake, never merely because the element mounted.
+      "data-paseo-html-frame-ready": ready ? "true" : "false",
       style: { width: "100%", height: frameHeight, overflow: "hidden" },
     } as never,
     iframe,
