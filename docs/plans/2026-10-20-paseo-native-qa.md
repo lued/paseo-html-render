@@ -65,7 +65,7 @@ Canary approval is recorded. User subsequently replied `use high` after normaliz
 
 Actual hosted Paseo web-client access has also been established through the existing encrypted relay, without restarts/config patches. All five QA titles appear in its sidebar and baseline actual probe history opens. This unlocks later web UI checks, not plugin acceptance. Background screenshot returned `tab has not painted yet`; do not claim a PNG or outer Electron/native-device coverage.
 
-Private bootstrap evidence: `/home/xander/.paseo/plugin-data/html-render-v2-qa/verification-20261020`. Local workspace manifest: `.paseo-plugin/qa-run.json` (ignored/private). See master PQ-127–PQ-135 for evidence and next gates.
+Private bootstrap evidence: `~/.paseo/plugin-data/html-render-v2-qa/verification-20261020`. Local workspace manifest: `.paseo-plugin/qa-run.json` (ignored/private). See master PQ-127–PQ-135 for evidence and next gates.
 
 ## Five work packages (sequential source writes)
 

@@ -106,22 +106,22 @@ test("two workspaces sharing one directory resolve to a stable owner", async (t)
   assert.equal(await authority.workspaceForAgentOwnership("agent_missing"), null);
 });
 
-test("the real sly sibling set still reaches the owner recorded by both failing agents", async () => {
+test("a sibling workspace set with duplicate roots still reaches the recorded owner", async () => {
   // Reproduces 2026-10-21: wks_4201e411d5936f56 was created for another
-  // /home/xander agent and sorts below wks_546fb8529e094f50, which is the
+  // /home/dev agent and sorts below wks_546fb8529e094f50, which is the
   // workspace id every existing html-render manifest recorded. Reads must keep
   // the publisher's root reachable instead of flipping to the new minimum.
   const authority = createAuthority(
     fakePaseo(
       [
-        { id: "wks_4ee422740ec399d9", path: "/home/xander/git/fde-idea" },
-        { id: "wks_d6bc3ad1515f8ab3", path: "/home/xander/git/fde-idea" },
-        { id: "wks_546fb8529e094f50", path: "/home/xander" },
-        { id: "wks_6d761d14714818f8", path: "/home/xander" },
-        { id: "wks_eec911619ed5c8ff", path: "/home/xander/git/paseo-html-render" },
-        { id: "wks_e998089619f881b2", path: "/home/xander" },
-        { id: "wks_850d289a5902ecfa", path: "/home/xander/git/paseo-html-render" },
-        { id: "wks_4201e411d5936f56", path: "/home/xander" },
+        { id: "wks_4ee422740ec399d9", path: "/home/dev/git/fde-idea" },
+        { id: "wks_d6bc3ad1515f8ab3", path: "/home/dev/git/fde-idea" },
+        { id: "wks_546fb8529e094f50", path: "/home/dev" },
+        { id: "wks_6d761d14714818f8", path: "/home/dev" },
+        { id: "wks_eec911619ed5c8ff", path: "/home/dev/git/paseo-html-render" },
+        { id: "wks_e998089619f881b2", path: "/home/dev" },
+        { id: "wks_850d289a5902ecfa", path: "/home/dev/git/paseo-html-render" },
+        { id: "wks_4201e411d5936f56", path: "/home/dev" },
       ],
       {
         "dfc70a9f-4f0d-45bf-b5cc-bc1fec97827f": "wks_e998089619f881b2",
@@ -134,7 +134,7 @@ test("the real sly sibling set still reaches the owner recorded by both failing 
     "8d12d06c-19ed-4ef0-91c5-df3e0c322782",
   ]) {
     const ownership = await authority.workspaceForAgentOwnership(agentId);
-    assert.equal(ownership?.root, "/home/xander");
+    assert.equal(ownership?.root, "/home/dev");
     assert.equal(ownership?.workspaceId, "wks_4201e411d5936f56");
     assert.ok(ownership?.workspaceIds.includes("wks_546fb8529e094f50"));
     assert.ok(ownership?.workspaceIds.includes("wks_4201e411d5936f56"));

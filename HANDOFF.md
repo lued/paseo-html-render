@@ -30,8 +30,8 @@ edit Paseo source and do not fork Paseo.
 
 ## Current state
 
-- Repository: `/home/xander/git/paseo-html-render` (new Git worktree
-  `plugin-v2` at `/home/xander/git/paseo-html-render-worktrees/plugin-v2`).
+- Repository: `~/git/paseo-html-render` (new Git worktree
+  `plugin-v2` at `~/git/paseo-html-render-worktrees/plugin-v2`).
 - The plugin source was copied from `plugin-v1`; `node_modules` was copied too.
 - `npm run typecheck` passes. `npm test` passes 30/30.
 - The running live plugin is still installed from `plugin-v1` as `html-render`.
@@ -42,7 +42,7 @@ edit Paseo source and do not fork Paseo.
 - Current plugin UI: inline report card. The old "Open report" button was removed
   at the user's request. `ReportScreen` remains registered but has no card entry
   point; either repurpose it or remove it deliberately.
-- T3 reference checkout: `/home/xander/git/t3code` (sparse clone). Useful paths:
+- T3 reference checkout: `~/git/t3code` (sparse clone). Useful paths:
   - `apps/web/src/components/chat/HtmlRenderFrame.tsx`
   - `apps/web/src/components/files/BrowserDocumentFrame.tsx`
   - `apps/mobile/src/features/threads/HtmlRenderWebView.tsx`

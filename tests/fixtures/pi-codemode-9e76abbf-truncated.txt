@@ -4,10 +4,10 @@ Output:
 
 <console_output>
 Published a report card titled "accrue HA resilience plan (NFS SPOF preserved)". The reader sees it above your reply.
-interactivePath: /home/xander/.paseo/plugin-data/html-render/artifacts/9e76abbfb06266011a847caf967794fc/interactive.html
+interactivePath: /home/dev/.paseo/plugin-data/html-render/artifacts/9e76abbfb06266011a847caf967794fc/interactive.html
 measuredHeights: 320x1226, 375x1135, 430x1052, 520x1038, 640x978, 728x996, 860x1036, 1000x1053, 1144x1095
 reportStored: no
-In your final reply include exactly this Markdown link on its own line: [Open interactive report](</home/xander/.paseo/plugin-data/html-render/artifacts/9e76abbfb06266011a847caf967794fc/interactive.html>)
+In your final reply include exactly this Markdown link on its own line: [Open interactive report](</home/dev/.paseo/plugin-data/html-render/artifacts/9e76abbfb06266011a847caf967794fc/interactive.html>)
 Do not repeat or describe the page in your reply.
 paseo-html-render:v1:%7B%22artifactId%22%3A%229e76abbfb06266011a847caf967794fc%22%2C%22title%22%3A%22accrue%20HA%20resilience%20plan%20(NFS%20SPOF%20preserved)%22%2C%22summary%22%3A%22Root-cause%20fix%20for%20the%20accrue%20cluster%3A%20keep%20the%20nvme_nfs%20single%20point%20of%20failure%2C%20make%20HA%20survive%20its%20absence.%22%2C%22width%22%3A728%2C%22height%22%3A1050%2C%22renderMode%22%3A%22auto%22%2C%22measuredHeight%22%3A996%2C%22heights%22%3A%5B%5B320%2C1226%5D%2C%5B375%2C1135%5D%2C%5B430%2C1052%5D%2C%5B520%2C1038%5D%2C%5B640%2C978%5D%2C%5B728%2C996%5D%2C%5B860%2C10
 </console_output>

@@ -17,8 +17,8 @@ it. No child agents are authorized; the current parent does the work directly.
 
 ## Workspace
 
-- Repository: `/home/xander/git/paseo-html-render`
-- New Git worktree: `/home/xander/git/paseo-html-render-worktrees/plugin-v1`
+- Repository: `~/git/paseo-html-render`
+- New Git worktree: `~/git/paseo-html-render-worktrees/plugin-v1`
 - Branch: `plugin-v1` (unborn; no bootstrap commit needed)
 - Paseo workspace: `wks_6110baf7d7986722`, title `HTML Render plugin`
 - Paseo project: `prj_ec7e7045f0f53417`

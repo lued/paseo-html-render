@@ -25,7 +25,7 @@ cd paseo-cafe
 git checkout -b add-paseo-html-render
 
 # 3. Add exactly one registry file.
-cp /home/xander/git/paseo-html-render/docs/paseo-cafe-registry.json registry/paseo-html-render.json
+cp ~/git/paseo-html-render/docs/paseo-cafe-registry.json registry/paseo-html-render.json
 
 # 4. Validate and commit.
 bun install
@@ -40,7 +40,7 @@ gh pr create \
   --base main \
   --head add-paseo-html-render \
   --title "Add paseo-html-render" \
-  --body-file /home/xander/git/paseo-html-render/docs/paseo-cafe-pr-body.md
+  --body-file ~/git/paseo-html-render/docs/paseo-cafe-pr-body.md
 ```
 
 If `bun` is unavailable, the same check runs in the registry CI on the PR.

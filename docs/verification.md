@@ -1,8 +1,8 @@
 # Verification and release evidence
 
 Date: 2026-10-21. Release: `html-render` **2.1.0**. Worktree used for the
-release: `/home/xander/.paseo/worktrees/3dyefwmb/paseo-html-render-release`;
-the installed checkout is `/home/xander/git/paseo-html-render`. The old
+release: `~/.paseo/worktrees/3dyefwmb/paseo-html-render-release`;
+the installed checkout is `~/git/paseo-html-render`. The old
 `plugin-v2` worktree path in earlier revisions of this file is retired and does
 not exist.
 

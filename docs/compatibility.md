@@ -1,6 +1,6 @@
 # T3 compatibility and intentional differences
 
-Reference: local `/home/xander/git/t3code`, inspected 2026-10-20. Primary files:
+Reference: local `~/git/t3code`, inspected 2026-10-20. Primary files:
 `packages/shared/src/htmlRender.ts`, `apps/server/src/htmlRender/HtmlRender.ts`,
 `apps/web/src/components/chat/HtmlRenderFrame.tsx`,
 `apps/web/src/components/files/BrowserDocumentFrame.tsx`,
