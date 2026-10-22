@@ -29,6 +29,7 @@ import net from "node:net";
 import { dirname, join } from "node:path";
 
 const MARKER = __PASEO_MARKER__;
+const ADAPTER_VERSION = __PASEO_ADAPTER_VERSION__;
 const MAX_HTML_CHARS = 512000;
 const SUPPORTED_PROTOCOLS = ["2024-11-05", "2025-03-26", "2025-06-18"];
 // Matches shared/limits.ts BRIDGE_MAX_MESSAGE_BYTES (8 MiB). The preview image
@@ -205,6 +206,7 @@ function bridge(request) {
         tool: request.tool,
         cwd: callerCwd,
         input: request.input,
+        adapterVersion: ADAPTER_VERSION,
       }) + "\n");
     });
     socket.setEncoding("utf8");
@@ -255,12 +257,21 @@ function missingText(missing) {
   return " Not inlined: " + entries.join(", ") + (missing.length > 20 ? ", ..." : "") + ".";
 }
 
+function freshnessText(result) {
+  if (!result || result.adapterStale !== true) return "";
+  return "\nAdapter freshness: this agent is running MCP adapter " +
+    (typeof result.runningAdapterVersion === "string" ? result.runningAdapterVersion : "unknown") +
+    " but the plugin is " +
+    (typeof result.adapterVersion === "string" ? result.adapterVersion : ADAPTER_VERSION) +
+    ". Reconnect this agent to load the current tools.\n";
+}
+
 function previewText(result) {
   const widths = "width=" + result.width + " contentHeight=" + result.contentHeight +
     " capturedHeight=" + result.capturedHeight + " suggestedHeight=" + Math.max(80, Math.min(2000, result.contentHeight));
   return "Static PNG preview rendered with scripts disabled. " + widths +
     ". No console output: page scripts are disabled. Workspace raster images were inlined; remote and file " +
-    "URLs stay blocked." + missingText(result.missingImages);
+    "URLs stay blocked." + missingText(result.missingImages) + freshnessText(result);
 }
 
 async function callTool(name, args) {
@@ -344,6 +355,7 @@ async function callTool(name, args) {
     const missing = missingText(result.missingImages);
     if (missing) text += "Images not inlined:" + missing + "\n";
     text += "Do not repeat or describe the page in your reply.\n";
+    text += freshnessText(result);
     return textResult(text, false);
   }
   return textResult("Unknown tool: " + name, true);
@@ -360,7 +372,7 @@ async function handle(message) {
       result: {
         protocolVersion: protocolVersion,
         capabilities: { tools: {} },
-        serverInfo: { name: __PASEO_SERVER_NAME__, version: "1.0.0" },
+        serverInfo: { name: __PASEO_SERVER_NAME__, version: ADAPTER_VERSION },
         instructions:
           "If the answer has structure (comparison, several findings, status, steps, flow, architecture, numbers), render a visual HTML card led by a diagram, chart, flow or interactive with only essential labels; keep the explanation in your reply below it. Answer in text only for one fact, a sentence, code, file contents or config. " +
           "The live card is fluid (typically about 600-1100 CSS pixels); 728 is only the default preview width, not a card cap. Fill the width with responsive, reflowing visuals. " +
@@ -435,6 +447,7 @@ process.stdin.on("end", function () {
 `
     .replace("__PASEO_REPORT_SCHEMA__", () => JSON.stringify(reportJsonSchema))
     .replace("__PASEO_MARKER__", () => JSON.stringify(identity.markerPrefix))
+    .replace("__PASEO_ADAPTER_VERSION__", () => JSON.stringify(identity.adapterVersion))
     .replace("__PASEO_BRIDGE_ENV__", () => JSON.stringify(identity.bridgeEnv))
     .replace("__PASEO_TOKEN_FILE__", () => JSON.stringify(BRIDGE_TOKEN_FILE))
     .replace("__PASEO_LOG_TAG__", () => JSON.stringify(identity.logTag))

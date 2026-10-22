@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { promises as fs } from "node:fs";
 import net from "node:net";
 import { tmpdir } from "node:os";
@@ -11,6 +11,7 @@ import type { Authority } from "../server/authority.ts";
 import { loadOrCreateBridgeToken, startBridge, type Bridge } from "../server/bridge.ts";
 import { createRenderer } from "../server/renderer.ts";
 import { createHtmlTools } from "../server/tools.ts";
+import { ADAPTER_SOURCE } from "../server/adapter-source.ts";
 import { decodeReportReference } from "../shared/recognize.ts";
 
 const WORKSPACE_ID = "wks_test";
@@ -126,9 +127,10 @@ test("adapter initializes and advertises the T3-shaped render tools", async () =
       protocolVersion: "2024-11-05",
       capabilities: {},
       clientInfo: { name: "test", version: "1" },
-    })) as { protocolVersion: string; serverInfo: { name: string }; instructions?: string };
+    })) as { protocolVersion: string; serverInfo: { name: string; version?: string }; instructions?: string };
     assert.equal(init.protocolVersion, "2024-11-05");
     assert.equal(init.serverInfo.name, "html-render");
+    assert.equal(init.serverInfo.version, bridge.adapterVersion);
     assert.match(init.instructions ?? "", /fluid/);
     assert.match(init.instructions ?? "", /728/);
     client.notify("notifications/initialized");
@@ -387,3 +389,97 @@ function rawBridge(payload: unknown): Promise<unknown> {
     socket.on("error", reject);
   });
 }
+
+
+test("the bridge publishes a hashed adapter version and tells stale adapters to reconnect", async () => {
+  const source = await fs.readFile(bridge.adapterPath, "utf8");
+  assert.equal(bridge.adapterHash, createHash("sha256").update(source).digest("hex"));
+  assert.ok(source.includes(`const ADAPTER_VERSION = ${JSON.stringify(bridge.adapterVersion)};`));
+  assert.equal((await fs.stat(bridge.adapterPath)).mode & 0o777, 0o600);
+  // The generated source and the exported template carry the same version.
+  assert.ok(ADAPTER_SOURCE.includes(`const ADAPTER_VERSION = ${JSON.stringify(bridge.adapterVersion)};`));
+
+  const current = (await rawBridge({
+    token: bridge.token,
+    tool: "html_preview",
+    cwd: workspace,
+    input: { html: "<p>fresh</p>", width: 390 },
+    adapterVersion: bridge.adapterVersion,
+  })) as { ok: boolean; result: { adapterStale?: boolean } };
+  assert.equal(current.ok, true);
+  assert.equal(current.result.adapterStale, undefined);
+
+  const stale = (await rawBridge({
+    token: bridge.token,
+    tool: "html_preview",
+    cwd: workspace,
+    input: { html: "<p>old</p>", width: 390 },
+    adapterVersion: "0.0.0",
+  })) as {
+    ok: boolean;
+    result: { adapterStale?: boolean; adapterVersion?: string; runningAdapterVersion?: string; screenshot: { data: string } };
+  };
+  // Staleness is advisory: the old adapter still serves the reader.
+  assert.equal(stale.ok, true);
+  assert.equal(stale.result.adapterStale, true);
+  assert.equal(stale.result.adapterVersion, bridge.adapterVersion);
+  assert.equal(stale.result.runningAdapterVersion, "0.0.0");
+  assert.ok(stale.result.screenshot.data.length > 0);
+
+  // A real old adapter process receives the flag and appends the reconnect
+  // warning to the model-visible tool text.
+  const oldPath = join(dataRoot, "old-adapter.mjs");
+  await fs.writeFile(
+    oldPath,
+    source.replace(/const ADAPTER_VERSION = "[^"]+";/, 'const ADAPTER_VERSION = "0.0.0";'),
+    { mode: 0o600 },
+  );
+  const old = new Adapter(
+    {
+      PASEO_HTML_RENDER_BRIDGE: bridge.socketPath,
+      PASEO_HTML_RENDER_TOKEN: bridge.token,
+      PASEO_HTML_RENDER_CWD: workspace,
+    },
+    oldPath,
+  );
+  try {
+    await old.request("initialize", { protocolVersion: "2024-11-05", capabilities: {} });
+    const result = (await old.request("tools/call", {
+      name: "html_preview",
+      arguments: { html: "<p>stale adapter</p>", width: 390 },
+    })) as { content: Array<{ type: string; text?: string }>; isError: boolean };
+    assert.equal(result.isError, false);
+    const text = result.content.map((entry) => entry.text ?? "").join("\n");
+    assert.match(text, /Adapter freshness/);
+    assert.match(text, /0\.0\.0/);
+    assert.ok(text.includes(bridge.adapterVersion));
+    assert.match(text, /Reconnect this agent/);
+  } finally {
+    old.close();
+    await fs.rm(oldPath, { force: true });
+  }
+});
+
+test("adapter writes are atomic and unchanged source keeps its inode", async () => {
+  const root = await fs.mkdtemp(join(tmpdir(), "hr-adapter-atomic-"));
+  let first: Bridge | null = null;
+  let second: Bridge | null = null;
+  try {
+    first = await startBridge({ dataRoot: root, tools, authority });
+    const statBefore = await fs.stat(first.adapterPath);
+    const hashBefore = first.adapterHash;
+    await first.close();
+    first = null;
+    second = await startBridge({ dataRoot: root, tools, authority });
+    const statAfter = await fs.stat(second.adapterPath);
+    assert.equal(second.adapterHash, hashBefore);
+    assert.equal(statAfter.ino, statBefore.ino, "unchanged adapter source keeps its inode");
+    assert.equal(statAfter.mode & 0o777, 0o600);
+    const entries = await fs.readdir(root);
+    assert.deepEqual(entries.filter((name) => name.endsWith(".tmp")), []);
+  } finally {
+    if (first) await first.close().catch(() => {});
+    if (second) await second.close().catch(() => {});
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});

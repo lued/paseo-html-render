@@ -1,5 +1,5 @@
 import { AbortController, type AbortSignal } from "./cancellation.ts";
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { createServer, type Socket } from "node:net";
 import { join } from "node:path";
@@ -38,6 +38,10 @@ export interface Bridge {
   token: string;
   tokenPath: string;
   adapterPath: string;
+  /** Version embedded in the adapter source written for this bridge. */
+  adapterVersion: string;
+  /** SHA-256 of that exact source, for freshness evidence and tests. */
+  adapterHash: string;
   close(): Promise<void>;
 }
 
@@ -46,6 +50,7 @@ interface BridgeRequest {
   tool?: unknown;
   cwd?: unknown;
   input?: unknown;
+  adapterVersion?: unknown;
 }
 
 function safeEqual(left: string, right: string): boolean {
@@ -72,6 +77,28 @@ async function writeBridgeToken(path: string, token: string): Promise<void> {
   await fs.writeFile(temporary, `${token}\n`, { mode: 0o600 });
   await fs.chmod(temporary, 0o600).catch(() => {});
   await fs.rename(temporary, path);
+}
+
+/**
+ * Writes the generated adapter atomically. An agent can spawn the adapter at
+ * any moment during a plugin reload, so it must never observe a partial file.
+ * Unchanged source keeps its inode, but the mode is still enforced.
+ */
+async function writeAdapterSource(path: string, source: string): Promise<void> {
+  const existing = await fs.readFile(path, "utf8").catch(() => null);
+  if (existing === source) {
+    await fs.chmod(path, 0o600).catch(() => {});
+    return;
+  }
+  const temporary = `${path}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
+  try {
+    await fs.writeFile(temporary, source, { mode: 0o600 });
+    await fs.chmod(temporary, 0o600).catch(() => {});
+    await fs.rename(temporary, path);
+  } catch (error) {
+    await fs.rm(temporary, { force: true }).catch(() => {});
+    throw error;
+  }
 }
 
 /**
@@ -126,9 +153,12 @@ export async function startBridge(options: BridgeOptions, token?: string): Promi
   if (token !== undefined) await writeBridgeToken(tokenPath, bridgeToken);
   await fs.chmod(tokenPath, 0o600).catch(() => {});
   await fs.rm(socketPath, { force: true });
-  await fs.writeFile(adapterPath, buildAdapterSource(identity), { mode: 0o600 });
+  const adapterSource = buildAdapterSource(identity);
+  const adapterHash = createHash("sha256").update(adapterSource).digest("hex");
+  await writeAdapterSource(adapterPath, adapterSource);
 
   const sockets = new Set<Socket>();
+  const staleAdaptersLogged = new Set<string>();
   const server = createServer((socket: Socket) => {
     sockets.add(socket);
     const controller = new AbortController();
@@ -191,6 +221,19 @@ export async function startBridge(options: BridgeOptions, token?: string): Promi
       options.onLog?.("Rejected bridge request with an invalid token");
       return { ok: false, error: { code: "denied", message: "Invalid bridge token" } };
     }
+    const runningAdapterVersion =
+      typeof request.adapterVersion === "string" ? request.adapterVersion : null;
+    const adapterStale = runningAdapterVersion !== identity.adapterVersion;
+    if (adapterStale) {
+      const key = runningAdapterVersion ?? "unknown";
+      if (!staleAdaptersLogged.has(key)) {
+        staleAdaptersLogged.add(key);
+        options.onLog?.(
+          `MCP adapter ${key} is stale; this build is ${identity.adapterVersion}. ` +
+            "The request is served, and the tool result asks for a reconnect.",
+        );
+      }
+    }
     if (request.tool !== "html_preview" && request.tool !== "html_render") {
       return { ok: false, error: { code: "invalid_input", message: "Unknown tool" } };
     }
@@ -223,7 +266,19 @@ export async function startBridge(options: BridgeOptions, token?: string): Promi
         request.tool === "html_preview"
           ? await options.tools.preview(request.input, context)
           : await options.tools.publish(request.input, context);
-      return { ok: true, result };
+      // Freshness is explicit, never fatal: an adapter injected before a
+      // reload keeps working and tells the model to reconnect for new source.
+      return {
+        ok: true,
+        result: adapterStale
+          ? {
+              ...result,
+              adapterStale: true,
+              adapterVersion: identity.adapterVersion,
+              runningAdapterVersion,
+            }
+          : result,
+      };
     } catch (error) {
       if (error instanceof ToolError) {
         return { ok: false, error: { code: error.code, message: error.message } };
@@ -246,6 +301,8 @@ export async function startBridge(options: BridgeOptions, token?: string): Promi
     token: bridgeToken,
     tokenPath,
     adapterPath,
+    adapterVersion: identity.adapterVersion,
+    adapterHash,
     async close() {
       for (const socket of sockets) socket.destroy();
       await new Promise<void>((resolve) => server.close(() => resolve()));

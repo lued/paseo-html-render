@@ -49,6 +49,8 @@ export interface PluginIdentity {
   readonly bridgeEnv: BridgeEnvironmentNames;
   /** File name of the generated stdio adapter inside the private data root. */
   readonly adapterFileName: string;
+  /** Version the generated adapter reports and sends with every bridge call. */
+  readonly adapterVersion: string;
   /** File name of the private unix socket inside the private data root. */
   readonly socketFileName: string;
 }
@@ -81,5 +83,6 @@ export const PRODUCTION_IDENTITY: PluginIdentity = Object.freeze({
     cwd: "PASEO_HTML_RENDER_CWD",
   }),
   adapterFileName: "mcp-adapter-v1.mjs",
+  adapterVersion: "2.1.0",
   socketFileName: "bridge.sock",
 });
