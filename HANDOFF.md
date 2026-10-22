@@ -1,6 +1,16 @@
 > **Historical (2026-10-20 canary era).** The five-workspace QA method and
 > DeepSeek-only rule below are retired by user request. Current state and the
 > autonomous harness are in `docs/verification.md`. Kept for history only.
+>
+> **2.1.0 status (2026-10-21): all four open workstreams landed.** P1 path-based
+> artifact recovery is in `shared/recognize.ts` with the persisted `b49e8050`
+> regression. P2 client re-projection is `client/artifact-catalog.ts` plus the
+> re-registering transformer in `index.client.tsx`. P3 durable card persistence
+> is the validated `card.json` stored by `server/artifacts.ts` and served from
+> the artifact RPC, including `renderMode`. P4 adapter freshness is the
+> versioned, hashed, atomically written adapter plus the stale-adapter warning.
+> The mounted-frame cold-start flake now waits on a real readiness probe. No
+> remainder is scoped here; see `CHANGELOG.md` and `docs/verification.md`.
 
 # Handoff: complete T3 HTML Render parity in plugin-v2
 

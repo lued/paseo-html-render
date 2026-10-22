@@ -91,10 +91,10 @@ npm ci --ignore-scripts
 npm run verify:e2e     # G1-G6: renderer, mounted card, MCP, dedupe, install, client
 npm run check:trigger  # 10-prompt corpus: structured renders, plain stays text
 npm run typecheck
-npm test               # 166 unit/integration tests
+npm test               # 178 unit/integration tests
 npm run check:bundles
 npm pack --dry-run --json
-paseo plugin install /absolute/path/to/plugin-v2
+paseo plugin install /absolute/path/to/paseo-html-render
 ```
 
 A sandbox-capable Chromium must already be installed, or set

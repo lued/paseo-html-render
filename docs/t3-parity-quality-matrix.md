@@ -1,7 +1,7 @@
 # T3 inline HTML → Paseo implementation quality
 
-Inspected and re-verified 2026-10-20. This rates the **installed `html-render`
-plugin 2.0.0** built from this directory. **V1 is permanently retired and
+Inspected and re-verified 2026-10-21. This rates the **installed `html-render`
+plugin 2.1.0** built from this directory. **V1 is permanently retired and
 unregistered at user request.** The five-workspace canary methodology was retired
 by the user on 2026-10-20; it is replaced by one autonomous harness,
 `npm run verify:e2e`, whose gates are mapped to PQ ids below.
@@ -24,7 +24,7 @@ feature of T3 or every private design rationale.
 
 ## 1. Tools, storage and delivery
 
-| ID | Feature / decision | T3 Code | Paseo plugin-v2: quality and difference |
+| ID | Feature / decision | T3 Code | Paseo plugin 2.1.0: quality and difference |
 | --- | --- | --- | --- |
 | PQ-001 | Architecture | First-party server/assets/web/mobile integration | ⚠️ External public-SDK plugin; raw web iframe remains unsupported by that SDK. |
 | PQ-002 | Provider coverage | Documented across providers | ⚠️ MCP injection exists; actual end-to-end evidence covers Pi only. |
@@ -43,8 +43,8 @@ feature of T3 or every private design rationale.
 | PQ-015 | File name | Sanitized title-derived `.html` | ⚠️ Fixed `interactive.html` inside artifact ID directory. |
 | PQ-016 | Assistant link | Inline attachment presentation | ⚠️ Absolute Markdown file link is a host-preview compatibility workaround. |
 | PQ-017 | File-preview click-through | First-party viewer/navigation | ✅ G6: in the hosted web client the assistant file link opened `interactive.html` as a second sandboxed, CSP-carrying frame. Native file preview remains unverified (PQ-125). |
-| PQ-018 | Persisted reconstruction | Structured tool-result reference | ✅ Actual persisted outer Pi codemode row reconstructs one card per row, stable after serialization. |
-| PQ-019 | Cross-row deduplication | First-party reference/tool processing; no global guarantee inferred | ✅ G4: only the render tool's own row is transformed, so Pi's outer `codemode` row no longer duplicates the card (reproduced in the hosted client before the fix, one card after). Residual: a per-item transformer cannot suppress a marker duplicated in some third row. |
+| PQ-018 | Persisted reconstruction | Structured tool-result reference | ✅ Actual persisted outer Pi codemode row reconstructs one card per row, stable after serialization. 2.1.0 also recovers a card from a surviving `artifacts/<id>/` path (regression `b49e8050`) and stores a durable `card.json` beside the artifact, so a marker lost to an output cap does not lose the card or its display mode. |
+| PQ-019 | Cross-row deduplication | First-party reference/tool processing; no global guarantee inferred | ✅ G4: only the render tool's own row is transformed, so Pi's outer `codemode` row no longer duplicates the card (reproduced in the hosted client before the fix, one card after). 2.1.0 adds a client artifact catalog: a stable canonical call id, marker-over-path preference, and one bounded re-projection when the catalog changes or a render row is a gap. Residual: a per-item transformer cannot see an arbitrary third row, so a marker duplicated there is still outside the contract. |
 | PQ-020 | Thread deletion | Deletes owned renders; fork ownership protects source pages | ❌ Equivalent thread-owned deletion not implemented. |
 | PQ-021 | Retention | Follows thread lifecycle | ⚠️ Retain by default; opt-in workspace archive purge is tested but different. |
 | PQ-022 | Interrupted writes | Scoped cleanup removes interrupted publication | ✅ Cancellation checkpoints/atomic writes; disconnected-publish regression passed. |
@@ -52,7 +52,7 @@ feature of T3 or every private design rationale.
 
 ## 2. Display, interaction and native behavior
 
-| ID | Feature / decision | T3 Code | Paseo plugin-v2: quality and difference |
+| ID | Feature / decision | T3 Code | Paseo plugin 2.1.0: quality and difference |
 | --- | --- | --- | --- |
 | PQ-024 | Live web/desktop HTML | Sandboxed live iframe | ✅ G2 + G6: sandboxed live iframe verified in Chromium and in the hosted client timeline (one card, script state, CSP). |
 | PQ-025 | Borderless presentation | Reply-aligned HTML, no outer report card | ✅ G2 asserts the live card renders no parent chrome text; G6 shows the same borderless card in the hosted client. |
@@ -81,7 +81,7 @@ feature of T3 or every private design rationale.
 
 ## 3. Theme, typography and responsive layout
 
-| ID | Feature / decision | T3 Code | Paseo plugin-v2: quality and difference |
+| ID | Feature / decision | T3 Code | Paseo plugin 2.1.0: quality and difference |
 | --- | --- | --- | --- |
 | PQ-048 | CSS token families | Surfaces/text, inputs/ring, primary/accent, status, code, charts1–6, radius/fonts | ✅ Compatible broad token vocabulary, sanitized and covered by tests. |
 | PQ-049 | Exact palette semantics | Distinct first-party theme roles | ⚠️ Same token names and base stylesheet. Tinted surfaces (`--destructive-surface`, `--warning-surface`, `--accent-surface`) and `--input` are now reconstructed by blending the status color over the card, and error/warning foregrounds use T3's values. Remaining aliases: `--secondary` and `--code-background` borrow surface tones because the plugin theme exposes no secondary/code roles. |
@@ -106,7 +106,7 @@ feature of T3 or every private design rationale.
 
 ## 4. Security, networking and local assets
 
-| ID | Feature / decision | T3 Code | Paseo plugin-v2: quality and difference |
+| ID | Feature / decision | T3 Code | Paseo plugin 2.1.0: quality and difference |
 | --- | --- | --- | --- |
 | PQ-068 | Parent/session isolation | Opaque sandbox; no same-origin permission | ✅ Same fundamental iframe isolation; browser tests deny parent access. |
 | PQ-069 | Inline permissions | Scripts and forms | ⚠️ Scripts only. Forms deliberately blocked. |
@@ -134,7 +134,7 @@ feature of T3 or every private design rationale.
 
 ## 5. Renderer, report additions and acceptance
 
-| ID | Feature / decision | T3 Code | Paseo plugin-v2: quality and difference |
+| ID | Feature / decision | T3 Code | Paseo plugin 2.1.0: quality and difference |
 | --- | --- | --- | --- |
 | PQ-091 | Preview page JavaScript | Executes | ⚠️ Deliberately disabled; security decision, not SDK necessity. |
 | PQ-092 | JS-created preview content | Capturable after scripts run | ❌ Cannot faithfully preview JS-only charts/pages without a static skeleton. |
@@ -169,7 +169,7 @@ feature of T3 or every private design rationale.
 | PQ-121 | Full MCP Apps host | Separate T3 subsystem with approvals/tools/messages/downloads/context | ❌ Not implemented; HTML message envelopes do not make this an MCP Apps host. |
 | PQ-122 | Dependency isolation | First-party infrastructure | ✅ Pele server-only; bundle checks pass; runtime npm audit0. |
 | PQ-123 | Development dependency findings | Not evaluated for T3 | ⚠️ 20 findings in plugin development tree (5moderate/15high); no unsafe force-upgrade. |
-| PQ-124 | Automated correctness evidence | Existing T3 tests; full suite not run here | ✅ 154/154 tests (0 skipped/fail/cancelled); typecheck; bundles 14 client/21 server, Pele server-only; package 31 files excluding tests and private data; runtime audit 0; `verify:e2e` 6/6 gates. Evidence: `report.json`, gate JSON/PNGs in the verification root. |
+| PQ-124 | Automated correctness evidence | Existing T3 tests; full suite not run here | ✅ 178/178 tests (0 skipped/fail/cancelled); typecheck; bundles 15 client/21 server, Pele server-only; package 35 files excluding tests and private data; runtime audit 0; `verify:e2e` 6/6 gates. Evidence: `report.json`, gate JSON/PNGs in the verification root. |
 | PQ-125 | Real native verification | Real WebView integration in source; not device-tested here | ❌ No actual iOS/Android acceptance; DOM shim is not native evidence. |
 | PQ-126 | Live client acceptance | First-party UI implementation | ✅ Web/desktop: G5 confirms `html-render` installed and running; G6 captures the hosted client rendering one inline card and opening the file preview. Native clients remain unaccepted (PQ-125). V1 stays retired. |
 | PQ-127 | Required child thinking level | Not applicable to product comparison | ⚠️ Historical canary requirement, retired with the five-workspace methodology. No product-quality claim rests on it. |
@@ -183,11 +183,11 @@ is an open acceptance gate any more.
 | ID | Old requirement | Status after retirement |
 | --- | --- | --- |
 | PQ-128 | Canary identity and scope | Retired. QA identity, allowlist, scope enforcement and `build-qa` were deleted; the plugin ships as plain `html-render`. |
-| PQ-129 | Five fresh visible Paseo workspaces | Retired. Five QA projects/workspaces were archived and deleted at user request; only the real plugin-v2 workspace remains. Backup: `qa-workspaces-20261020-qa01.tar.gz`. |
+| PQ-129 | Five fresh visible Paseo workspaces | Retired. Five QA projects/workspaces were archived and deleted at user request; only the current release workspace remains. Backup: `qa-workspaces-20261020-qa01.tar.gz` in the 2026-10-20 evidence. |
 | PQ-130 | QA-only diagnostics panel | Retired with the canary; no human-facing QA surface is required. G1–G6 replace it. |
 | PQ-131 | Deterministic native QA runner | Replaced by `verify:e2e` G1/G3 (real renderer, real store, real stdio adapter, history rebuild). |
 | PQ-132 | Actual-client QA acceptance | Replaced by G6 (hosted web client timeline + file preview, screenshots in the verification root). |
-| PQ-133 | Permanent v1 retirement | ✅ Still in force. `html-render` 2.0.0 is installed; v1 is never reinstalled as rollback. |
+| PQ-133 | Permanent v1 retirement | ✅ Still in force. `html-render` 2.1.0 is installed; v1 is never reinstalled as rollback. |
 | PQ-134 | DeepSeek-only work | Retired. It was a canary-process rule, not a product requirement. |
 | PQ-135 | Authoritative evidence tracking | ✅ Still in force: stable PQ ids, gate mapping, ledger. |
 
@@ -228,11 +228,11 @@ Prompt-to-prompt variance remains; the policy biases selection, it cannot force 
 
 | Gate | Covers | What it actually does |
 | --- | --- | --- |
-| G1 | PQ-003/004/010/011/022/090 | `html_preview` and `html_render` with the real sandboxed Chromium and a real store; checks PNG magic, byte-exact original, CSP export, 0700/0600 modes, marker decode. |
+| G1 | PQ-003/004/010/011/022/090 | `html_preview` and `html_render` with the real sandboxed Chromium and a real store; checks PNG magic, byte-exact original, CSP export, durable `card.json`, 0700/0600 modes, marker decode. |
 | G2 | PQ-024/025/026/034/036/053/054/061/064/066 | Mounts the real `ReportCard`/`HtmlFrame` in real Chromium against artifacts produced by G1; asserts sandbox, `allow`, CSP, script execution, no chrome, height shrink, spoof rejection, theme update without reload, native gating, fallback. |
-| G3 | PQ-003/004/018/131 | Spawns the real stdio MCP adapter over the real bridge socket; calls both tools; rebuilds one card from the persisted row and proves reload stability. |
+| G3 | PQ-003/004/018/131 | Spawns the real stdio MCP adapter over the real bridge socket; calls both tools; rebuilds one card from the persisted row, proves reload stability, and reads the durable card. |
 | G4 | PQ-019 | Proves the outer `codemode` row is not transformed, so one artifact yields one card; records the item-scoped transformer residual. |
-| G5 | PQ-126/133 | `paseo plugin ls` must list exactly `html-render` (running) and `shared-browser` (running); records the daemon pid/server id. |
+| G5 | PQ-126/133 | `paseo plugin ls` must list `html-render` enabled and running and `shared-browser` running; other third-party plugins are allowed, retired canary identities are not. Records the daemon pid/server id. |
 | G6 | PQ-016/017/024/025/126/132 | Pairs a fresh headless Chromium with the real daemon, opens a real agent timeline, asserts exactly one inline frame with CSP, then clicks the assistant file link and asserts Paseo's HTML file preview frame. Screenshots are the evidence. |
 
 G6 needs outbound network and a configured provider; without them it records
@@ -243,8 +243,8 @@ the capture.
 
 | Step | Target | State |
 | --- | --- | --- |
-| 1 | Installed plugin + honest matrix | ✅ `html-render` 2.0.0 running; PQ rows updated with gate evidence. |
-| 2 | Autonomous harness | ✅ `verify:e2e` 6/6 pass; unit suite 154/154. |
+| 1 | Installed plugin + honest matrix | ✅ `html-render` 2.1.0 running; PQ rows updated with gate evidence. |
+| 2 | Autonomous harness | ✅ `verify:e2e` 6/6 pass; unit suite 178/178. |
 | 3 | Native-client acceptance | Open: no iOS/Android device evidence exists (PQ-025, PQ-125). Not automatable on this host. |
 | 4 | Residual transformer limits | Open: a per-item transformer cannot suppress a marker duplicated in an arbitrary third row (documented in PQ-019). |
 
@@ -263,6 +263,8 @@ the capture.
 - **2026-10-20, measured-width parity:** `DEFAULT_MEASURE_WIDTHS` now matches T3's nine widths (PQ-062) and the live iframe sets `loading="lazy"` (PQ-033); unit expectations updated.
 - **2026-10-20, autonomous harness + install:** `npm run verify:e2e` (G1–G6) passes 6/6 with evidence in `verification-20261020/`; 154/154 tests, typecheck, bundles 14/21, package 31 files, runtime audit 0. Installed `html-render` 2.0.0 from this directory (`paseo plugin install .`), then reloaded it. G6 captured a real agent timeline and the HTML file preview in the hosted client.
 - Historical canary entries (five workspaces, model preflight, scope rejection) were removed with the methodology; their evidence files remain in `~/.paseo/plugin-data/html-render-v2-qa/` and are not acceptance evidence.
+
+- **2026-10-21, release 2.1.0:** path-based artifact recovery (`artifacts/<32 hex>/`, regression `b49e8050`), client artifact catalog with bounded re-projection, durable `card.json` including `renderMode`, versioned/atomic adapter freshness, and a real mounted-frame readiness probe replacing the cold-start sleep race. Added MIT `LICENSE`, first-time-user `README`, `CHANGELOG`, package metadata, paseo.cafe Git-only entry, and refreshed verification docs. Tests 155 → 178 (+23); bundles 14 → 15 client inputs; final gate `verify:e2e` 6/6, 178/178 tests, typecheck, package 35 files, runtime audit 0.
 
 - **2026-10-20, release 2.0.0:** installed from a clean checkout (`~/git/paseo-html-render`, not the dev worktree); `npm ci` + `paseo plugin install <dir>` is now the documented machine path. Added `npm run check:trigger` (10-prompt corpus counting real tool calls) and refreshed verification evidence (155 tests, G2 no-fallback, G5 third-party plugins, trigger policy, 1.4 s publish latency for nine widths). Tagged `v2.0.0`, published a Gitea release, and pinned the plugin in dotfiles (`apps.md`, `CHECKLIST.md`, `README.md`). Final full run on HEAD: `verify:e2e` 6/6, 155/155 tests.
 

@@ -1,0 +1,10 @@
+{
+  "repo": "lued/paseo-html-render",
+  "categories": ["productivity"],
+  "caveats": [
+    "Live inline HTML is web/desktop only; iOS and Android show a static PNG or the structured native report.",
+    "The live frame uses a raw sandboxed iframe, which is not a public plugin SDK surface.",
+    "2.1.0 is installed from a Git checkout; no npm package is published yet."
+  ],
+  "submittedBy": "lued"
+}

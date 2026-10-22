@@ -1,10 +1,33 @@
 {
   "name": "paseo-html-render",
   "private": false,
-  "version": "2.0.0",
+  "version": "2.1.0",
+  "description": "Sandboxed live HTML, static previews, and native reports for Paseo",
+  "license": "MIT",
+  "author": "lued",
+  "homepage": "https://github.com/lued/paseo-html-render#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lued/paseo-html-render.git"
+  },
+  "bugs": {
+    "url": "https://github.com/lued/paseo-html-render/issues"
+  },
+  "keywords": [
+    "paseo",
+    "paseo-plugin",
+    "html",
+    "reports",
+    "timeline",
+    "visualization",
+    "productivity"
+  ],
   "files": [
     "paseo-plugin.json",
+    "README.md",
     "OVERVIEW.md",
+    "LICENSE",
+    "CHANGELOG.md",
     "index.client.tsx",
     "index.server.ts",
     "client/",
@@ -32,8 +55,10 @@
     "typescript": "^5.9.3",
     "zod": "^4.4.3"
   },
-  "description": "Sandboxed live HTML, static previews and native reports for Paseo",
   "type": "module",
+  "engines": {
+    "node": ">=22.18.0"
+  },
   "peerDependencies": {
     "@getpaseo/plugin": ">=0.12.0 <0.13.0"
   },
