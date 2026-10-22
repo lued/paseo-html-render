@@ -2,7 +2,7 @@
   "name": "paseo-html-render",
   "private": false,
   "version": "2.1.0",
-  "description": "Sandboxed live HTML, static previews, and native reports for Paseo",
+  "description": "Live sandboxed HTML cards in the Paseo timeline, with static previews and native reports.",
   "license": "MIT",
   "author": "lued",
   "homepage": "https://github.com/lued/paseo-html-render#readme",
