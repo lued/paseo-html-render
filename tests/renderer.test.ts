@@ -3,7 +3,7 @@ import { existsSync, promises as fs } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
 import { createRenderer, findChromiumExecutable, RenderError } from "../server/renderer.ts";
 import { renderReportGraph } from "../server/graph.ts";
@@ -150,10 +150,47 @@ test("a page taller than the capture bound is clipped", async (t) => {
 });
 
 test("executable discovery is explicit and testable", () => {
-  assert.equal(findChromiumExecutable({ PASEO_HTML_RENDER_CHROMIUM: "/nope/chrome" }, "/nonexistent"), null);
+  // App roots are pinned to a directory that cannot exist, so a developer's own
+  // /Applications browser never decides this test.
+  const noApps = { appRoots: ["/nonexistent/Applications"] };
+  assert.equal(
+    findChromiumExecutable({ PASEO_HTML_RENDER_CHROMIUM: "/nope/chrome" }, "/nonexistent", noApps),
+    null,
+  );
   const discovered = findChromiumExecutable({}, homedir());
   if (discovered) assert.ok(existsSync(discovered));
   if (unavailable) assert.equal(discovered, null);
+});
+
+test("an installed Chromium app bundle is discovered without a cache or plugin runtime", async () => {
+  const home = await fs.mkdtemp(join(tmpdir(), "hr-app-bundle-"));
+  try {
+    const root = join(home, "Applications");
+    const executable = join(root, "Helium.app", "Contents", "MacOS", "Helium");
+    await fs.mkdir(dirname(executable), { recursive: true });
+    await fs.writeFile(executable, "", { mode: 0o700 });
+    assert.equal(findChromiumExecutable({}, home, { appRoots: [root] }), executable);
+  } finally {
+    await fs.rm(home, { recursive: true, force: true });
+  }
+});
+
+test("the explicit override wins over an installed app bundle", async () => {
+  const home = await fs.mkdtemp(join(tmpdir(), "hr-override-"));
+  try {
+    const root = join(home, "Applications");
+    const bundled = join(root, "Google Chrome.app", "Contents", "MacOS", "Google Chrome");
+    await fs.mkdir(dirname(bundled), { recursive: true });
+    await fs.writeFile(bundled, "", { mode: 0o700 });
+    const override = join(home, "override-chrome");
+    await fs.writeFile(override, "", { mode: 0o700 });
+    assert.equal(
+      findChromiumExecutable({ PASEO_HTML_RENDER_CHROMIUM: override }, home, { appRoots: [root] }),
+      override,
+    );
+  } finally {
+    await fs.rm(home, { recursive: true, force: true });
+  }
 });
 
 test("shared-browser's bundled Chromium is a discovery fallback", async () => {
@@ -163,7 +200,7 @@ test("shared-browser's bundled Chromium is a discovery fallback", async () => {
     await fs.mkdir(runtime, { recursive: true });
     const chrome = join(runtime, "chrome");
     await fs.writeFile(chrome, "", { mode: 0o700 });
-    assert.equal(findChromiumExecutable({}, home), chrome);
+    assert.equal(findChromiumExecutable({}, home, { appRoots: [] }), chrome);
   } finally {
     await fs.rm(home, { recursive: true, force: true });
   }

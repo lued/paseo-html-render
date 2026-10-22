@@ -227,8 +227,9 @@ function browserCacheCandidates(home: string): string[] {
 }
 
 function sharedBrowserCandidates(home: string): string[] {
-  // shared-browser installs a sandbox-capable Chrome for Testing under its own
-  // app-owned runtime. Reuse it read-only instead of requiring a second browser.
+  // The shared-browser plugin installs a sandbox-capable Chrome for Testing
+  // under its own app-owned runtime. Reuse it read-only when it is present; it
+  // is one source among several, never a requirement.
   const root = join(home, ".paseo", "plugin-data", "shared-browser");
   const found: string[] = [];
   try {
@@ -236,7 +237,7 @@ function sharedBrowserCandidates(home: string): string[] {
       found.push(join(root, entry, "chromium", "chrome"));
     }
   } catch {
-    // Shared-browser is optional; a missing runtime is normal.
+    // Optional source; a missing runtime is normal.
   }
   return found.sort().reverse();
 }
@@ -248,21 +249,66 @@ const SYSTEM_CANDIDATES = [
   "/usr/bin/google-chrome-stable",
   "/snap/bin/chromium",
   "/opt/google/chrome/chrome",
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "/usr/bin/brave-browser",
+  "/usr/bin/microsoft-edge",
+  "/usr/bin/vivaldi-stable",
 ];
+
+// Desktop applications that ship a Chromium build. A Chromium fork (Helium,
+// Brave, Edge, Vivaldi) speaks the same CDP protocol and accepts the launch
+// flags below, so it renders exactly like Chrome or Chromium.
+const MAC_APP_CANDIDATES: ReadonlyArray<readonly [string, string]> = [
+  ["Google Chrome", "Google Chrome"],
+  ["Chromium", "Chromium"],
+  ["Helium", "Helium"],
+  ["Brave Browser", "Brave Browser"],
+  ["Microsoft Edge", "Microsoft Edge"],
+  ["Vivaldi", "Vivaldi"],
+];
+
+function macAppCandidates(appRoots: readonly string[]): string[] {
+  const found: string[] = [];
+  for (const root of appRoots) {
+    for (const [bundle, executable] of MAC_APP_CANDIDATES) {
+      found.push(join(root, `${bundle}.app`, "Contents", "MacOS", executable));
+    }
+  }
+  return found;
+}
+
+export interface DiscoveryOptions {
+  /** Application directories to scan for Chromium-family app bundles. */
+  appRoots?: readonly string[];
+}
+
+/**
+ * Every place a sandbox-capable Chromium may already exist, most isolated
+ * first: the explicit override, the Playwright cache, the shared-browser
+ * runtime, then browsers the user installed. Nothing is ever downloaded.
+ */
+export function chromiumCandidates(
+  env: NodeJS.ProcessEnv = process.env,
+  home: string = homedir(),
+  options: DiscoveryOptions = {},
+): string[] {
+  const override = env.PASEO_HTML_RENDER_CHROMIUM?.trim();
+  const appRoots = options.appRoots ?? ["/Applications", join(home, "Applications")];
+  return [
+    ...(override ? [override] : []),
+    ...browserCacheCandidates(home),
+    ...sharedBrowserCandidates(home),
+    ...SYSTEM_CANDIDATES,
+    ...macAppCandidates(appRoots),
+  ];
+}
 
 /** Returns the first usable sandboxed Chromium, or null. Env override wins. */
 export function findChromiumExecutable(
   env: NodeJS.ProcessEnv = process.env,
   home: string = homedir(),
+  options: DiscoveryOptions = {},
 ): string | null {
-  const override = env.PASEO_HTML_RENDER_CHROMIUM?.trim();
-  if (override && isExecutable(override)) return override;
-  for (const candidate of [
-    ...browserCacheCandidates(home),
-    ...sharedBrowserCandidates(home),
-    ...SYSTEM_CANDIDATES,
-  ]) {
+  for (const candidate of chromiumCandidates(env, home, options)) {
     if (isExecutable(candidate)) return candidate;
   }
   return null;

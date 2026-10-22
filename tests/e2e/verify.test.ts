@@ -26,7 +26,7 @@ import { build } from "esbuild";
 import { ArtifactStore } from "../../server/artifacts.ts";
 import type { Authority } from "../../server/authority.ts";
 import { startBridge, type Bridge } from "../../server/bridge.ts";
-import { createRenderer } from "../../server/renderer.ts";
+import { createRenderer, findChromiumExecutable } from "../../server/renderer.ts";
 import { createHtmlTools } from "../../server/tools.ts";
 import { decodeReportReference, encodeReportReference, transformTimelineToolCall } from "../../shared/recognize.ts";
 import { parseReportModel } from "../../shared/report-model.ts";
@@ -662,19 +662,31 @@ test("G5 installed plugin registration", { timeout: 120_000 }, async () => {
       const plugins = JSON.parse(output) as Array<{ id: string; status: string; enabled: boolean }>;
       const ids = plugins.map((plugin) => plugin.id).sort();
       const status = JSON.parse(await runPaseo(["status", "--json"])) as { pid?: number; serverId?: string };
-      const record = await writeEvidenceJson("g5-plugins.json", { plugins, daemonPid: status.pid, serverId: status.serverId });
       // Unrelated third-party plugins are allowed; what matters is that this
       // plugin is installed, running, and that no retired identity survived.
       const html = plugins.find((plugin) => plugin.id === "html-render");
+      // A Chromium that html-render can actually launch is the real requirement.
+      // Which plugin or app provides it is the host's business: this plugin must
+      // not depend on a second plugin being installed.
+      const chromium = findChromiumExecutable();
+      const record = await writeEvidenceJson("g5-plugins.json", {
+        plugins,
+        daemonPid: status.pid,
+        serverId: status.serverId,
+        chromium,
+      });
       assert.equal(html?.enabled, true, "html-render is enabled");
       assert.equal(html?.status, "running", "html-render is running");
-      assert.equal(plugins.find((plugin) => plugin.id === "shared-browser")?.status, "running");
+      assert.ok(
+        chromium,
+        "no sandbox-capable Chromium is discoverable: set PASEO_HTML_RENDER_CHROMIUM, install a Chromium browser, or keep a Playwright browser cache",
+      );
       assert.ok(
         !ids.some((id) => id.includes("-qa") || id.includes("html-render-v2")),
         `retired canary identity is still registered: ${ids.join(",")}`,
       );
       return {
-        detail: `html-render running; registered: ${ids.join(", ")}`,
+        detail: `html-render running; chromium ${chromium}; registered: ${ids.join(", ")}`,
         evidence: [record],
       };
     },

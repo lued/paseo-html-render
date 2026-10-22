@@ -6,8 +6,10 @@ the installed checkout is `~/git/paseo-html-render`. The old
 `plugin-v2` worktree path in earlier revisions of this file is retired and does
 not exist.
 
-`shared-browser`, `paseo-quiet-timeline` and `html-render` are the registered
-plugins. V1 stays retired and must never be reinstalled as a rollback. The
+`paseo-quiet-timeline` and `html-render` are the registered plugins. The
+`shared-browser` plugin was removed from every host on 2026-10-22 at the user's
+request; this plugin never depended on it and nothing here requires it. V1 stays
+retired and must never be reinstalled as a rollback. The
 five-workspace canary and its allowlist/build script were deleted on 2026-10-20
 at user request; `npm run verify:e2e` replaces it.
 
@@ -57,11 +59,22 @@ code 0 means every gate passed. A gate can also report `blocked` or
 | `npm run check:bundles` | pass; 15 client inputs, 21 server inputs, Pele server-only |
 | `npm pack --dry-run --json` | pass; 35 files, 99,537 bytes packed; tests, docs, private data excluded |
 | `npm audit --omit=dev --json` | 0 runtime vulnerabilities |
-| `paseo plugin ls` | `html-render` running from `~/git/paseo-html-render`, `shared-browser` running, `paseo-quiet-timeline` running |
+| `paseo plugin ls` | `html-render` running from `~/git/paseo-html-render`, `paseo-quiet-timeline` running |
 
 The daemon was not restarted during the release. The installed plugin was
 reloaded with `paseo plugin reload html-render`; see the release transcript for
 the exact output.
+
+## After 2.1.0: no `shared-browser` dependency
+
+The 2.1.0 tables above were recorded with the `shared-browser` plugin installed.
+Its removal exposed that Chromium discovery had no macOS app-bundle candidate, so
+a Mac with no Playwright cache and no plugin runtime had no browser at all. Since
+this change, discovery is: `PASEO_HTML_RENDER_CHROMIUM`, the Playwright cache, the
+`shared-browser` runtime if present, system paths, then `/Applications` and
+`~/Applications` Chromium-family bundles (Chrome, Chromium, Helium, Brave, Edge,
+Vivaldi). The G5 gate asserts a launchable Chromium instead of a second plugin
+being registered, so no host has to keep another plugin for this one to work.
 
 ## Durability evidence added in 2.1.0
 

@@ -5,8 +5,8 @@ import { SELECTED_IDENTITY } from "../shared/selected-identity.ts";
 
 /**
  * Paseo exports PASEO_HOME to the daemon (and the daemon inherits it into plugin
- * subprocesses). The Shared Browser plugin keeps its runtime there too, so this
- * plugin puts only its own private artifacts under the same parent:
+ * subprocesses). Other Paseo plugins keep their runtimes under the same parent, so
+ * this plugin puts only its own private artifacts beside them:
  *
  *   $PASEO_HOME/plugin-data/html-render/{artifacts,bridge.sock,bridge.token}
  *

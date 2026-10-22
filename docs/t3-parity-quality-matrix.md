@@ -232,7 +232,7 @@ Prompt-to-prompt variance remains; the policy biases selection, it cannot force 
 | G2 | PQ-024/025/026/034/036/053/054/061/064/066 | Mounts the real `ReportCard`/`HtmlFrame` in real Chromium against artifacts produced by G1; asserts sandbox, `allow`, CSP, script execution, no chrome, height shrink, spoof rejection, theme update without reload, native gating, fallback. |
 | G3 | PQ-003/004/018/131 | Spawns the real stdio MCP adapter over the real bridge socket; calls both tools; rebuilds one card from the persisted row, proves reload stability, and reads the durable card. |
 | G4 | PQ-019 | Proves the outer `codemode` row is not transformed, so one artifact yields one card; records the item-scoped transformer residual. |
-| G5 | PQ-126/133 | `paseo plugin ls` must list `html-render` enabled and running and `shared-browser` running; other third-party plugins are allowed, retired canary identities are not. Records the daemon pid/server id. |
+| G5 | PQ-126/133 | `paseo plugin ls` must list `html-render` enabled and running, and a launchable sandbox-capable Chromium must be discoverable; other third-party plugins are allowed, retired canary identities are not, and no other plugin is required. Records the daemon pid/server id and the Chromium path. |
 | G6 | PQ-016/017/024/025/126/132 | Pairs a fresh headless Chromium with the real daemon, opens a real agent timeline, asserts exactly one inline frame with CSP, then clicks the assistant file link and asserts Paseo's HTML file preview frame. Screenshots are the evidence. |
 
 G6 needs outbound network and a configured provider; without them it records

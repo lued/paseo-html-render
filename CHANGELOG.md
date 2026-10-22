@@ -6,6 +6,24 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Chromium discovery: an installed Chromium-family application is now a source, so
+  a host with no Playwright browser cache and no `shared-browser` plugin still has a
+  browser. macOS `/Applications` and `~/Applications` bundles are scanned for Google
+  Chrome, Chromium, Helium, Brave, Edge and Vivaldi; the Linux Brave, Edge and
+  Vivaldi paths are added. Discovery order is `PASEO_HTML_RENDER_CHROMIUM`, the
+  Playwright cache, the `shared-browser` runtime when present, system paths, then app
+  bundles. Nothing is downloaded or installed, and every candidate is launched with
+  the same sandboxed flags.
+
+### Changed
+
+- The G5 e2e gate no longer requires the `shared-browser` plugin to be installed and
+  running. It asserts that a sandbox-capable Chromium is discoverable and records its
+  path, because the renderer's real requirement is a browser, not another plugin.
+  `shared-browser` remains supported as one optional source.
+
 ### Security
 
 - Add `SECURITY.md`: supported versions, private vulnerability reporting, the trust model

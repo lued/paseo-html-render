@@ -18,7 +18,7 @@ paseo plugin install .
 paseo plugin reload html-render
 ```
 
-Requires Paseo 0.12.0 or newer, Node 22.18 or newer on the daemon host, and a sandbox-capable Chromium. Chromium is found from the system or from the `shared-browser` plugin; set `PASEO_HTML_RENDER_CHROMIUM` to override. Without one, preview and publish fail instead of launching an unsafe browser.
+Requires Paseo 0.12.0 or newer, Node 22.18 or newer on the daemon host, and a sandbox-capable Chromium. Chromium is found, in order, from `PASEO_HTML_RENDER_CHROMIUM`, a Playwright browser cache, the `shared-browser` plugin's runtime if that plugin happens to be installed, a system Chromium, or an installed Chromium-family app (Chrome, Chromium, Helium, Brave, Edge, Vivaldi). Nothing is downloaded or installed. Without one, preview and publish fail instead of launching an unsafe browser.
 
 ## What it does
 
