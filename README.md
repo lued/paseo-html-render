@@ -41,4 +41,4 @@ npm run typecheck && npm test
 npm run verify:e2e
 ```
 
-MIT. Display rules, layout and T3 differences are in [OVERVIEW.md](OVERVIEW.md), [docs/compatibility.md](docs/compatibility.md) and [docs/verification.md](docs/verification.md).
+MIT. Display rules, layout and T3 differences are in [OVERVIEW.md](OVERVIEW.md), [docs/compatibility.md](docs/compatibility.md) and [docs/verification.md](docs/verification.md). Publishing, and the pre-publish check that proves the packed tarball works, is [docs/release.md](docs/release.md).
