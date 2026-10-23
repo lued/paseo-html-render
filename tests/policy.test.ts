@@ -38,6 +38,20 @@ test("the long form starts with the standalone summary", () => {
   assert.ok((lines[1] ?? "").trim().length > 0);
 });
 
+test("the long form agrees with the summary's brake and text rule", () => {
+  const lines = POLICY_INSTRUCTIONS.split("\n");
+  assert.equal(lines[1], "Reply in text for a single fact, one sentence, code, file contents or config.");
+  // Both projections must carry the same brake. The old "one card per reply"
+  // phrase contradicted the summary's stricter "one card per turn".
+  assert.match(POLICY_INSTRUCTIONS, /One card per turn, not every reply/);
+  assert.match(POLICY_INSTRUCTIONS, /Never publish a second card in the same turn/);
+  assert.match(POLICY_INSTRUCTIONS, /Otherwise reply in text/);
+  assert.match(POLICY_INSTRUCTIONS, /Reply in text for a single fact, one sentence, code, file contents or config/);
+  for (const line of lines) {
+    assert.ok(!line.toLowerCase().includes("one card per reply"), `contradicting line: ${line}`);
+  }
+});
+
 test("the layout contract keeps its fluid-width guidance", () => {
   // These were previously asserted against the adapter's instructions line.
   // They belong to the shared layout text, which both descriptions embed.

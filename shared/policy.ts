@@ -26,6 +26,7 @@ export const POLICY_SUMMARY =
 export const POLICY_INSTRUCTIONS =
   POLICY_SUMMARY +
   "\n" +
+  "Reply in text for a single fact, one sentence, code, file contents or config.\n" +
   "The live card is fluid (typically about 600-1100 CSS pixels); 728 is only the default preview width, not a card cap. " +
   "Fill the width with responsive, reflowing visuals. " +
   "html_preview returns a script-disabled PNG screenshot and content height; " +
@@ -33,7 +34,7 @@ export const POLICY_INSTRUCTIONS =
   "an absolute interactive.html path for Paseo file preview, and an optional bounded native report. " +
   "Daemon captures keep JavaScript, network, remote assets, SVG, and file URLs blocked; workspace " +
   "raster images are inlined. Live scripts run only in the sandboxed live frame or file preview. " +
-  "Prefer one card per reply. Include [Open interactive report](<path>) from the tool result in your final reply.";
+  "Never publish a second card in the same turn. Include [Open interactive report](<path>) from the tool result in your final reply.";
 
 /**
  * The card is fluid in the reader's thread column. 728 is the historical preview
