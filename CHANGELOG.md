@@ -29,6 +29,19 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Trigger policy is one source (`shared/policy.ts`) projected twice: a 244-character
+  single-line summary and a longer instruction payload. pi caps MCP instructions at
+  the first line with 250 characters, so the summary has to carry every rule on its
+  own; claude, codex and opencode read the full descriptions instead. The summary
+  now states the brake (one card per turn, never republish unchanged content).
+- Chart guidance is part of both HTML descriptions: line or area for numbers over
+  time, bars from a zero baseline for categories, scatter for two numeric variables,
+  dot or strip for a distribution, sorted bars for a ranking, stacked bars for
+  proportions. Series colours come from the `--chart-1` … `--chart-6` tokens, which
+  the descriptions now advertise. Only numbers obtained from a tool may be plotted.
+- Adapter version `2.1.1`. The adapter now sends `PASEO_AGENT_ID` with every bridge
+  request so the turn guard keys on the agent instead of the caller directory. An
+  adapter injected before this build is reported stale and asks for a reconnect.
 - The G5 e2e gate no longer requires the `shared-browser` plugin to be installed and
   running. It asserts that a sandbox-capable Chromium is discoverable and records its
   path, because the renderer's real requirement is a browser, not another plugin.

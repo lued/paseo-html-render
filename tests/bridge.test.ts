@@ -11,6 +11,7 @@ import type { Authority } from "../server/authority.ts";
 import { loadOrCreateBridgeToken, startBridge, type Bridge } from "../server/bridge.ts";
 import { createRenderer } from "../server/renderer.ts";
 import { createHtmlTools } from "../server/tools.ts";
+import { createTurnGuard } from "../server/turn-guard.ts";
 import { ADAPTER_SOURCE } from "../server/adapter-source.ts";
 import { POLICY_SUMMARY, POLICY_SUMMARY_MAX_CHARS } from "../shared/policy.ts";
 import { decodeReportReference } from "../shared/recognize.ts";
@@ -376,9 +377,9 @@ test("a malformed shared token file is replaced with a valid 0600 token", async 
   }
 });
 
-function rawBridge(payload: unknown): Promise<unknown> {
+function rawBridge(payload: unknown, socketPath = bridge.socketPath): Promise<unknown> {
   return new Promise((resolve, reject) => {
-    const socket = net.createConnection({ path: bridge.socketPath });
+    const socket = net.createConnection({ path: socketPath });
     let buffer = "";
     socket.setTimeout(40_000, () => reject(new Error("raw bridge timeout")));
     socket.on("connect", () => socket.write(JSON.stringify(payload) + "\n"));
@@ -463,6 +464,59 @@ test("the bridge publishes a hashed adapter version and tells stale adapters to 
   } finally {
     old.close();
     await fs.rm(oldPath, { force: true });
+  }
+});
+
+test("a publish reaches the guard under the agent the adapter reports", async () => {
+  // End-to-end seam: the adapter sends PASEO_AGENT_ID, the bridge forwards it as
+  // ToolContext.agentId, and the guard keys the turn on it. A cwd-only fallback
+  // would let the second publish through, so this asserts the wiring and not
+  // just the state machine.
+  const root = await fs.mkdtemp(join(tmpdir(), "hr-guard-"));
+  const guard = createTurnGuard({ maxCardsPerTurn: 1 });
+  const guarded = await startBridge({
+    dataRoot: root,
+    tools: createHtmlTools({ renderer, store, guard }),
+    authority,
+  });
+  try {
+    guard.beginTurn("agent:agent_a", "turn-1");
+    const first = (await rawBridge({
+      token: guarded.token,
+      tool: "html_render",
+      cwd: workspace,
+      agentId: "agent_a",
+      adapterVersion: guarded.adapterVersion,
+      input: { html: "<p>guard one</p>", title: "Guard one", height: 100 },
+    }, guarded.socketPath)) as { ok: boolean };
+    assert.equal(first.ok, true);
+
+    const second = (await rawBridge({
+      token: guarded.token,
+      tool: "html_render",
+      cwd: workspace,
+      agentId: "agent_a",
+      adapterVersion: guarded.adapterVersion,
+      input: { html: "<p>guard two</p>", title: "Guard two", height: 100 },
+    }, guarded.socketPath)) as { ok: boolean; error?: { code: string; message: string } };
+    assert.equal(second.ok, false);
+    assert.equal(second.error?.code, "duplicate");
+    assert.match(second.error?.message ?? "", /per-turn limit is 1/);
+
+    // The budget belongs to the agent, so a second agent in the same workspace
+    // is not blocked by agent_a's turn.
+    const other = (await rawBridge({
+      token: guarded.token,
+      tool: "html_render",
+      cwd: workspace,
+      agentId: "agent_b",
+      adapterVersion: guarded.adapterVersion,
+      input: { html: "<p>guard two</p>", title: "Guard two", height: 100 },
+    }, guarded.socketPath)) as { ok: boolean };
+    assert.equal(other.ok, true);
+  } finally {
+    await guarded.close().catch(() => {});
+    await fs.rm(root, { recursive: true, force: true });
   }
 });
 

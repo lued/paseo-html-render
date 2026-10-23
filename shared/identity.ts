@@ -83,6 +83,6 @@ export const PRODUCTION_IDENTITY: PluginIdentity = Object.freeze({
     cwd: "PASEO_HTML_RENDER_CWD",
   }),
   adapterFileName: "mcp-adapter-v1.mjs",
-  adapterVersion: "2.1.0",
+  adapterVersion: "2.1.1",
   socketFileName: "bridge.sock",
 });
