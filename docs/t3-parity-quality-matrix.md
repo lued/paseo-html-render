@@ -193,32 +193,46 @@ is an open acceptance gate any more.
 
 ## Trigger policy (plugin-scoped)
 
-The plugin tells the model *when* to render through the two surfaces it owns, so
-disabling the plugin removes the guidance with it (no AGENTS.md, no skill, no host
-configuration):
+The policy lives once in `shared/policy.ts` and is projected into a one-line
+summary and a long form, so disabling the plugin removes the guidance with it (no
+AGENTS.md, no skill, no host configuration):
 
-- the MCP `instructions` line, which Pi places in the agent's `mcp_servers` section:
-  "If the answer has structure (comparison, several findings, status, steps, flow,
-  architecture, numbers), render a visual HTML card; if it is one fact, a sentence,
-  code, file contents or config, answer in text."
-- the `html_render` tool description, which repeats the positive rule and the
-  negative one (no cards for facts, prose, code, file contents or config), and
-  requires the card to be a picture — diagram, chart, flow, timeline or
-  interactive — not a styled essay. Prose belongs in the reply below the card.
-- the injected MCP server config sets `alwaysLoad: true`, so the tools are
-  present as first-class choices instead of being hidden behind codemode search.
-  This moved the same prompt from 1/3 to 3/3 renders.
+- the MCP `instructions` first line is `POLICY_SUMMARY`, and `POLICY_INSTRUCTIONS`
+  starts with that exact line. pi places only the first line in the agent's
+  `mcp_servers` section and hard-caps it at 250 characters; claude, codex and
+  opencode read the full payload and the `tools/list` descriptions. The summary
+  therefore stands alone: render when a picture carries the answer, otherwise
+  reply in text, one card per turn, and never republish unchanged content.
+- the shared descriptions (`HTML_DESCRIPTION`, `LAYOUT_DESCRIPTION`,
+  `RENDER_DESCRIPTION`) repeat the positive and negative rules and require the
+  card to be a picture: diagram, chart, flow, timeline or interactive, not a
+  styled essay. Prose belongs in the reply below the card.
+- the chart fit rule chooses the form from the data: line or area for numbers
+  over time; bars with the baseline at 0 for categories; scatter for two numeric
+  variables; dot or strip plot for a distribution; sorted bars for a ranking;
+  stacked bar for proportions, pie only up to four slices. Never a table of
+  numbers when a chart answers it; label units and the axis range; take series
+  colors from `--chart-1` through `--chart-6`; no 3D, gradients, truncated axes
+  or dual axes; plot only numbers obtained from a tool, caption the source, and
+  omit the chart rather than invent data.
+- the injected MCP server config sets `alwaysLoad: true`, but only the Claude
+  provider honours it. pi ignores it and keeps the tools behind codemode, so the
+  <=250-character first line remains the only guidance the model sees. The
+  observed 1/3 to 3/3 move was a Claude result, not a cross-harness guarantee.
 
-Measured with a fixed 10-prompt corpus (5 structured, 5 plain), DeepSeek, high
-thinking, natural wording with no tool names:
+Measured with the historical fixed 10-prompt corpus (5 structured, 5 plain),
+DeepSeek, high thinking, natural wording with no tool names:
 
-| Run | Structured prompts rendering | Plain prompts rendering |
+| Run | must-render prompts rendering | must-not-render prompts rendering |
 | --- | --- | --- |
 | Before the policy | 0/5 (3 distinct prompts seen) | 1/5 |
 | After, first pass | 4/5 | 0/5 |
 | After, second pass | 5/5 | 0/5 |
 
-Prompt-to-prompt variance remains; the policy biases selection, it cannot force it.
+`npm run check:trigger` now uses 14 prompts across must-render, may-render and
+must-not-render classes; `--runs` repeats every prompt, and may-render is
+reported without gating the exit code. Prompt-to-prompt variance remains; the
+policy biases selection, it cannot force it.
 
 ## Autonomous verification gates
 

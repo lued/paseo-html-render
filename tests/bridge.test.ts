@@ -12,6 +12,7 @@ import { loadOrCreateBridgeToken, startBridge, type Bridge } from "../server/bri
 import { createRenderer } from "../server/renderer.ts";
 import { createHtmlTools } from "../server/tools.ts";
 import { ADAPTER_SOURCE } from "../server/adapter-source.ts";
+import { POLICY_SUMMARY, POLICY_SUMMARY_MAX_CHARS } from "../shared/policy.ts";
 import { decodeReportReference } from "../shared/recognize.ts";
 
 const WORKSPACE_ID = "wks_test";
@@ -131,8 +132,12 @@ test("adapter initializes and advertises the T3-shaped render tools", async () =
     assert.equal(init.protocolVersion, "2024-11-05");
     assert.equal(init.serverInfo.name, "html-render");
     assert.equal(init.serverInfo.version, bridge.adapterVersion);
-    assert.match(init.instructions ?? "", /fluid/);
-    assert.match(init.instructions ?? "", /728/);
+    // pi keeps only the first line of the instructions and caps it at 250
+    // characters, so the adapter must expose the shared summary verbatim.
+    const firstLine = (init.instructions ?? "").split("\n")[0] ?? "";
+    assert.equal(firstLine, POLICY_SUMMARY);
+    assert.ok(firstLine.length <= POLICY_SUMMARY_MAX_CHARS);
+    assert.match(init.instructions ?? "", /Include \[Open interactive report\]/);
     client.notify("notifications/initialized");
     const list = (await client.request("tools/list", {})) as {
       tools: Array<{ name: string; description: string; inputSchema: Record<string, unknown> }>;
@@ -143,8 +148,9 @@ test("adapter initializes and advertises the T3-shaped render tools", async () =
     );
     const render = list.tools.find((tool) => tool.name === "html_render");
     assert.ok(render);
-    assert.ok(render.description.includes("sandboxed"));
-    assert.ok(render.description.includes("renderMode"));
+    assert.match(render.description, /Publish a visual HTML card when the answer has structure/);
+    assert.match(render.description, /--chart-1 through --chart-6/);
+    assert.match(render.description, /omit the chart rather than invent data/);
     assert.match(render.description, /fluid/);
     assert.match(render.description, /repeat\(auto-fit/);
     const preview = list.tools.find((tool) => tool.name === "html_preview");

@@ -9,6 +9,7 @@ import {
 } from "../shared/recognize.ts";
 import { archiveCleanupEnabled, resolveDataRoot } from "../server/paths.ts";
 import { buildAdapterSource, ADAPTER_SOURCE } from "../server/adapter-source.ts";
+import { POLICY_INSTRUCTIONS, POLICY_SUMMARY } from "../shared/policy.ts";
 import { SELECTED_IDENTITY } from "../shared/selected-identity.ts";
 import type { ReportCardData } from "../shared/protocol.ts";
 
@@ -75,6 +76,11 @@ test("adapter source matches the identity and embeds no credentials", () => {
     assert.ok(ADAPTER_SOURCE.includes(name), `adapter must read ${name}`);
   }
   assert.ok(!/token-[0-9a-f]{32}/.test(ADAPTER_SOURCE));
+
+  // The generated adapter is the only place pi reads guidance, so it must
+  // carry the one-line summary as the first instruction line.
+  assert.equal(POLICY_INSTRUCTIONS.split("\n")[0], POLICY_SUMMARY);
+  assert.ok(ADAPTER_SOURCE.includes(POLICY_SUMMARY));
 });
 
 test("adapter writes the marker first so a prefix slice cannot cut it", () => {

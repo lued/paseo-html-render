@@ -55,7 +55,7 @@ code 0 means every gate passed. A gate can also report `blocked` or
 | `npm run verify:e2e` | **6/6 gates pass** (no blocked, no unavailable) |
 | `npm run typecheck` | pass |
 | `npm test` | **178/178 pass**, 0 skipped/fail/cancelled |
-| `npm run check:trigger` | corpus probe: structured renders, plain prompts stay text (model-dependent, see below) |
+| `npm run check:trigger` | corpus probe: must-render renders, may-render is reported, must-not-render stays text (model-dependent, see below) |
 | `npm run check:bundles` | pass; 15 client inputs, 21 server inputs, Pele server-only |
 | `npm pack --dry-run --json` | pass; 35 files, 99,537 bytes packed; tests, docs, private data excluded |
 | `npm audit --omit=dev --json` | 0 runtime vulnerabilities |
@@ -108,21 +108,40 @@ until the new token actually lands. The test passed five consecutive cold runs.
 
 ## Trigger policy
 
-The plugin tells the model when to render from two surfaces it owns, so disabling
-the plugin removes the guidance with it (no AGENTS.md, no skill, no host
+The policy lives once in `shared/policy.ts` and is projected into two shapes, so
+disabling the plugin removes the guidance with it (no AGENTS.md, no skill, no host
 configuration):
 
-- MCP `instructions`: structured answers (comparison, findings, status, steps,
-  flow, architecture, numbers) become a visual card led by a diagram, chart,
-  flow or interactive with only essential labels; the explanation stays in the
-  reply. One fact, one sentence, code, file contents or config stay text.
-- `html_render` description repeats the same rule and forbids styled essays.
-- The injected MCP server config sets `alwaysLoad: true`, so the tools are
-  first-class rather than hidden behind codemode search.
+- `POLICY_SUMMARY` is one line and must stay at or below 250 characters
+  (`POLICY_SUMMARY_MAX_CHARS`). Harnesses disagree about what reaches the model:
+  claude, codex and opencode declare the tools directly and read the
+  `tools/list` descriptions; pi exposes them under `codemode`, so no tool
+  description reaches the model and it sees only the first line of the MCP
+  `instructions`, hard-capped at 250 characters. The summary therefore carries
+  every rule on its own: render when a picture carries the answer, otherwise
+  reply in text, one card per turn, and never republish unchanged content.
+- `POLICY_INSTRUCTIONS` starts with that exact summary, then the operating detail
+  for harnesses that read the whole payload.
+- `html_render`, `html_preview` and the renderer share `HTML_DESCRIPTION`,
+  `LAYOUT_DESCRIPTION` and `RENDER_DESCRIPTION` from the same module. They forbid
+  styled essays and add the chart fit rule: line or area for time, bars from a
+  zero baseline for categories, scatter for two numeric variables, dot or strip
+  for a distribution, sorted bars for a ranking, stacked bars for proportions,
+  pie only up to four slices; label units and axis range; series colors from
+  `--chart-1` through `--chart-6`; no 3D, gradients, truncated axes or dual axes;
+  plot only numbers from a tool and caption the source.
 
-`npm run check:trigger` runs a fixed 10-prompt corpus (5 structured, 5 plain) and
-counts real tool calls. Measured on DeepSeek high: 4/5 then 5/5 structured, 0/5
-plain after the policy; selection is biased, never guaranteed.
+`alwaysLoad: true` in the injected MCP server config is honoured by the Claude
+provider only. pi ignores it: the tools remain behind codemode and the model
+sees only the <=250-character first line, which is why the summary must stand
+alone. Do not treat `alwaysLoad` as a cross-harness guarantee.
+
+`npm run check:trigger` runs a fixed 14-prompt corpus in three classes
+(must-render, may-render, must-not-render) and counts real tool calls; `--runs`
+repeats every prompt. It exits 0 when must-render meets `--min-structured`
+(default 80% of attempts) and must-not-render renders nothing. Measured on
+DeepSeek high: 4/5 then 5/5 must-render, 0/5 must-not-render after the policy;
+selection is biased, never guaranteed. may-render is reported, not gated.
 
 G6 creates one real agent per run and archives it afterwards. It requires outbound
 network and a configured provider; otherwise it reports `unavailable`. If the

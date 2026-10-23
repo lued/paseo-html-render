@@ -1,5 +1,10 @@
 import { z } from "zod";
 import { BRIDGE_TOKEN_FILE, PRODUCTION_IDENTITY, type PluginIdentity } from "../shared/identity.ts";
+import {
+  HTML_DESCRIPTION,
+  POLICY_INSTRUCTIONS,
+  RENDER_DESCRIPTION,
+} from "../shared/policy.ts";
 import { reportModelSchema } from "../shared/report-model.ts";
 
 const reportJsonSchema = z.toJSONSchema(reportModelSchema, { target: "draft-7", unrepresentable: "any" });
@@ -59,20 +64,7 @@ function currentBridgeToken() {
   return bridgeToken;
 }
 
-const LAYOUT_DESCRIPTION =
-  "The live card is fluid: it fills the reader's thread column, which is typically about 600-1100 CSS pixels wide, so 728 is only the default preview width and never a card cap. " +
-  "Do not hard-code a max-width below 1000px. Use responsive CSS such as grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)) and stack columns below about 720px. " +
-  "Keep outer padding small, and prefer one full-width visual, such as a vertical flow or timeline with callouts, over fixed side-by-side columns that leave each column narrow.";
-
-const HTML_DESCRIPTION =
-  "A complete, self-contained HTML document. Lead with something visual: a diagram, chart, flow, " +
-  "comparison, timeline or small interactive. Keep labels short; the page is not an essay. " +
-  LAYOUT_DESCRIPTION + " Any prose " +
-  "on the page must be essential to reading the visual, because the explanation belongs in your reply " +
-  "below the card. Inline <style> and inline SVG are supported. " +
-  "Remote http(s) resources and local file:// paths are blocked. Workspace-local raster images " +
-  "(PNG, JPEG, GIF, WebP, AVIF) referenced by img src, srcset, or CSS url() are inlined for previews " +
-  "and published pages. Local SVG files are not inlined; inline SVG markup is supported. Remote resources stay blocked.";
+const HTML_DESCRIPTION = __PASEO_HTML_DESCRIPTION__;
 
 const REPORT_DESCRIPTION =
   "Optional bounded native report model (ReportModelV1). It is strictly validated JSON, never HTML. " +
@@ -82,23 +74,7 @@ const REPORT_DESCRIPTION =
   "measured/estimated/unavailable provenance. Total serialized size <=256 KiB. Native clients render text " +
   "and views only; HTML still supplies the portable page.";
 
-const RENDER_DESCRIPTION =
-  "Publish a visual HTML card when the answer has structure: a comparison, several findings, status, " +
-  "steps, a flow, an architecture, or numbers a reader will scan. The card is the picture: a diagram, " +
-  "chart, flow, timeline or interactive, not a styled essay or a wall of bullets. " +
-  LAYOUT_DESCRIPTION + " Skip it for a single " +
-  "fact, one sentence, code, file contents or config, and anything the reader will copy as text. " +
-  "Publish the finished page above your final reply. " +
-  "renderMode auto is the default: it renders live, sandboxed HTML on web and desktop and a static " +
-  "PNG on native clients (a native report when report is supplied). In live mode inline scripts and styles " +
-  "run; network resources, forms, local file URLs, and remote assets are blocked. Self-navigation remains possible. Inline SVG markup is supported; embed raster images as data: URIs or " +
-  "reference workspace raster files, which are inlined. renderMode static selects native report views when supplied, otherwise PNG. Call html_preview " +
-  "first and pass its suggestedHeight as height. Use theme CSS variables such as " +
-  "var(--background), var(--foreground), var(--card), var(--border), var(--accent), var(--muted-foreground), " +
-  "var(--primary), var(--radius), var(--font-sans), and var(--font-mono). The page sits on the thread " +
-  "background; keep the outermost element transparent. The result includes an absolute interactive path. " +
-  "In your final reply include exactly [Open interactive report](<path>) on its own line. Do not repeat " +
-  "or describe the page in your reply.";
+const RENDER_DESCRIPTION = __PASEO_RENDER_DESCRIPTION__;
 
 // Generated from the daemon schema to avoid divergent hand-maintained contracts.
 const reportSchema = __PASEO_REPORT_SCHEMA__;
@@ -205,6 +181,7 @@ function bridge(request) {
         token: token,
         tool: request.tool,
         cwd: callerCwd,
+        agentId: process.env.PASEO_AGENT_ID || "",
         input: request.input,
         adapterVersion: ADAPTER_VERSION,
       }) + "\n");
@@ -373,15 +350,7 @@ async function handle(message) {
         protocolVersion: protocolVersion,
         capabilities: { tools: {} },
         serverInfo: { name: __PASEO_SERVER_NAME__, version: ADAPTER_VERSION },
-        instructions:
-          "If the answer has structure (comparison, several findings, status, steps, flow, architecture, numbers), render a visual HTML card led by a diagram, chart, flow or interactive with only essential labels; keep the explanation in your reply below it. Answer in text only for one fact, a sentence, code, file contents or config. " +
-          "The live card is fluid (typically about 600-1100 CSS pixels); 728 is only the default preview width, not a card cap. Fill the width with responsive, reflowing visuals. " +
-          "html_preview returns a script-disabled PNG screenshot and content height; " +
-          "html_render publishes a visual card with a private byte-identical original HTML, a static preview, " +
-          "an absolute interactive.html path for Paseo file preview, and an optional bounded native report. " +
-          "Daemon captures keep JavaScript, network, remote assets, SVG, and file URLs blocked; workspace " +
-          "raster images are inlined. Live scripts run only in the sandboxed live frame or file preview. " +
-          "Prefer one card per reply. Include [Open interactive report](<path>) from the tool result in your final reply.",
+        instructions: __PASEO_POLICY_INSTRUCTIONS__,
       },
     });
     return;
@@ -446,6 +415,9 @@ process.stdin.on("end", function () {
 });
 `
     .replace("__PASEO_REPORT_SCHEMA__", () => JSON.stringify(reportJsonSchema))
+    .replace("__PASEO_HTML_DESCRIPTION__", () => JSON.stringify(HTML_DESCRIPTION))
+    .replace("__PASEO_RENDER_DESCRIPTION__", () => JSON.stringify(RENDER_DESCRIPTION))
+    .replace("__PASEO_POLICY_INSTRUCTIONS__", () => JSON.stringify(POLICY_INSTRUCTIONS))
     .replace("__PASEO_MARKER__", () => JSON.stringify(identity.markerPrefix))
     .replace("__PASEO_ADAPTER_VERSION__", () => JSON.stringify(identity.adapterVersion))
     .replace("__PASEO_BRIDGE_ENV__", () => JSON.stringify(identity.bridgeEnv))

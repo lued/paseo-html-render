@@ -1,0 +1,97 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+import { ADAPTER_SOURCE } from "../server/adapter-source.ts";
+import {
+  HTML_DESCRIPTION,
+  LAYOUT_DESCRIPTION,
+  POLICY_INSTRUCTIONS,
+  POLICY_SUMMARY,
+  POLICY_SUMMARY_MAX_CHARS,
+  RENDER_DESCRIPTION,
+} from "../shared/policy.ts";
+
+test("the policy summary fits pi's one-line 250-character budget", () => {
+  assert.equal(POLICY_SUMMARY_MAX_CHARS, 250);
+  // The exact contract text was measured at 244 characters. Keeping the value
+  // here catches an accidental reword that would push the negative rule past
+  // pi's hard cap.
+  assert.equal(POLICY_SUMMARY.length, 244);
+  assert.ok(POLICY_SUMMARY.length <= POLICY_SUMMARY_MAX_CHARS);
+  assert.equal(POLICY_SUMMARY.split("\n").length, 1);
+});
+
+test("the summary carries all four rules on its own", () => {
+  // pi sees only this line. Each rule is a positive assertion so a shorter
+  // summary cannot silently drop the brake.
+  assert.match(POLICY_SUMMARY, /Render a visual card when a picture carries the answer/);
+  assert.match(POLICY_SUMMARY, /comparison, flow, architecture, multi-part status, numbers to scan/);
+  assert.match(POLICY_SUMMARY, /Otherwise reply in text/);
+  assert.match(POLICY_SUMMARY, /One card per turn, not every reply/);
+  assert.match(POLICY_SUMMARY, /never republish unchanged content/);
+});
+
+test("the long form starts with the standalone summary", () => {
+  const lines = POLICY_INSTRUCTIONS.split("\n");
+  assert.equal(lines[0], POLICY_SUMMARY);
+  assert.ok(lines.length > 1, "the long form must add the operating detail");
+  assert.ok((lines[1] ?? "").trim().length > 0);
+});
+
+test("the layout contract keeps its fluid-width guidance", () => {
+  // These were previously asserted against the adapter's instructions line.
+  // They belong to the shared layout text, which both descriptions embed.
+  assert.match(LAYOUT_DESCRIPTION, /fluid/);
+  assert.match(LAYOUT_DESCRIPTION, /728/);
+  assert.match(LAYOUT_DESCRIPTION, /repeat\(auto-fit/);
+});
+
+test("both HTML descriptions carry the chart fit and honesty rules", () => {
+  for (const description of [HTML_DESCRIPTION, RENDER_DESCRIPTION]) {
+    assert.match(description, /numbers over time use a line or area/);
+    assert.match(description, /comparing categories uses bars with the baseline at 0/);
+    assert.match(description, /two numeric variables use a scatter/);
+    assert.match(description, /a distribution uses a dot or strip plot/);
+    assert.match(description, /a ranking uses sorted bars/);
+    assert.match(description, /proportions use a stacked bar/);
+    assert.match(description, /pie only up to 4 slices/);
+    assert.match(description, /Never a table of numbers when a chart answers it/);
+    assert.match(description, /label units and the axis range/i);
+    assert.match(description, /--chart-1 through --chart-6/);
+    assert.match(description, /No 3D/);
+    assert.match(description, /truncated axes/);
+    assert.match(description, /dual axes/);
+    assert.match(description, /Plot only numbers actually obtained from a tool/);
+    assert.match(description, /caption the source/);
+    assert.match(description, /omit the chart rather than invent data/);
+  }
+});
+
+test("the built adapter embeds the policy and stays template-safe", () => {
+  // The summary is the first line of the injected instructions string, so it
+  // appears verbatim followed by an escaped newline rather than as its own
+  // quoted constant.
+  assert.ok(ADAPTER_SOURCE.includes(POLICY_SUMMARY));
+  assert.ok(ADAPTER_SOURCE.includes(JSON.stringify(POLICY_INSTRUCTIONS)));
+  assert.ok(ADAPTER_SOURCE.includes(JSON.stringify(HTML_DESCRIPTION)));
+  assert.ok(ADAPTER_SOURCE.includes(JSON.stringify(RENDER_DESCRIPTION)));
+
+  // Check the String.raw body, not the generated output: the report schema
+  // already carries backticks in a description, while the template itself must
+  // stay free of both backticks and interpolation.
+  const adapterFile = readFileSync("server/adapter-source.ts", "utf8");
+  const startMarker = "return String.raw`";
+  const start = adapterFile.indexOf(startMarker);
+  const end = adapterFile.indexOf("\n`\n", start);
+  assert.ok(start >= 0 && end > start, "adapter template delimiters must be recognizable");
+  const template = adapterFile.slice(start + startMarker.length, end);
+  assert.ok(!template.includes("`"), "adapter template must stay free of backticks");
+  assert.ok(!template.includes("${"), "adapter template must stay free of interpolation");
+});
+
+test("the adapter sends the agent id with every bridge request", () => {
+  // Frozen contract with the turn guard: env lookup at call time, empty string
+  // when an older host does not set it, and no guessing from cwd.
+  assert.ok(ADAPTER_SOURCE.includes('agentId: process.env.PASEO_AGENT_ID || ""'));
+  assert.ok(!ADAPTER_SOURCE.includes("agentId: callerCwd"));
+});
