@@ -15,6 +15,7 @@ import { startBridge, type Bridge } from "./bridge.ts";
 import { archiveCleanupEnabled, resolveDataRoot } from "./paths.ts";
 import { createRenderer } from "./renderer.ts";
 import { createHtmlTools } from "./tools.ts";
+import { createTurnGuard, guardKey, maxCardsPerTurn } from "./turn-guard.ts";
 
 export interface ContributeOptions {
   /**
@@ -40,7 +41,10 @@ export default function contribute(server: PluginServerContext, options: Contrib
   const renderer = createRenderer({
     executablePath: process.env.PASEO_HTML_RENDER_CHROMIUM?.trim() || undefined,
   });
-  const tools = createHtmlTools({ renderer, store });
+  // One guard per plugin instance: it owns the in-memory turn and duplicate
+  // state for every agent this daemon serves.
+  const guard = createTurnGuard({ maxCardsPerTurn: maxCardsPerTurn(process.env) });
+  const tools = createHtmlTools({ renderer, store, guard });
 
   let authority: Authority | null = null;
   const getAuthority = (paseo: PaseoApi): Authority => {
@@ -188,9 +192,16 @@ export default function contribute(server: PluginServerContext, options: Contrib
   // A plugin reload can land while an agent process is already running, after
   // its session-open hook has passed. Warm authority again at the start of every
   // turn so the next tool call does not fail closed with "not part of an open
-  // Paseo workspace".
-  server.on("agent.turn_started", async ({ agent }, context) => {
+  // Paseo workspace". The same event is the only place a counted turn begins.
+  server.on("agent.turn_started", async ({ agent, turnId }, context) => {
+    guard.beginTurn(guardKey(agent.id, agent.cwd), turnId);
     await warmAuthority(context.paseo, agent.id, agent.cwd);
+  });
+
+  // Closing the turn keeps the remembered publishes, so an identical card is
+  // still refused in a later turn; only the per-turn count resets.
+  server.on("agent.turn_ended", ({ agent }) => {
+    guard.endTurn(guardKey(agent.id, agent.cwd));
   });
 
   // Non-destructive by default: only an explicit `PASEO_HTML_RENDER_PURGE_ON_ARCHIVE`

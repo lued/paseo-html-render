@@ -24,6 +24,7 @@ import { inlineWorkspaceImages, InlineImagesError } from "./images.ts";
 import type { Appearance, RenderInput, RenderOutput, Renderer } from "./renderer.ts";
 import { RenderError } from "./renderer.ts";
 import { DEFAULT_MEASURE_WIDTHS } from "./renderer-types.ts";
+import { guardKey, htmlFingerprint, type TurnGuard } from "./turn-guard.ts";
 
 /**
  * Tool inputs mirror the observed T3 contract:
@@ -55,6 +56,8 @@ export interface ToolContext {
   workspaceRoot?: string;
   /** Authority-owned request cancellation; never decoded from tool JSON. */
   signal?: AbortSignal;
+  /** Calling agent, forwarded by the bridge when the adapter knows it. */
+  agentId?: string;
 }
 
 export interface HtmlPreviewResult {
@@ -100,7 +103,12 @@ export function interactiveLinkInstruction(interactivePath: string): string {
 }
 
 export class ToolError extends Error {
-  readonly code: "invalid_input" | "render_failed" | "browser_unavailable" | "store_failed";
+  readonly code:
+    | "invalid_input"
+    | "render_failed"
+    | "browser_unavailable"
+    | "store_failed"
+    | "duplicate";
 
   constructor(code: ToolError["code"], message: string) {
     super(message);
@@ -195,8 +203,14 @@ function boundedWarning(prefix: string, error: unknown): string {
   return `${prefix}: ${single.length > 300 ? `${single.slice(0, 297)}...` : single}`;
 }
 
-export function createHtmlTools(deps: { renderer: Renderer; store: ArtifactStore }): HtmlTools {
+export function createHtmlTools(deps: {
+  renderer: Renderer;
+  store: ArtifactStore;
+  /** Optional so existing callers and unit tests keep working unguarded. */
+  guard?: TurnGuard;
+}): HtmlTools {
   const renderer = deps.renderer as PreparedRenderer;
+  const guard = deps.guard;
 
   return {
     async preview(raw, context) {
@@ -248,6 +262,13 @@ export function createHtmlTools(deps: { renderer: Renderer; store: ArtifactStore
         throw new ToolError("invalid_input", parsed.error.issues[0]?.message ?? "Invalid html_render input");
       }
       if (!context.workspaceId) throw new ToolError("invalid_input", "No owning workspace");
+      // Check before image inlining and rendering so a refusal costs nothing.
+      const key = guardKey(context.agentId, context.cwd);
+      const hash = guard ? htmlFingerprint(parsed.data.html) : "";
+      if (guard) {
+        const decision = guard.check({ key, hash });
+        if (!decision.ok) throw new ToolError("duplicate", decision.message);
+      }
       const warnings: string[] = [];
       try {
         const inlined = await inlineWorkspaceImages(parsed.data.html, {
@@ -338,6 +359,15 @@ export function createHtmlTools(deps: { renderer: Renderer; store: ArtifactStore
         if (!interactivePath) {
           throw new ToolError("store_failed", "The interactive report could not be stored");
         }
+        // Recorded only once the card is fully stored, so a failed publish does
+        // not spend the turn's budget or poison duplicate detection.
+        guard?.record({
+          key,
+          workspaceId: context.workspaceId,
+          artifactId: stored.manifest.artifactId,
+          hash,
+          title: stored.manifest.title,
+        });
         const measuredHeight = stored.manifest.measuredHeight;
         return {
           htmlRender: {

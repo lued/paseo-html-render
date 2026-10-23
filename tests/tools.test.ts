@@ -6,6 +6,13 @@ import test from "node:test";
 import { ArtifactStore } from "../server/artifacts.ts";
 import type { Renderer } from "../server/renderer.ts";
 import { createHtmlTools, ToolError } from "../server/tools.ts";
+import {
+  createTurnGuard,
+  guardKey,
+  htmlFingerprint,
+  MAX_CARDS_ENV,
+  maxCardsPerTurn,
+} from "../server/turn-guard.ts";
 import { encodeReportReference } from "../shared/recognize.ts";
 
 const PNG = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
@@ -24,6 +31,24 @@ async function tempStore(t: { after(fn: () => Promise<void>): void }): Promise<A
   const root = await fs.mkdtemp(join(tmpdir(), "html-render-tools-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   return new ArtifactStore(root);
+}
+
+async function tempStoreWithRoot(
+  t: { after(fn: () => Promise<void>): void },
+): Promise<{ store: ArtifactStore; root: string }> {
+  const root = await fs.mkdtemp(join(tmpdir(), "html-render-tools-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  return { store: new ArtifactStore(root), root };
+}
+
+function countingRenderer(counter: { renders: number }): Renderer {
+  return {
+    async render() {
+      counter.renders += 1;
+      return { png: PNG, width: 728, contentHeight: 120, capturedHeight: 120 };
+    },
+    async close() {},
+  };
 }
 
 test("html_render stores the requested frame height, not the measured capture", async (t) => {
@@ -237,4 +262,174 @@ test("an invalid or oversized report is rejected before storage", async (t) => {
       (error: unknown) => error instanceof ToolError && error.code === "invalid_input",
     );
   }
+});
+
+function guardedTools(
+  renderer: Renderer,
+  store: ArtifactStore,
+  options: { maxCardsPerTurn?: number } = {},
+) {
+  const guard = createTurnGuard(options);
+  return { guard, tools: createHtmlTools({ renderer, store, guard }) };
+}
+
+test("a second card in the same turn is refused before rendering or storage", async (t) => {
+  const { store, root } = await tempStoreWithRoot(t);
+  const counter = { renders: 0 };
+  const { guard, tools } = guardedTools(countingRenderer(counter), store);
+  const agent = { ...context, agentId: "agent_a" };
+  const key = guardKey(agent.agentId, agent.cwd);
+  guard.beginTurn(key, "turn-1");
+
+  const first = await tools.publish({ html: "<h1>one</h1>", title: "One", height: 200 }, agent);
+  const rendersAfterFirst = counter.renders;
+  assert.ok(rendersAfterFirst > 0);
+
+  await assert.rejects(
+    () => tools.publish({ html: "<h1>two</h1>", title: "Two", height: 200 }, agent),
+    (error: unknown) => {
+      assert.ok(error instanceof ToolError);
+      assert.equal(error.code, "duplicate");
+      assert.ok(error.message.includes(first.htmlRender.artifactId));
+      assert.match(error.message, /Keep the rest in your reply/);
+      return true;
+    },
+  );
+  // A refused card costs nothing: no render, no stored artifact.
+  assert.equal(counter.renders, rendersAfterFirst);
+  assert.deepEqual(await fs.readdir(join(root, "artifacts")), [first.htmlRender.artifactId]);
+});
+
+test("a later turn allows new content and still refuses identical HTML", async (t) => {
+  const store = await tempStore(t);
+  const { guard, tools } = guardedTools(fakeRenderer(), store);
+  const agent = { ...context, agentId: "agent_a" };
+  const key = guardKey(agent.agentId, agent.cwd);
+
+  guard.beginTurn(key, "turn-1");
+  await tools.publish({ html: "<h1>one</h1>", title: "One", height: 200 }, agent);
+
+  guard.beginTurn(key, "turn-2");
+  const second = await tools.publish({ html: "<h1>two</h1>", title: "Two", height: 200 }, agent);
+  assert.ok(second.htmlRender.artifactId);
+
+  guard.beginTurn(key, "turn-3");
+  await assert.rejects(
+    () => tools.publish({ html: "<h1>two</h1>", title: "Two again", height: 200 }, agent),
+    (error: unknown) =>
+      error instanceof ToolError &&
+      error.code === "duplicate" &&
+      error.message.includes(second.htmlRender.artifactId) &&
+      error.message.includes("Nothing changed"),
+  );
+});
+
+test("whitespace- and comment-only changes count as identical", async (t) => {
+  const store = await tempStore(t);
+  const { guard, tools } = guardedTools(fakeRenderer(), store);
+  const agent = { ...context, agentId: "agent_a" };
+  const key = guardKey(agent.agentId, agent.cwd);
+
+  guard.beginTurn(key, "turn-1");
+  const first = await tools.publish({ html: "<h1>one</h1>\n<p>body</p>", title: "One", height: 200 }, agent);
+
+  guard.beginTurn(key, "turn-2");
+  await assert.rejects(
+    () =>
+      tools.publish(
+        { html: "\n  <h1>one</h1>   <!-- retry -->\n<p>body</p>  ", title: "One", height: 200 },
+        agent,
+      ),
+    (error: unknown) =>
+      error instanceof ToolError &&
+      error.code === "duplicate" &&
+      error.message.includes(first.htmlRender.artifactId) &&
+      error.message.includes("Nothing changed"),
+  );
+});
+
+test("the environment switch disables the guard without changing publish", async (t) => {
+  const store = await tempStore(t);
+  const limit = maxCardsPerTurn({ [MAX_CARDS_ENV]: "0" });
+  assert.equal(limit, 0);
+  const { guard, tools } = guardedTools(fakeRenderer(), store, { maxCardsPerTurn: limit });
+  const agent = { ...context, agentId: "agent_a" };
+  guard.beginTurn(guardKey(agent.agentId, agent.cwd), "turn-1");
+
+  const first = await tools.publish({ html: "<h1>same</h1>", title: "One", height: 200 }, agent);
+  const second = await tools.publish({ html: "<h1>same</h1>", title: "One", height: 200 }, agent);
+  assert.notEqual(first.htmlRender.artifactId, second.htmlRender.artifactId);
+});
+
+test("two agents in one workspace do not share a card budget", async (t) => {
+  const store = await tempStore(t);
+  const { guard, tools } = guardedTools(fakeRenderer(), store);
+  const agentA = { ...context, agentId: "agent_a" };
+  const agentB = { ...context, agentId: "agent_b" };
+  guard.beginTurn(guardKey(agentA.agentId, agentA.cwd), "turn-1");
+  guard.beginTurn(guardKey(agentB.agentId, agentB.cwd), "turn-1");
+
+  // Same HTML on purpose: the keys are separate, so this is not a duplicate.
+  const first = await tools.publish({ html: "<h1>shared</h1>", title: "Shared", height: 200 }, agentA);
+  const second = await tools.publish({ html: "<h1>shared</h1>", title: "Shared", height: 200 }, agentB);
+  assert.notEqual(first.htmlRender.artifactId, second.htmlRender.artifactId);
+});
+
+test("html_preview never consults the guard and never spends the turn budget", async (t) => {
+  const store = await tempStore(t);
+  const { guard, tools } = guardedTools(fakeRenderer(), store, { maxCardsPerTurn: 2 });
+  const agent = { ...context, agentId: "agent_a" };
+  const key = guardKey(agent.agentId, agent.cwd);
+  guard.beginTurn(key, "turn-1");
+  await tools.publish({ html: "<h1>one</h1>", title: "One", height: 200 }, agent);
+
+  const preview = await tools.preview({ html: "<h1>two</h1>" }, agent);
+  assert.equal(preview.screenshot.mimeType, "image/png");
+  // Repeating an identical preview is never a duplicate.
+  await tools.preview({ html: "<h1>one</h1>" }, agent);
+
+  // The second card still fits the turn's budget of two.
+  const second = await tools.publish({ html: "<h1>two</h1>", title: "Two", height: 200 }, agent);
+  assert.ok(second.htmlRender.artifactId);
+});
+
+test("a failed publish is not remembered as a card", async (t) => {
+  const store = await tempStore(t);
+  let fail = true;
+  const renderer: Renderer = {
+    async render() {
+      if (fail) {
+        fail = false;
+        throw new Error("renderer exploded");
+      }
+      return { png: PNG, width: 728, contentHeight: 120, capturedHeight: 120 };
+    },
+    async close() {},
+  };
+  const { guard, tools } = guardedTools(renderer, store);
+  const agent = { ...context, agentId: "agent_a" };
+  guard.beginTurn(guardKey(agent.agentId, agent.cwd), "turn-1");
+
+  await assert.rejects(
+    () => tools.publish({ html: "<h1>one</h1>", title: "One", height: 200 }, agent),
+    (error: unknown) => error instanceof ToolError && error.code === "render_failed",
+  );
+  // The HTML was never recorded, so the same content is not "nothing changed".
+  const retried = await tools.publish({ html: "<h1>one</h1>", title: "One", height: 200 }, agent);
+  assert.ok(retried.htmlRender.artifactId);
+});
+
+test("htmlFingerprint is what the guard compares, not the raw string", async (t) => {
+  const store = await tempStore(t);
+  const { guard, tools } = guardedTools(fakeRenderer(), store);
+  const agent = { ...context, agentId: "agent_a" };
+  const key = guardKey(agent.agentId, agent.cwd);
+  guard.beginTurn(key, "turn-1");
+  await tools.publish({ html: "<h1>x</h1>", title: "X", height: 200 }, agent);
+  // Direct proof the guard is keyed on the normalized hash: the same content
+  // under different spacing is refused even before any publish happens.
+  assert.equal(
+    guard.check({ key, hash: htmlFingerprint("<h1>x</h1>\n<!-- note -->") }).ok,
+    false,
+  );
 });

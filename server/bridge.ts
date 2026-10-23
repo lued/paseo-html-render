@@ -49,6 +49,8 @@ interface BridgeRequest {
   token?: unknown;
   tool?: unknown;
   cwd?: unknown;
+  /** Optional so an adapter that predates agentId forwarding still works. */
+  agentId?: unknown;
   input?: unknown;
   adapterVersion?: unknown;
 }
@@ -256,11 +258,18 @@ export async function startBridge(options: BridgeOptions, token?: string): Promi
       };
     }
     try {
+      // Only a non-empty string is trusted; anything else falls back to cwd
+      // instead of rejecting a request the adapter could still serve.
+      const agentId =
+        typeof request.agentId === "string" && request.agentId.trim()
+          ? request.agentId.trim()
+          : undefined;
       const context = {
         workspaceId: workspace.workspaceId,
         cwd: request.cwd,
         workspaceRoot: workspace.root,
         signal,
+        ...agentId === undefined ? {} : { agentId },
       };
       const result =
         request.tool === "html_preview"

@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Turn guard: a second `html_render` card in one agent turn is refused with the
+  `duplicate` error code, and so is HTML that differs from an earlier card of the
+  same agent only by comments or whitespace runs. The refusal names the existing
+  artifact id so the model can refer to it instead of republishing. The limit comes
+  from `PASEO_HTML_RENDER_MAX_CARDS_PER_TURN` (integer, default `1`; `0` disables
+  the guard); `html_preview` is never affected. State is in memory per plugin
+  instance, so a daemon restart clears it.
+
 ### Fixed
 
 - Chromium discovery: an installed Chromium-family application is now a source, so
