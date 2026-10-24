@@ -63,7 +63,7 @@ the turn slot consumed. Do not describe this as permanent or semantic deduplicat
 | --- | --- |
 | Live inline HTML | Web/desktop raw `srcDoc` iframe, unsupported by public SDK; no inline HTML on native |
 | Theme | T3-like token names mapped to Paseo palette; initial theme plus live messages without reload. Exported file follows OS color preference |
-| Height | T3-style nearest-width fitting and requested cap semantics; measurements at 390/728/1024 rather than T3's nine widths |
+| Height | T3-style nearest-width fitting and requested cap semantics; measurements at 320/375/430/520/640/728/860/1000/1144 CSS px |
 | Layout width | Live iframe is 100% of the host thread column (roughly 600–1100 CSS px); 728 is only the default capture width. No plugin-side max-width, and no expand/fullscreen surface |
 | Fullscreen | Removed at user request. No expand button, viewport overlay, fullscreen zoom toolbar, or Escape-dismiss channel; iframe fullscreen permission explicitly denied |
 | Native | Structured report views when `report` exists; otherwise static PNG. Full arbitrary HTML via assistant file link where client supports it |
@@ -93,7 +93,10 @@ Usage values must include provenance; unavailable has no numeric value.
 
 - Daemon screenshots/measurements always disable page JavaScript. T3 executes
   scripts for previews, so JS-only generated pages do **not** have static parity.
-  Provide static markup or an accompanying structured report.
+  Provide static markup or an accompanying structured report. Captures and
+  measurements request `prefers-reduced-motion: reduce`; this is a preference,
+  not a forced freeze of CSS that ignores it. Keep essential chart geometry
+  correct before interaction rather than animating it on initial load.
 - Live pages use an opaque origin with `sandbox="allow-scripts"` only. No
   same-origin, forms, popups, downloads or top-navigation permission. CSP refuses
   network resources, file URLs, frames/objects/workers, forms and base URLs;

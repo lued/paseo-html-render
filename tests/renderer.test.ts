@@ -54,6 +54,38 @@ test("appearance changes the rendered theme variables", async (t) => {
   assert.notEqual(dark.png.toString("base64"), light.png.toString("base64"));
 });
 
+test("static capture and measurement honor reduced motion without executing scripts", async (t) => {
+  if (skipIfUnavailable(t)) return;
+  let seen: unknown;
+  const observer = createRenderer({
+    timeoutMs: 10_000,
+    maxConcurrent: 1,
+    async inspectDom(evaluate) {
+      seen = await evaluate(`({
+        reduced: matchMedia('(prefers-reduced-motion: reduce)').matches,
+        animation: getComputedStyle(document.getElementById('bar')).animationName,
+        width: document.getElementById('bar').getBoundingClientRect().width
+      })`);
+    },
+  });
+  const html = `<!doctype html><style>
+    html,body{margin:0}
+    #track{width:300px;height:20px}
+    #bar{width:280px;height:20px;background:teal;transform-origin:left;animation:grow 60s linear both}
+    @keyframes grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+    @media(prefers-reduced-motion:reduce){#track,#bar{height:60px}#bar{animation:none}}
+  </style><div id="track"><div id="bar"></div></div>
+  <script>document.getElementById('bar').style.width='1px'</script>`;
+  try {
+    await observer.render({ html });
+    assert.deepEqual(seen, { reduced: true, animation: "none", width: 280 });
+    const heights = await observer.measure({ html, widths: [390, 728] });
+    assert.deepEqual(heights, [[390, 60], [728, 60]]);
+  } finally {
+    await observer.close();
+  }
+});
+
 test("report scripts never execute", async (t) => {
   if (skipIfUnavailable(t)) return;
   const result = await renderer.render({

@@ -106,8 +106,13 @@ export async function openBrowser(executable) {
 
   let nextId = 1;
   const pending = new Map();
+  const listeners = new Set();
   socket.onmessage = (event) => {
     const message = JSON.parse(event.data);
+    if (message.method) {
+      for (const listener of listeners) listener(message);
+      return;
+    }
     const item = pending.get(message.id);
     if (!item) return;
     pending.delete(message.id);
@@ -146,7 +151,10 @@ export async function openBrowser(executable) {
     }
     throw new Error(`timed out waiting for ${label}`);
   };
-  return { send, evaluate, screenshot, waitFor, close, sessionId };
+  return {
+    send, evaluate, screenshot, waitFor, close, sessionId,
+    onEvent(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+  };
 }
 
 async function main() {
@@ -199,7 +207,7 @@ async function main() {
         allow: frame.getAttribute('allow'),
         height: frame.style.height,
         hasCsp: (frame.getAttribute('srcdoc') || '').includes('Content-Security-Policy'),
-        hasContent: (frame.getAttribute('srcdoc') || '').includes('CLIENT ACCEPTANCE')
+        hasContent: /CLIENT ACCEPTANCE/i.test(frame.getAttribute('srcdoc') || '')
       })),
       text: document.body.innerText.slice(0, 1200)
     })`).then((raw) => JSON.parse(raw));

@@ -58,6 +58,10 @@ permanent duplicate database or a semantic HTML diff.
 
 ### Fixed
 
+- Static captures and measurements request reduced motion before loading the
+  document, avoiding intermediate chart geometry when the page honors that
+  preference. JavaScript remains disabled; live-frame motion is unchanged.
+  Guidance also warns against animating essential chart geometry on initial load.
 - Chromium discovery: an installed Chromium-family application is a source, so a
   host with no Playwright cache and no `shared-browser` plugin still has a browser.
   macOS `/Applications` and `~/Applications` bundles are scanned for Google Chrome,

@@ -576,7 +576,12 @@ export function createRenderer(options: RendererOptions = {}): FullRenderer {
         mobile: false,
       });
       await send("Emulation.setEmulatedMedia", {
-        features: [{ name: "prefers-color-scheme", value: input.appearance }],
+        // Static output should use the authored motion-free state, not an
+        // arbitrary frame of a chart entrance animation. Live frames are unchanged.
+        features: [
+          { name: "prefers-color-scheme", value: input.appearance },
+          { name: "prefers-reduced-motion", value: "reduce" },
+        ],
       });
       // Report JavaScript must be impossible, not merely discouraged. Runtime
       // evaluation over CDP still works for trusted measurement probes.

@@ -70,7 +70,10 @@ Design the default markup first:
 
 The examples use a small `html.js` class rather than `noscript` because the same
 document must work as a published file, a live frame and a script-disabled
-screenshot. The static renderer never adds the class.
+screenshot. The static renderer never adds the class. Captures and measurements
+request `prefers-reduced-motion: reduce`, but styles can ignore that preference.
+Keep essential chart geometry correct from the start: an entrance animation can
+otherwise leave misleading intermediate bar lengths in the PNG.
 
 ## Motion rules
 
