@@ -1,9 +1,48 @@
 # HTML Render: first public npm release
 
 Date: 2026-10-24
-Status: presentation consolidated and tested in the existing integration workspace; guard/npm gates pending; publication requires approval
+Status: user authorized build, hardening, real Paseo dogfood and release; execution on main only; publication gated on successful evidence and npm login
 Recommended release: 2.2.0 (the first npm release, not a rewrite of v2.1.0)
 review: none
+
+## Authorized execution and Paseo dogfood
+
+The user's latest direction authorizes building and releasing after dogfooding
+through the actual Paseo installation here, and cleaning up all superseded
+workspaces/subagents. Presentation is now fast-forwarded onto main at `3cde577`;
+the integration workspace and its two agents have been archived through Paseo.
+Only main remains. Reuse existing DeepSeek audit helpers sequentially (models.csv
+row deepseek-v4-1-flash, max); no new feature workspaces or delegated research.
+Parent owns verification, live dogfood and publication; helpers cannot publish,
+reload, archive or delegate. Retire helpers once their evidence is captured.
+
+Execution order: guard regressions/fix -> exact tarball/host install and release
+contract -> fresh build/full tests -> actual Paseo dogfood -> npm next -> actual
+npm-source install -> latest and matching GitHub release -> final cleanup.
+GitHub access is available; npm currently requires user login in the visible
+`npm release login` Paseo terminal. Credentials never enter chat/repository.
+
+Real dogfood matrix (record outcome + evidence, not just a test count):
+
+| Case | Exercise through Paseo here | Evidence required |
+| --- | --- | --- |
+| D1 | Fresh agent receives preview/render tools; single-fact prompt stays text | Actual agent/tool history; no invented universal harness claim |
+| D2 | Chart real repository/tool data; one useful visual, proper units/source | Actual calls, stored artifact and visual inspection |
+| D3 | Flow/architecture including the built-in Pele report-graph path | Published HTML + graph assets/report; no global Pele assumption |
+| D4 | Image-inspection, pipeline and incident-timeline showcase sources | Each published through the plugin; local controls/images, static capture and honest demo labels |
+| D5 | Flow, inspector and filter interaction sources | Each published; live controls/keyboard/theme/reduced motion/reflow plus script-disabled fallback |
+| D6 | Auto/iframe/static modes, interactive file link and native/report fallback | Real supported Paseo surfaces; separate actual device coverage from mounted tests |
+| D7 | Same-turn/concurrent refusal, later-turn unchanged refusal, meaningful update | Actual adapter/agent attempts and refusal/success records; unit regressions additionally cover lifecycle races/null IDs |
+| D8 | Image/report/metadata changes, missing images, ownership and legacy readback | Actual artifact results; no false nothing-changed refusal or authorization bypass |
+| D9 | History reconstruction, refresh and one-card rendering | Real persisted history/UI observation; no duplicate codemode/card projection |
+| D10 | Exact tarball production install, then exact published npm-source install | Isolated Paseo home, actual flags, version/integrity/readiness and preview/publish/readback |
+
+Fresh test agents stay in the main workspace and are retired after recording
+results. Do not expose unrelated user tabs/workspaces in public evidence. Parent
+runs the existing e2e gates too, but they do not substitute for these live cases.
+If a required physical client/provider/UI path cannot be exercised, mark it
+blocked/untested and resolve the release claim with the user before publishing;
+never silently count emulation or a component harness as native-device dogfood.
 
 ## Outcome and boundaries
 
@@ -71,9 +110,9 @@ Merged: `e7307d2`, with integration follow-up `a8c3e4e`.
 - Current guard has correctness gaps below. The previous claim that it fully
   prevents duplicate cards was too strong.
 
-### Fresh baseline, not a historical claim
+### Audit baseline (a8c3e4e, before presentation integration)
 
-Re-run on 2026-10-24:
+Historical audit run on 2026-10-24:
 - `npm run typecheck`: PASS.
 - `npm test`: 209 tests, 209 pass, 0 failures/skips/cancellations.
 - `npm run check:bundles`: PASS; 15 client inputs, 23 server inputs, Pele server-only.
@@ -85,13 +124,14 @@ Re-run on 2026-10-24:
 
 ### Consolidation checkpoint
 
-Presentation work is now combined in the existing motion workspace at `6f7bdb6`:
+Presentation work was combined in the existing motion workspace at `6f7bdb6`:
 README/showcase `9bdc5a4`, motion `b6bdc41`/`b8dffba`, package-name guidance
 `b6cab1b`, and strict integrated link checks. Parent typecheck, **225/225 tests**
 (zero skips/failures) and bundle checks pass (15 client / 24 server inputs). Main's
-live source was not updated and no plugin reload took place. This does not close
-the correctness, install or support-evidence gates below. Use the existing
-integration workspace for further approved work; do not create more lanes.
+live source was not updated at that checkpoint and no plugin reload took place.
+The user's subsequent release/cleanup instruction moved the combined history to
+main at `3cde577` and retired integration. The correctness, install and support
+gates below remain open; subsequent work is on main only.
 
 ## Release blockers and acceptance
 
@@ -210,35 +250,32 @@ Gate:
 
 ## Ordered work plan
 
-The two authorized presentation lanes are consolidated and parent-tested; their
-scoped work plan is `2026-10-24-showcase-and-interactivity.md`. Guard hardening, npm
-packaging changes, CI/versioning and external release actions remain proposed
-until approved. The next work is sequential in the existing integration workspace,
-not another pair of worktrees or an expansion of the package-list idea.
+The presentation lanes are consolidated and parent-tested; their scoped work
+plan is `2026-10-24-showcase-and-interactivity.md`. The user has now authorized
+release hardening and publication after real Paseo dogfood. Work is sequential
+on main, not another pair of worktrees or an expansion of the package-list idea.
+Publication remains conditional on the gates, authenticated access and evidence.
 
-| Phase | Work | Model row / responsibility | Worktree and dependencies | Exit evidence |
+| Phase | Work | Responsibility | Location / dependency | Exit evidence |
 | --- | --- | --- | --- | --- |
-| 0. Recover | Reconcile branches and consolidate presentation work | Orchestrator; original DeepSeek lanes complete | Existing motion workspace, now integration | 225 tests pass; pending work committed |
-| 1. Stabilize | Guard races, safe fingerprint, lifecycle/attribution, consistent policy rules | Existing owner after scoped approval | Same integration workspace, sequential | Targeted regressions + full suite |
-| 2. Package | Fix dependency tree, tarball docs and exact isolated install rehearsal | Existing owner after scoped approval | Same integration workspace, after phase 1 | Production-only tarball compiles and renders |
-| 3. Present | README/demo complete; finish support matrix and feedback contract | Orchestrator signs off | Presentation already integrated; packaging/support details follow phase 2 | Fresh-user walkthrough; accessible visual examples |
-| 4. Verify | Integrate, CI/publish guard, final version and evidence | Orchestrator + deepseek-v4-1-flash code | One release integration branch; no new product features | Green CI, e2e, package and supported-host matrix |
-| 5. Launch | Push approved commit/tag, publish `next`, verify npm source, promote `latest`, GitHub release | Human-controlled npm/GitHub actions | Only after all gates; explicit approval | Public artifact integrity + fresh install |
-| 6. Listen | Triage outside-user reports and plan 2.2.x | Orchestrator + maintainer | After launch | Reproducible feedback, patch backlog |
+| 0. Recover | Preserve and retire superseded workspaces | Parent; complete | Main contains integration through 3cde577 | One worktree; commits preserved; integration + owned agents archived |
+| 1. Stabilize | Guard races, fingerprints, lifecycle and attribution | Existing DeepSeek guard helper, then parent review | Main; first code task | Targeted regressions + parent verification |
+| 2. Package | Exact install, dependencies, docs, support/version and CI | Existing DeepSeek npm helper, then parent review | Main; after phase 1, no overlapping writer | Production-only tarball compiles/renders; aligned contract |
+| 3. Verify | Full suite/build/CI and real D1–D10 dogfood | Parent; test agents only as needed | Main and isolated install homes | Evidence manifest; no substitute tests counted as dogfood |
+| 4. Launch | Push/tag, npm next, actual npm-source smoke, latest, GitHub release | Parent; interactive auth stays with user | Only after applicable pre-publication gates | Public integrity + fresh install; D10 npm-source result before promotion |
+| 5. Close | Save results and retire finished agents | Parent | Main only | Clean main; no superseded workspaces/helpers |
 
-Keep remaining work sequential in the existing integration workspace unless the
-user separately approves parallelism. Ownership boundaries still apply:
-- Guard lane: guard/tools/lifecycle/bridge and dedicated regressions.
-- Package lane: package metadata/lockfile, type-only authority import, package
-  checks and release-install tests. If a fix touches contribute.ts (guard lane),
-  the orchestrator applies that small seam sequentially rather than allow overlap.
-- README, compatibility docs, CI, changelog and final version bump have one owner
-  at integration time; neither parallel child changes release identity on its own.
-- Children use the models.csv row `deepseek-v4-1-flash` (ZDR, code/scout roles);
-  re-check routing availability before execution. No further delegation by children.
-- Run Chromium-heavy full suites serially after integration to avoid load-induced
-  timeouts; parallel workers use targeted tests.
-- Existing merged worktrees are retained until the user explicitly approves cleanup.
+Keep work sequential on main; no new feature lanes. Ownership boundaries:
+- Guard helper: guard/tools/lifecycle/bridge and dedicated regressions only.
+- Package helper: metadata/lockfile, type resolution, package/install checks,
+  README/support docs, CI, changelog and agreed version bump; starts only after
+  guard work has been reviewed. Parent owns live state and publication.
+- Parent owns PROJECT-STATUS, this plan and final verification evidence.
+- Helpers use verified models.csv row deepseek-v4-1-flash (ZDR, code/scout roles),
+  thinking max, and cannot delegate. Re-check availability before a new dispatch.
+- Chromium-heavy full suites run serially; helpers use focused regressions.
+- Workspace archival is complete. Preserve commits and archive finished helpers
+  after capturing their results; do not remove the main workspace.
 
 ## Launch sequence and rollback
 
