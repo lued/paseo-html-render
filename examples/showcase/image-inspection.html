@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Settings review — HTML Render showcase</title>
+<!--
+  Showcase example: image inspection.
+
+  Natural prompt: "Compare these two screenshots of the settings screen. Show me
+  what changed and let me inspect each difference."
+
+  Demo data: both screenshots are fictional product UI, generated from the
+  sources in ./assets/settings-before.html and ./assets/settings-after.html.
+  They are inlined from the workspace at publish time; nothing is remote.
+  The controls are local (radio inputs + CSS); they do not call the host.
+-->
+<style>
+  :root {
+    color-scheme: dark;
+    --_bg: var(--background, #111111);
+    --_fg: var(--foreground, #eeeeee);
+    --_muted: var(--muted-foreground, #a3a3a3);
+    --_panel: var(--card, #1a1a1a);
+    --_border: var(--border, #333333);
+    --_accent: var(--accent, #6ea8fe);
+    --_accent-ink: var(--accent-foreground, #0b0b0b);
+    --_radius: var(--radius, 10px);
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      color-scheme: light;
+      --_bg: var(--background, #ffffff);
+      --_fg: var(--foreground, #111111);
+      --_muted: var(--muted-foreground, #52525b);
+      --_panel: var(--card, #ffffff);
+      --_border: var(--border, #e4e4e7);
+      --_accent: var(--accent, #2563eb);
+      --_accent-ink: var(--accent-foreground, #ffffff);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 22px;
+    background: var(--_bg);
+    color: var(--_fg);
+    font: 14px/1.5 var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif);
+    -webkit-font-smoothing: antialiased;
+  }
+  .shell { max-width: 760px; margin: 0 auto; }
+  .eyebrow {
+    margin: 0 0 6px;
+    color: var(--_muted);
+    font: 600 11px/1.4 var(--font-mono, "SF Mono", Menlo, Consolas, monospace);
+    letter-spacing: .1em;
+    text-transform: uppercase;
+  }
+  h1 { margin: 0 0 6px; font-size: clamp(20px, 3.4vw, 24px); line-height: 1.2; letter-spacing: -.02em; }
+  .lede { margin: 0; color: var(--_muted); max-width: 62ch; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 5px; margin-left: 4px;
+    padding: 1px 7px; border: 1px solid var(--_border); border-radius: 999px;
+    font-size: 10.5px; color: var(--_fg); white-space: nowrap;
+  }
+  .badge::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--_accent); }
+  .stage { margin-top: 18px; }
+  .control-input {
+    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip-path: inset(50%); white-space: nowrap;
+  }
+  .toolbar {
+    display: flex; align-items: center; gap: 4px; margin: 0 0 10px;
+    padding: 3px; width: fit-content; max-width: 100%;
+    border: 1px solid var(--_border); border-radius: 999px; background: var(--_panel);
+  }
+  .toolbar-label {
+    padding: 0 8px 0 9px; color: var(--_muted);
+    font: 600 10.5px/1 var(--font-mono, Menlo, monospace);
+    letter-spacing: .08em; text-transform: uppercase;
+  }
+  .toolbar label {
+    padding: 5px 11px; border-radius: 999px; color: var(--_muted);
+    font-size: 12px; cursor: pointer; user-select: none;
+  }
+  #view-before:checked ~ .toolbar label[for="view-before"],
+  #view-split:checked ~ .toolbar label[for="view-split"],
+  #view-after:checked ~ .toolbar label[for="view-after"] {
+    background: var(--_accent); color: var(--_accent-ink); font-weight: 600;
+  }
+  #view-before:focus-visible ~ .toolbar label[for="view-before"],
+  #view-split:focus-visible ~ .toolbar label[for="view-split"],
+  #view-after:focus-visible ~ .toolbar label[for="view-after"] {
+    outline: 2px solid var(--_accent); outline-offset: 2px;
+  }
+  .compare {
+    position: relative; margin: 0; overflow: hidden;
+    border: 1px solid var(--_border); border-radius: var(--_radius);
+    background: var(--_panel); aspect-ratio: 720 / 420;
+  }
+  .compare img {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    display: block; object-fit: cover; object-position: center;
+  }
+  .shot-after { clip-path: inset(0 0 0 27.5%); }
+  #view-before:checked ~ .compare .shot-after { clip-path: inset(0 0 0 100%); }
+  #view-split:checked ~ .compare .shot-after { clip-path: inset(0 0 0 27.5%); }
+  #view-after:checked ~ .compare .shot-after { clip-path: inset(0 0 0 0); }
+  .divider {
+    position: absolute; top: 0; bottom: 0; left: 27.5%; width: 2px; margin-left: -1px;
+    background: #ffffff; box-shadow: 0 0 0 1px rgba(0,0,0,.45);
+  }
+  #view-before:checked ~ .compare .divider,
+  #view-after:checked ~ .compare .divider { display: none; }
+  .pin {
+    position: absolute; display: grid; place-items: center;
+    width: 24px; height: 24px; margin: -12px 0 0 -12px;
+    border-radius: 50%; border: 2px solid #ffffff; background: #111111; color: #ffffff;
+    font: 700 11px/1 var(--font-mono, Menlo, monospace); cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,.45); z-index: 2;
+  }
+  .pin-1 { left: 82%; top: 38%; }
+  .pin-2 { left: 23%; top: 57%; }
+  .pin-3 { left: 92.5%; top: 55%; }
+  #hotspot-1:checked ~ .compare .pin-1,
+  #hotspot-2:checked ~ .compare .pin-2,
+  #hotspot-3:checked ~ .compare .pin-3 {
+    background: var(--_accent); color: var(--_accent-ink); border-color: var(--_accent);
+  }
+  .compare figcaption {
+    position: absolute; left: 10px; bottom: 8px; z-index: 1;
+    padding: 2px 7px; border-radius: 5px; background: rgba(0,0,0,.62);
+    color: #ffffff; font-size: 10.5px; letter-spacing: .01em;
+  }
+  .hotspots {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px; margin-top: 10px;
+  }
+  .hotspot {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 9px 10px; border: 1px solid var(--_border); border-radius: 8px;
+    background: var(--_panel); cursor: pointer; user-select: none;
+  }
+  .hotspot .num {
+    display: grid; place-items: center; flex: none;
+    width: 18px; height: 18px; margin-top: 1px; border-radius: 50%;
+    border: 1px solid var(--_border); font: 700 10px/1 var(--font-mono, Menlo, monospace);
+    color: var(--_muted);
+  }
+  .hotspot strong { display: block; font-size: 12px; line-height: 1.35; }
+  .hotspot small { display: block; color: var(--_muted); font-size: 11px; line-height: 1.35; }
+  #hotspot-1:checked ~ .hotspots label[for="hotspot-1"],
+  #hotspot-2:checked ~ .hotspots label[for="hotspot-2"],
+  #hotspot-3:checked ~ .hotspots label[for="hotspot-3"] {
+    border-color: var(--_accent); background: color-mix(in srgb, var(--_accent) 9%, var(--_panel));
+  }
+  #hotspot-1:checked ~ .hotspots label[for="hotspot-1"] .num,
+  #hotspot-2:checked ~ .hotspots label[for="hotspot-2"] .num,
+  #hotspot-3:checked ~ .hotspots label[for="hotspot-3"] .num {
+    border-color: var(--_accent); background: var(--_accent); color: var(--_accent-ink);
+  }
+  #hotspot-1:focus-visible ~ .hotspots label[for="hotspot-1"],
+  #hotspot-2:focus-visible ~ .hotspots label[for="hotspot-2"],
+  #hotspot-3:focus-visible ~ .hotspots label[for="hotspot-3"] {
+    outline: 2px solid var(--_accent); outline-offset: 2px;
+  }
+  .details {
+    display: grid; grid-template-columns: minmax(0, 1fr) 168px;
+    gap: 14px; align-items: start; margin-top: 12px;
+    padding: 12px 14px; border: 1px solid var(--_border); border-radius: var(--_radius);
+    background: var(--_panel);
+  }
+  .panel { grid-column: 1; display: none; }
+  #hotspot-1:checked ~ .details .p1,
+  #hotspot-2:checked ~ .details .p2,
+  #hotspot-3:checked ~ .details .p3 { display: block; }
+  .panel h2 { margin: 0 0 3px; font-size: 13px; }
+  .panel p { margin: 0; color: var(--_muted); font-size: 12px; max-width: 54ch; }
+  .zoom {
+    grid-column: 2; grid-row: 1 / span 3;
+    width: 168px; height: 94px; overflow: hidden;
+    border: 1px solid var(--_border); border-radius: 7px;
+  }
+  .zoom img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .z2, .z3 { display: none; }
+  #hotspot-1:checked ~ .details .z2,
+  #hotspot-1:checked ~ .details .z3 { display: none; }
+  #hotspot-2:checked ~ .details .z1,
+  #hotspot-3:checked ~ .details .z1 { display: none; }
+  #hotspot-2:checked ~ .details .z2,
+  #hotspot-3:checked ~ .details .z3 { display: block; }
+  .foot { margin: 12px 0 0; color: var(--_muted); font-size: 11px; }
+  @media (max-width: 560px) {
+    body { padding: 14px; }
+    .hotspots { grid-template-columns: 1fr; }
+    .details { grid-template-columns: 1fr; }
+    .zoom { grid-column: 1; grid-row: auto; width: 100%; height: 110px; }
+    .pin, .compare figcaption { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <p class="eyebrow">HTML Render showcase · 01</p>
+      <h1>Settings review</h1>
+      <p class="lede">Two versions of the same screen, one comparison. Switch views, then pick a numbered difference to see the detail. <span class="badge">Demo screenshots</span></p>
+    </header>
+
+    <section class="stage" aria-label="Settings screenshot comparison">
+      <input class="control-input" type="radio" name="compare-view" id="view-before">
+      <input class="control-input" type="radio" name="compare-view" id="view-split" checked>
+      <input class="control-input" type="radio" name="compare-view" id="view-after">
+      <input class="control-input" type="radio" name="difference" id="hotspot-1" checked>
+      <input class="control-input" type="radio" name="difference" id="hotspot-2">
+      <input class="control-input" type="radio" name="difference" id="hotspot-3">
+
+      <div class="toolbar" role="group" aria-label="Comparison view">
+        <span class="toolbar-label">View</span>
+        <label for="view-before">Before</label>
+        <label for="view-split">Split</label>
+        <label for="view-after">After</label>
+      </div>
+
+      <figure class="compare">
+        <img class="shot-before" src="assets/settings-before.png" alt="Demo settings screen before the change: teal accent, wider sidebar, Reduce motion off.">
+        <img class="shot-after" src="assets/settings-after.png" alt="Demo settings screen after the change: blue accent, narrower sidebar, Reduce motion on.">
+        <span class="divider" aria-hidden="true"></span>
+        <label class="pin pin-1" for="hotspot-1" title="Show accent colour detail">1</label>
+        <label class="pin pin-2" for="hotspot-2" title="Show sidebar detail">2</label>
+        <label class="pin pin-3" for="hotspot-3" title="Show Reduce motion detail">3</label>
+        <figcaption>Left: before · Right: after</figcaption>
+      </figure>
+
+      <div class="hotspots" role="group" aria-label="Differences">
+        <label class="hotspot" for="hotspot-1"><span class="num">1</span><span><strong>Accent colour</strong><small>teal → blue</small></span></label>
+        <label class="hotspot" for="hotspot-2"><span class="num">2</span><span><strong>Sidebar</strong><small>208px → 176px</small></span></label>
+        <label class="hotspot" for="hotspot-3"><span class="num">3</span><span><strong>Reduce motion</strong><small>off → on</small></span></label>
+      </div>
+
+      <div class="details">
+        <div class="panel p1">
+          <h2>Accent moved from teal to blue</h2>
+          <p>The selected navigation item, the active swatch and the primary button all follow one accent token. A palette change is one edit, not a hunt through components.</p>
+        </div>
+        <div class="panel p2">
+          <h2>The sidebar is 32px narrower</h2>
+          <p>The same navigation still fits at 176px. The content column gains room without changing labels or hiding a section.</p>
+        </div>
+        <div class="panel p3">
+          <h2>Reduce motion is on in the after state</h2>
+          <p>This page's own transitions are disabled under that preference too. The demo still shows every value when scripts or animation are unavailable.</p>
+        </div>
+        <div class="zoom z1"><img src="assets/detail-accent.png" alt="Detail of the after screenshot: the blue accent swatch is selected."></div>
+        <div class="zoom z2"><img src="assets/detail-sidebar.png" alt="Detail of the after screenshot: the narrower sidebar navigation."></div>
+        <div class="zoom z3"><img src="assets/detail-toggle.png" alt="Detail of the after screenshot: Reduce motion is switched on."></div>
+      </div>
+    </section>
+
+    <p class="foot">Local controls only. The images come from the workspace and are inlined at publish time; no remote assets. A click on an inlined image can ask the host viewer to open it.</p>
+  </main>
+</body>
+</html>

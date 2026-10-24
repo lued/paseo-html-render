@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Demo settings screen — after</title>
+<!--
+  Demo screenshot source for examples/showcase/image-inspection.html.
+  Fictional product UI; no real user or workspace data. Captured at 1440x840
+  (720x420 CSS px at 2x) by docs/images/showcase/capture.mjs.
+  After variant: blue accent, 176px sidebar, Reduce motion on.
+-->
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #101114;
+    --panel: #17181c;
+    --panel-2: #1e2026;
+    --border: #2b2e36;
+    --text: #f2f3f5;
+    --muted: #9a9fab;
+    --accent: #2563eb;
+    --accent-ink: #eff6ff;
+    --sidebar: 176px;
+    --toggle: #3a3f4a;
+    --knob: #9aa1ad;
+    --toggle-on: #2563eb;
+    --knob-on: #eff6ff;
+  }
+  * { box-sizing: border-box; }
+  html, body { width: 720px; height: 420px; margin: 0; overflow: hidden; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .app { display: grid; grid-template-columns: var(--sidebar) 1fr; height: 100%; }
+  aside {
+    border-right: 1px solid var(--border);
+    background: var(--panel);
+    padding: 18px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+  .brand { display: flex; align-items: center; gap: 9px; padding: 0 6px; font-weight: 650; font-size: 14px; }
+  .mark {
+    width: 22px; height: 22px; border-radius: 7px;
+    background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #ffffff));
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.18);
+  }
+  nav { display: grid; gap: 3px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 9px; border-radius: 7px; color: var(--muted); white-space: nowrap;
+  }
+  .nav-item .dot { width: 14px; height: 14px; border-radius: 4px; border: 1px solid currentColor; opacity: .75; }
+  .nav-item.active { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--text); }
+  .nav-item.active .dot { border-color: var(--accent); background: var(--accent); }
+  .aside-foot { margin-top: auto; padding: 10px 9px; border-top: 1px solid var(--border); color: var(--muted); font-size: 11.5px; }
+  main { padding: 26px 30px; overflow: hidden; }
+  h1 { margin: 0 0 3px; font-size: 20px; letter-spacing: -.01em; }
+  .sub { margin: 0 0 24px; color: var(--muted); font-size: 12.5px; }
+  .row {
+    display: flex; align-items: center; justify-content: space-between; gap: 18px;
+    padding: 15px 0; border-top: 1px solid var(--border);
+  }
+  .row:first-of-type { border-top: 0; padding-top: 0; }
+  .label { font-weight: 600; font-size: 13px; }
+  .hint { color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+  .segment { display: flex; padding: 2px; gap: 2px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 7px; }
+  .segment span { padding: 4px 10px; border-radius: 5px; color: var(--muted); font-size: 11.5px; }
+  .segment .on { background: var(--panel); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.35); }
+  .swatches { display: flex; gap: 7px; }
+  .swatch { width: 20px; height: 20px; border-radius: 50%; border: 2px solid transparent; box-shadow: inset 0 0 0 1px rgba(255,255,255,.16); }
+  .swatch.s1 { background: #0d9488; }
+  .swatch.s2 { background: #2563eb; }
+  .swatch.s3 { background: #7c3aed; }
+  .swatch.s4 { background: #db2777; }
+  .swatch.on { border-color: var(--text); outline: 2px solid var(--bg); outline-offset: -4px; }
+  .toggle { width: 38px; height: 22px; border-radius: 999px; background: var(--toggle); position: relative; flex: none; }
+  .toggle::after {
+    content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%;
+    background: var(--knob); transition: none;
+  }
+  .toggle.on { background: var(--toggle-on); }
+  .toggle.on::after { left: 19px; background: var(--knob-on); }
+  .save {
+    margin-top: 18px; border: 0; border-radius: 7px; padding: 8px 13px;
+    background: var(--accent); color: var(--accent-ink); font: 600 12.5px/1 inherit;
+  }
+  .saved { margin-left: 10px; color: var(--muted); font-size: 11.5px; }
+</style>
+</head>
+<body>
+  <div class="app">
+    <aside>
+      <div class="brand"><span class="mark"></span>Demo app</div>
+      <nav aria-label="Settings sections">
+        <div class="nav-item"><span class="dot"></span>General</div>
+        <div class="nav-item active"><span class="dot"></span>Appearance</div>
+        <div class="nav-item"><span class="dot"></span>Notifications</div>
+        <div class="nav-item"><span class="dot"></span>Members</div>
+      </nav>
+      <div class="aside-foot">Demo screenshots<br>No account data</div>
+    </aside>
+    <main>
+      <h1>Appearance</h1>
+      <p class="sub">Choose how this workspace looks on your devices.</p>
+
+      <div class="row">
+        <div><div class="label">Theme</div><div class="hint">Follow the system or pick one.</div></div>
+        <div class="segment" aria-label="Theme"><span>Light</span><span class="on">Dark</span><span>System</span></div>
+      </div>
+
+      <div class="row">
+        <div><div class="label">Accent colour</div><div class="hint">Used for selection and primary actions.</div></div>
+        <div class="swatches" aria-label="Accent colour">
+          <span class="swatch s1"></span><span class="swatch s2 on"></span><span class="swatch s3"></span><span class="swatch s4"></span>
+        </div>
+      </div>
+
+      <div class="row">
+        <div><div class="label">Reduce motion</div><div class="hint">Turn off non-essential animation.</div></div>
+        <div class="toggle on" role="img" aria-label="Reduce motion on"></div>
+      </div>
+
+      <div>
+        <button class="save" type="button">Save changes</button>
+        <span class="saved">Unsaved changes</span>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
