@@ -12,10 +12,9 @@ release. No publication before the evidence gates pass.
   README/showcase and Release integration were archived through Paseo with user
   approval; their owned agents and worktree directories were retired. All source
   commits are preserved in main.
-- No additional workspaces. The guard helper is reviewed and archived. Reuse the
-  existing DeepSeek npm audit helper for the next stage, then retire it. Fresh
-  dogfood agents may be needed to test MCP injection; retire them after evidence
-  is saved. Do not create feature/research lanes.
+- No additional workspaces. Both code helpers are reviewed and archived. Use one
+  fresh dogfood agent in main for real MCP injection/model cases and reuse it
+  sequentially; retire it after evidence is saved. No feature/research lanes.
 - Parent independently verified guard commit `e3987a1`: **247/247 tests pass**,
   zero failures/skips/cancellations, typecheck PASS and bundles PASS (15 client /
   24 server inputs). Private full log: `/tmp/html-render-guard-full-tests.log`.
@@ -28,19 +27,19 @@ release. No publication before the evidence gates pass.
    fingerprints (including assets/report/frame metadata), and explicit degraded
    attribution/lifecycle warnings. Parent reviewed implementation and full tests.
    Exact comparison is not semantic duplicate prevention; restart clears history.
-2. **npm readiness — final review fixes:** commits `907be95`–`e2e5732` fix the
-   reproduced production type-resolution failure, pack public docs/assets, align
-   package/adapter 2.2.0 and add package/isolated-host checks + CI. Actual tarball
-   smoke passed Node 22.18/Paseo 0.12 and Node 26.12/Paseo 0.13.0-beta.2; parent
-   inspected evidence and ran 253/253 full tests with zero skips/failures.
-   Parent then fixed invalid Chromium override crashes in `793ae7c` (24/24
-   focused renderer tests, typecheck/bundles PASS). Refresh the candidate tarball
-   and smoke matrix after that fix. Finish script path/diagnostic/npm-source gates,
-   release-neutral README wording and sandbox-capable CI before live dogfood.
-3. **Real Paseo dogfood:** reload the validated candidate as necessary, use fresh
-   agents and actual tools/artifacts/UI. Cover the matrix in the release plan.
-   Record observed results separately from unit/mounted-component tests; do not
-   claim untested native devices or harnesses passed.
+2. **npm readiness — locally complete:** `a5f2b18` completes the package checks,
+   release-neutral docs and exact npm-source smoke mode. Parent independently ran
+   **258/258 full tests on BOTH Node 22.18 and Node 26.12** (zero skipped/failed),
+   typecheck/bundles and actual isolated tarball install/preview/publish/readback
+   on Paseo 0.12 and 0.13.0-beta.2, including true missing-browser and repeated
+   invalid-override failures without crashing. The refreshed 72-entry tarball SHA
+   begins `5543c437`; old `0112c118` is superseded. Parent repack matches it.
+   CI and hosted-client browser checks retain the sandbox; remote CI is pending.
+3. **Real Paseo dogfood — current stage:** load the validated candidate, then use
+   one fresh agent and actual tools/artifacts/UI for the release-plan cases.
+   Record each result in docs/verification.md. Tests/fixtures are not live model
+   evidence; physical native/Electron/macOS coverage remains explicitly unverified.
+   Full G1–G6 e2e follows a suitable one-card acceptance agent turn.
 4. **Publication:** after successful checks/dogfood, publish the exact package to
    npm next, verify an actual npm-source install, then promote and create the
    matching GitHub release/tag. Never overwrite v2.1.0 or an npm version.

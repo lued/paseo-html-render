@@ -1,196 +1,124 @@
 # Verification and release evidence
 
-Date: 2026-10-21. Release: `html-render` **2.1.0**. Worktree used for the
-release: `~/.paseo/worktrees/3dyefwmb/paseo-html-render-release`;
-the installed checkout is `~/git/paseo-html-render`. The old
-`plugin-v2` worktree path in earlier revisions of this file is retired and does
-not exist.
+Date: 2026-10-24. Candidate: **paseo-html-render 2.2.0**, plugin id
+`html-render`. This is a staged release record, not a claim that npm publication
+or live client acceptance has finished. Historical `v2.1.0` stays unchanged.
 
-`paseo-quiet-timeline` and `html-render` are the registered plugins. The
-`shared-browser` plugin was removed from every host on 2026-10-22 at the user's
-request; this plugin never depended on it and nothing here requires it. V1 stays
-retired and must never be reinstalled as a rollback. The
-five-workspace canary and its allowlist/build script were deleted on 2026-10-20
-at user request; `npm run verify:e2e` replaces it.
+## Candidate identity
 
-## Install on a machine
+Runtime content through `a5f2b18`, including atomic guard `e3987a1`, production
+type-resolution fix `907be95` and Chromium launch-error fix `793ae7c`.
+Verification-only scripts/docs/CI changes do not enter the package allowlist.
+Any change to a packed file requires a new integrity check and acceptance run.
+
+| Artifact property | Verified value |
+| --- | --- |
+| Filename | `paseo-html-render-2.2.0.tgz` |
+| SHA-256 | `5543c437450f1ac3a7d7d464dde8b44d63a660ca0a7869a950c2e5c15198762b` |
+| npm integrity | `sha512-eyntKJo0hFIAjbYZDHLNL625RkYUgbq2gxmBjg4p1NG0Vkb8kBqdY5orxlxoamQ+6NFpXRPkA3Q8Alk3ColNRA==` |
+| Packed / unpacked | 1,554,106 / 2,026,680 bytes |
+| Contents | 72 entries; 43 required public files; 40 local Markdown links checked; zero forbidden/private matches |
+
+Parent independently repacked the tree and matched the same SHA-256. The older
+candidate beginning `0112c118` is superseded and must not be published.
+
+## Independently executed local gates
+
+| Gate | Result |
+| --- | --- |
+| Full serial suite, Node 26.12.1 | **258/258 pass**, zero skipped/failures/cancelled |
+| Full serial suite, Node 22.18.0 | **258/258 pass**, zero skipped/failures/cancelled |
+| Typecheck | PASS |
+| Bundle boundaries | PASS; 15 client / 24 server inputs; Pele server-only |
+| Actual tarball contents/links | PASS, integrity above |
+| Sandboxed hosted-client browser helper | PASS startup/evaluation; full client flow remains below |
+| GitHub Actions | Workflow added; remote execution pending |
+
+CI uses Ubuntu 22.04's existing Chrome, probes an actual sandboxed render before
+tests, runs the full serial TAP suite and requires zero skips/cancellations.
+It has read-only repository permission and no publication credentials. Renderer
+and live-acceptance browsers do not use `--no-sandbox`.
+
+## Exact production installation
+
+The baseline failure was reproduced with Paseo's real acquisition flags:
 
 ```sh
-git clone https://github.com/lued/paseo-html-render.git
-cd paseo-html-render
-npm ci --ignore-scripts
-paseo plugin install .
-paseo plugin reload html-render
-paseo plugin ls
+npm install <exact-tarball> --ignore-scripts --legacy-peer-deps --omit=dev
 ```
 
-A sandbox-capable Chromium must already exist, or set
-`PASEO_HTML_RENDER_CHROMIUM` to its executable. No browser is downloaded and
-`--no-sandbox` is never used.
+The previous package failed host compilation on an undeclared type-only
+`@getpaseo/client` import. The server now derives the API type from the
+host-provided SDK; no heavy client runtime dependency was added.
 
-## One command
+Parent independently installed the exact candidate and exercised **real isolated
+Paseo daemons**, not API stubs, on both toolchains:
 
-```sh
-npm run verify:e2e      # real Chromium, real store, real stdio MCP, real client
-```
+| Node | npm | Paseo daemon / SDK | Preview, publish, authorized readback | Negative browser cases |
+| --- | --- | --- | --- | --- |
+| 22.18.0 | 10.9.3 | 0.12.0 / 0.12.0 | PASS | PASS |
+| 26.12.1 | 11.20.0 | 0.13.0-beta.2 / 0.13.0-beta.2 | PASS | PASS |
 
-It writes `report.json`, per-gate JSON and screenshots to
-`~/.paseo/plugin-data/html-render/verification-<YYYYMMDD>/` (0700/0600). Exit
-code 0 means every gate passed. A gate can also report `blocked` or
-`unavailable`; those are never counted as acceptance.
+Each run proved `Plugin ready`, injection into an idle fixture agent, real stdio
+adapter initialization/tool discovery, PNG preview, durable publish, and
+`html.artifact.read` / `html.artifact.original` through actual authorization.
+No model prompt was sent in these install tests. Fixture homes, workspaces and
+daemons were disposable and did not replace the live installation.
 
-| Gate | Proof |
+True missing-browser calls returned `browser_unavailable`; a nonexistent explicit
+override returned it on **two consecutive calls**. The plugin stayed running in
+both cases. Missing, non-executable and synchronously invalid paths also have
+retry/cleanup regressions. No browser was downloaded or sandbox disabled.
+
+Local private receipts: `/tmp/hr-release-2.2.0/parent-smoke-012/`,
+`parent-smoke-013/` and `parent-package-check/`. Raw logs/screenshots remain
+private; pairing offers, bridge credentials and unrelated user data are not
+release artifacts. Commands for reproducing the checks are in [release.md](release.md).
+
+## Live Paseo case ledger
+
+Local tests and fixture installs are not substitutes for a model using the plugin
+in the actual hosted client. These cases are the remaining live acceptance work:
+
+| Case | Status |
 | --- | --- |
-| G1 | `html_preview`/`html_render` through the real sandboxed Chromium and store; PNG magic, byte-exact original, CSP export, durable `card.json`, `0700`/`0600` modes, marker decode. |
-| G2 | Real `ReportCard` + `HtmlFrame` mounted in real Chromium over G1's artifacts (plus `g2-mounted-card.png` and `g2-static-card.png` visual evidence): `sandbox="allow-scripts"`, `allow="fullscreen 'none'"`, CSP present, script executed, no chrome except the report entry, readiness probe set only after the handshake, content-height shrink, spoofed height ignored, theme swap without reload, zero iframes on native, **no image fallback for an unreadable page**. |
-| G3 | Real stdio MCP adapter over the real bridge socket: initialize, `tools/list`, both tool calls, marker round-trip, one-card rebuild after JSON serialization, durable card read. |
-| G4 | Outer `codemode` row is not transformed, so an artifact yields one card; records the item-scoped transformer residual. |
-| G5 | `paseo plugin ls` shows `html-render` enabled and running (third-party plugins may also be installed) and no retired canary identity; daemon pid and server id recorded. |
-| G6 | Headless Chromium pairs with the real daemon, opens a real agent timeline, asserts exactly one inline frame with CSP, clicks the assistant file link, asserts Paseo's HTML file preview frame, captures two PNGs. |
+| D1 fresh injection and text-only single-fact selection | Pending |
+| D2 chart of real repository/tool data | Pending |
+| D3 source-based flow and built-in Pele/report graph | Pending |
+| D4 all three showcase pages published and inspected | Pending |
+| D5 flow/inspector/filter controls, keyboard, motion and reflow | Pending |
+| D6 actual web auto/iframe/static/report views and file link | Pending |
+| D7 same-turn/concurrent/unchanged refusals and next-turn update | Pending |
+| D8 image/report/metadata changes, missing-image diagnostics and ownership/readback | Pending |
+| D9 persisted history, refresh and one card per artifact | Pending |
+| D10 exact production tarball / actual published npm-source acquisition | Tarball PASS; npm-source pending |
 
-## Release gates (2.1.0 run)
+G1–G6 `npm run verify:e2e` results will be recorded separately. G2 mounts real
+components but uses a native shim; it is **not** physical iOS/Android evidence.
+G6 drives the real hosted Paseo web application, not the outer Electron shell.
+A blocked/unavailable gate is never counted as a pass.
 
-| Command | Result |
-| --- | --- |
-| `npm run verify:e2e` | **6/6 gates pass** (no blocked, no unavailable) |
-| `npm run typecheck` | pass |
-| `npm test` | **178/178 pass**, 0 skipped/fail/cancelled |
-| `npm run check:trigger` | corpus probe: must-render renders, may-render is reported, must-not-render stays text (model-dependent, see below) |
-| `npm run check:bundles` | pass; 15 client inputs, 21 server inputs, Pele server-only |
-| `npm pack --dry-run --json` | pass; 35 files, 99,537 bytes packed; tests, docs, private data excluded |
-| `npm audit --omit=dev --json` | 0 runtime vulnerabilities |
-| `paseo plugin ls` | `html-render` running from `~/git/paseo-html-render`, `paseo-quiet-timeline` running |
+## Boundaries and unverified claims
 
-The daemon was not restarted during the release. The installed plugin was
-reloaded with `paseo plugin reload html-render`; see the release transcript for
-the exact output.
+- Native devices, the outer Electron shell and macOS app-bundle discovery have
+  not been freshly exercised here. Native fallback implementation/mounted tests
+  are not physical-device acceptance.
+- Natural tool selection is model/config dependent. Pi can truncate or override
+  the first-line MCP summary via description/shared budgets; `alwaysLoad` is not
+  a universal exposure guarantee. Do not infer all-provider coverage from Pi.
+- The guard compares exact prepared inputs, not semantic equivalence. It retains
+  50 publishes per attributed agent in memory; restart clears state. Missing
+  attribution or unknown lifecycle degrades explicitly. See [compatibility.md](compatibility.md).
+- A per-item transformer cannot suppress arbitrary marker duplication in unrelated
+  third tool rows. The supported wrapper/inner-row and history paths have regressions.
+- Opaque frames retain `allow-scripts` only; static screenshots disable JavaScript.
+  CSP blocks resource loading, but iframe self-navigation is a documented residual.
+- Positive npm-source proof requires publication of this immutable tarball to
+  `next`, matching registry integrity, then actual isolated Paseo npm acquisition
+  and readback. Only then may it be promoted to `latest` and released on GitHub.
 
-## After 2.1.0: no `shared-browser` dependency
+## Historical checkpoint
 
-The 2.1.0 tables above were recorded with the `shared-browser` plugin installed.
-Its removal exposed that Chromium discovery had no macOS app-bundle candidate, so
-a Mac with no Playwright cache and no plugin runtime had no browser at all. Since
-this change, discovery is: `PASEO_HTML_RENDER_CHROMIUM`, the Playwright cache, the
-`shared-browser` runtime if present, system paths, then `/Applications` and
-`~/Applications` Chromium-family bundles (Chrome, Chromium, Helium, Brave, Edge,
-Vivaldi). The G5 gate asserts a launchable Chromium instead of a second plugin
-being registered, so no host has to keep another plugin for this one to work.
-
-## Durability evidence added in 2.1.0
-
-The 2.0.0 card depended on one encoded marker in provider output. Real rows
-showed three ways that can fail, now covered by tests:
-
-- **Marker cut before the payload (P1).** A bounded
-  `artifacts/<32 lowercase hex>/` scan in `shared/recognize.ts` recovers the
-  artifact id from the human-readable tool text. The regression fixture is the
-  persisted `b49e8050` row. Recovery never reads the model's HTML argument, never
-  applies to unrelated tool rows, and a valid marker always wins.
-- **Order-dependent duplicate suppression (P2).** `client/artifact-catalog.ts`
-  keeps the best reference per artifact and a stable canonical call id. A marker
-  replaces a path-only card; a complete render row with no reference asks for one
-  bounded re-projection. Re-registering the transformer is Paseo's public way to
-  replay a timeline in order.
-- **Marker loss changes display mode (P3).** Every new artifact stores a
-  validated `card.json` with the exact client projection, including
-  `renderMode`. The artifact read returns it; legacy stores fall back to the
-  manifest. A corrupt or mismatched sidecar never makes the artifact unreadable.
-- **Stale adapter source after reload (P4).** The adapter carries a version,
-  sends it on every bridge call, and the bridge hashes the source it wrote.
-  An old adapter is served but its tool text tells the model to reconnect; the
-  source file is replaced atomically so a concurrently spawning agent cannot see
-  a partial script.
-
-The mounted-frame cold-start flake was a fixed-sleep race, not a product bug.
-`HtmlFrame` now publishes `data-paseo-html-frame-ready` only after the document
-handshake, and the test polls it with a bounded retry and reposts the theme probe
-until the new token actually lands. The test passed five consecutive cold runs.
-
-## Trigger policy
-
-The policy lives once in `shared/policy.ts` and is projected into two shapes, so
-disabling the plugin removes the guidance with it (no AGENTS.md, no skill, no host
-configuration):
-
-- `POLICY_SUMMARY` is one line and must stay at or below 250 characters
-  (`POLICY_SUMMARY_MAX_CHARS`). Harnesses disagree about what reaches the model:
-  claude, codex and opencode declare the tools directly and read the
-  `tools/list` descriptions; pi exposes them under `codemode`, so no tool
-  description reaches the model and it sees only the first line of the MCP
-  `instructions`, hard-capped at 250 characters. The summary therefore carries
-  every rule on its own: render when a picture carries the answer, otherwise
-  reply in text, one card per turn, and never republish unchanged content.
-- `POLICY_INSTRUCTIONS` starts with that exact summary, then the operating detail
-  for harnesses that read the whole payload.
-- `html_render`, `html_preview` and the renderer share `HTML_DESCRIPTION`,
-  `LAYOUT_DESCRIPTION` and `RENDER_DESCRIPTION` from the same module. They forbid
-  styled essays and add the chart fit rule: line or area for time, bars from a
-  zero baseline for categories, scatter for two numeric variables, dot or strip
-  for a distribution, sorted bars for a ranking, stacked bars for proportions,
-  pie only up to four slices; label units and axis range; series colors from
-  `--chart-1` through `--chart-6`; no 3D, gradients, truncated axes or dual axes;
-  plot only numbers from a tool and caption the source.
-
-`alwaysLoad: true` in the injected MCP server config is honoured by the Claude
-provider only. pi ignores it: the tools remain behind codemode and the model
-sees only the <=250-character first line, which is why the summary must stand
-alone. Do not treat `alwaysLoad` as a cross-harness guarantee.
-
-`npm run check:trigger` runs a fixed 14-prompt corpus in three classes
-(must-render, may-render, must-not-render) and counts real tool calls; `--runs`
-repeats every prompt. It exits 0 when must-render meets `--min-structured`
-(default 80% of attempts) and must-not-render renders nothing. Measured on
-DeepSeek high: 4/5 then 5/5 must-render, 0/5 must-not-render after the policy;
-selection is biased, never guaranteed. may-render is reported, not gated.
-
-G6 creates one real agent per run and archives it afterwards. It requires outbound
-network and a configured provider; otherwise it reports `unavailable`. If the
-model never calls the tool (provider 5xx, overload), the gate also reports
-`unavailable` instead of blaming the plugin; if the tool itself refuses, the gate
-fails with the tool's message.
-
-## What is deliberately not verified
-
-- **Native clients (PQ-025, PQ-027–PQ-032, PQ-125).** No iOS or Android device
-  evidence exists on this host. Native never mounts an iframe (G2 asserts zero);
-  the public SDK has no WebView surface. Do not read G6 as native acceptance.
-- **Outer Electron app.** G6 drives the hosted web client in headless Chromium,
-  not the desktop shell.
-- **Arbitrary third-row marker duplication (PQ-019 residual).** A per-item
-  timeline transformer cannot see sibling rows. The client catalog now chooses a
-  stable canonical row and re-projects on change, but a marker duplicated in a
-  third tool row that is not this plugin's render row is still outside the
-  transformer contract.
-- **Full T3 test suite.** Only the inspected inline-HTML pipeline is compared.
-- **Packaged npm install.** 2.1.0 is installed from a checkout; no npm publish
-  has happened.
-
-## Security model
-
-Opaque-origin iframe, `allow-scripts` only, CSP with `default-src 'none'`, no
-`unsafe-eval`, no forms, no popups, no fullscreen, no network/file resources.
-Artifacts are `0700`/`0600` under the private data root; reads are checked against
-the requesting agent's workspace. A live iframe can still navigate itself; CSP
-and click interception do not fully contain `location.assign` or meta refresh.
-
-## History
-
-- **2026-10-21 (2.1.0):** Path recovery, client re-projection, durable
-  `card.json`, adapter freshness, readiness probe, release metadata, README,
-  MIT license, changelog, paseo.cafe entry, refreshed verification docs. Full
-  gate: 178/178 tests, 15/21 bundles, 6/6 e2e gates.
-- **2026-10-20 (bridge token):** The bridge token is a durable 0600 file in
-  the private data root and the MCP adapter re-reads it on every call. A plugin
-  reload no longer invalidates tools in existing agents. Authority is also warmed
-  at `agent.turn_started`, so a reload that lands mid-session recovers on the next
-  turn.
-- **2026-10-20:** QA canary methodology removed; five QA projects/workspaces
-  deleted (dirs backed up to `verification-20261020/qa-workspaces-20261020-qa01.tar.gz`);
-  QA identity/allowlist/`build-qa` deleted. `html-render` 2.0.0 installed and
-  reloaded. Duplicate-card bug reproduced in the hosted client and fixed. Two
-  workspaces sharing one directory no longer fail closed. Autonomous harness
-  added and passing.
-- **Earlier 2026-10-20:** v1 permanently unregistered (artifacts retained);
-  fullscreen/zoom removed at user request; live iframe, theme, auto-height,
-  static fallback, native report model, graph rasterization and private artifact
-  store implemented and unit-tested.
+The 2026-10-21 v2.1.0 record reported 178 tests and six e2e gates. Those historical
+counts are not current release evidence. Source commits and previous revisions of
+this document retain the earlier durability/marker recovery and policy history.

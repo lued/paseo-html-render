@@ -37,11 +37,15 @@ jobs:
       - name: Require real Chromium for tests
         run: |
           test -n "$PASEO_HTML_RENDER_CHROMIUM"
-          node --input-type=module -e 'import { findChromiumExecutable } from "./server/renderer.ts"; const found = findChromiumExecutable(); if (!found) { console.error("no discoverable Chromium"); process.exit(1); } console.log(found);'
+          node --input-type=module -e 'import { createRenderer } from "./server/renderer.ts"; const renderer = createRenderer(); try { const result = await renderer.render({ html: "<p>CI sandbox probe</p>" }); if (result.png.subarray(1, 4).toString("latin1") !== "PNG") throw new Error("invalid Chromium preview"); } finally { await renderer.close(); }'
       - name: Typecheck
         run: npm run typecheck
-      - name: Full serial tests
-        run: npm test
+      - name: Full serial tests (no skips)
+        run: |
+          set -euo pipefail
+          node --test --test-concurrency=1 --test-reporter=tap tests/*.test.ts | tee "$RUNNER_TEMP/html-render-tests.tap"
+          grep -q '^# skipped 0$' "$RUNNER_TEMP/html-render-tests.tap"
+          grep -q '^# cancelled 0$' "$RUNNER_TEMP/html-render-tests.tap"
       - name: Bundle boundaries
         run: npm run check:bundles
       - name: Package artifact and links

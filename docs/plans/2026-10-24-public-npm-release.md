@@ -191,7 +191,18 @@ permanent duplicate prevention from a 50-entry in-memory history.
 
 ### B. Prove the actual npm install, not a checkout install
 
-Implementation checkpoint `907be95`–`e2e5732`: the prior missing-type failure was
+**Current local gate complete at `a5f2b18`:** exact candidate SHA-256
+`5543c437450f1ac3a7d7d464dde8b44d63a660ca0a7869a950c2e5c15198762b`,
+72 entries, 1,554,106 bytes, 43 required files and 40 checked local links.
+Parent independently repacked to the same hash, ran 258/258 full tests on BOTH
+Node 22.18 and 26.12 (zero skips/failures), and reran actual isolated smokes on
+Paseo 0.12 and 0.13.0-beta.2. Both browser-negative cases passed without a plugin
+crash. Reviewed receipts and parent runs live under `/tmp/hr-release-2.2.0/`.
+Positive actual npm-source acquisition remains a separate post-next gate;
+pre-publication registry unavailability correctly fails rather than passing.
+See `docs/verification.md` for the current case ledger and exact integrity.
+
+Historical implementation checkpoint `907be95`–`e2e5732`: the prior missing-type failure was
 reproduced using actual production flags/daemon. The SDK-owned
 `PluginHandlerContext["paseo"]` type seam removes the direct client coupling.
 An exact 72-entry candidate passed real isolated preview/publish/authorized

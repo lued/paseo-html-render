@@ -16,8 +16,10 @@
 import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { findChromiumExecutable } from "../server/renderer.ts";
 
+const isMain = Boolean(process.argv[1]) && import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
 const args = process.argv.slice(2);
 const option = (name, fallback) => {
   const index = args.indexOf(`--${name}`);
@@ -25,13 +27,14 @@ const option = (name, fallback) => {
 };
 const agentId = option("agent", process.env.PASEO_E2E_AGENT ?? "");
 const agentTitle = option("title", process.env.PASEO_E2E_TITLE ?? "html-render verify e2e");
-const outDir = resolve(option("out", process.env.PASEO_HTML_RENDER_EVIDENCE_DIR ?? ""));
+const outOption = option("out", process.env.PASEO_HTML_RENDER_EVIDENCE_DIR ?? "");
+const outDir = outOption ? resolve(outOption) : "";
 const chromium = option("chromium", process.env.PASEO_HTML_RENDER_CHROMIUM ?? "");
-if (!agentId) {
+if (isMain && !agentId) {
   console.error("e2e-client: --agent <agentId> is required");
   process.exit(2);
 }
-if (!outDir) {
+if (isMain && !outDir) {
   console.error("e2e-client: --out <dir> is required");
   process.exit(2);
 }
@@ -56,7 +59,7 @@ async function paseo(...cliArgs) {
   });
 }
 
-async function daemonUrl() {
+export async function daemonUrl() {
   const status = JSON.parse(await paseo("status", "--json"));
   const pair = JSON.parse(await paseo("pair", "--json"));
   if (!pair.url) throw new Error("daemon printed no pairing URL");
@@ -64,12 +67,10 @@ async function daemonUrl() {
 }
 
 /** Minimal CDP client over the DevTools websocket. */
-async function openBrowser(executable) {
+export async function openBrowser(executable) {
   const profileDir = await fs.mkdtemp("/tmp/paseo-e2e-client-");
   const child = spawn(executable, [
     "--headless=new",
-    // The client page is our own trusted app, not untrusted report HTML.
-    "--no-sandbox",
     "--disable-gpu",
     "--disable-dev-shm-usage",
     "--remote-debugging-port=0",
@@ -232,7 +233,7 @@ async function main() {
   console.log(JSON.stringify({ timelineFrames: result.timeline.frames?.length, previewFrames: result.filePreview.frames?.length, outDir }));
 }
 
-main().catch(async (error) => {
+if (isMain) main().catch(async (error) => {
   result.errors.push(error instanceof Error ? `${error.message}\n${error.stack ?? ""}` : String(error));
   try {
     await fs.mkdir(outDir, { recursive: true, mode: 0o700 });
