@@ -56,7 +56,8 @@ test("README keeps a conditional npm path and a checkout fallback", async () => 
   assert.match(readme, /paseo plugin install npm:paseo-html-render@2\.2\.0/);
   assert.match(readme, /git clone https:\/\/github\.com\/lued\/paseo-html-render\.git/);
   assert.match(readme, /npm view paseo-html-render version/);
-  assert.match(readme, /Paseo 0\.12\.0 through 0\.13\.x/);
+  assert.match(readme, />=0\.12\.0 <0\.14\.0/);
+  assert.match(readme, /0\.12\.0 and 0\.13\.0-beta\.2/);
   assert.match(readme, /Node 22\.18 or newer/);
   assert.match(readme, /No browser is downloaded or installed/);
   assert.match(readme, /compatibility and limits/);

@@ -37,7 +37,7 @@ paseo plugin install npm:paseo-html-render@2.2.0
 paseo plugin ls
 ```
 
-Create a new agent after installing or upgrading so it receives the tools. Requires Paseo 0.12.0 through 0.13.x, Node 22.18 or newer on the daemon host, and a sandbox-capable Chromium. Chromium is discovered from `PASEO_HTML_RENDER_CHROMIUM`, a Playwright cache, an installed `shared-browser` runtime, system Chromium, or an installed Chromium-family app. No browser is downloaded or installed.
+Create a new agent after installing or upgrading so it receives the tools. Requires Paseo `>=0.12.0 <0.14.0` (tested with 0.12.0 and 0.13.0-beta.2), Node 22.18 or newer on the daemon host, and a sandbox-capable Chromium. Chromium is discovered from `PASEO_HTML_RENDER_CHROMIUM`, a Playwright cache, an installed `shared-browser` runtime, system Chromium, or an installed Chromium-family app. No browser is downloaded or installed.
 
 ## What it does
 
