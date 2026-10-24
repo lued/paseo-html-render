@@ -25,11 +25,12 @@ were audited, not fixed by the presentation work.
 | --- | --- | --- |
 | Main / `main` | Live source unchanged; release notes kept here | Keep |
 | Release integration / `feat/motion-interactivity` | Existing motion workspace; contains both presentation branches | Use for remaining local work; no new workspace |
-| README / `feat/readme-showcase` | Clean; `9bdc5a4` is included in integration | Retain until archive approval |
-| Nudge policy / `feat/nudge-policy` | Clean; `ccf4f75` already in main | Archive only with approval |
-| Turn guard / `feat/turn-guard` | Clean; `e7307d2` already in main | Archive only with approval |
 
-No worktree, branch or agent has been deleted or archived. Do not create more
+With explicit user approval, Paseo archived the Nudge policy, Turn guard and
+README/showcase workspaces, archived their owned agents and removed their worktree
+directories. Commits `ccf4f75`, `e7307d2` and `9bdc5a4` remain reachable from the
+integration branch. Only Main and Release integration remain active; both are
+clean. No push, publication or live reload occurred. Do not create more
 agents/workspaces to continue a tangent.
 
 ## Remaining release work, in order
