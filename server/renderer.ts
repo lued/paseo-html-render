@@ -398,22 +398,32 @@ function connectCdp(url: string): Promise<CdpConnection> {
 async function waitForDevToolsPort(profileDir: string, child: ChildProcess, timeoutMs: number): Promise<number> {
   const portFile = join(profileDir, "DevToolsActivePort");
   const deadline = Date.now() + timeoutMs;
-  let exited = false;
-  child.once("exit", () => {
-    exited = true;
-  });
-  while (Date.now() < deadline) {
-    if (exited) throw new Error("Chromium exited before exposing its debugging port");
-    try {
-      const text = await fs.readFile(portFile, "utf8");
-      const port = Number.parseInt(text.split("\n")[0] ?? "", 10);
-      if (Number.isInteger(port) && port > 0) return port;
-    } catch {
-      // Not written yet.
+  let exited = child.exitCode !== null || child.signalCode !== null;
+  let launchError: Error | null = null;
+  const onExit = () => { exited = true; };
+  const onError = (error: Error) => { launchError = error; };
+  // spawn failures emit `error`, not `exit`. Listen synchronously so ENOENT or
+  // EACCES becomes a catchable browser_unavailable result, not a process crash.
+  child.once("exit", onExit);
+  child.once("error", onError);
+  try {
+    while (Date.now() < deadline) {
+      if (launchError) throw launchError;
+      if (exited) throw new Error("Chromium exited before exposing its debugging port");
+      try {
+        const text = await fs.readFile(portFile, "utf8");
+        const port = Number.parseInt(text.split("\n")[0] ?? "", 10);
+        if (Number.isInteger(port) && port > 0) return port;
+      } catch {
+        // Not written yet.
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
     }
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    throw new Error("Chromium did not expose its debugging port in time");
+  } finally {
+    child.removeListener("exit", onExit);
+    child.removeListener("error", onError);
   }
-  throw new Error("Chromium did not expose its debugging port in time");
 }
 
 // ---------------------------------------------------------------------------
@@ -438,34 +448,35 @@ export function createRenderer(options: RendererOptions = {}): FullRenderer {
     const profileDir = await fs.mkdtemp(join(tmpdir(), "paseo-html-render-"));
     await fs.chmod(profileDir, 0o700).catch(() => {});
     let stderr = "";
-    const child = spawn(
-      executable,
-      [
-        "--headless=new",
-        "--remote-debugging-port=0",
-        `--user-data-dir=${profileDir}`,
-        "--no-first-run",
-        "--no-default-browser-check",
-        "--disable-gpu",
-        "--disable-dev-shm-usage",
-        "--disable-background-networking",
-        "--disable-component-update",
-        "--disable-sync",
-        "--metrics-recording-only",
-        "--mute-audio",
-        "--hide-scrollbars",
-        "--disable-features=Translate,BackForwardCache,AcceptCHFrame",
-        "--host-resolver-rules=MAP * ~NOTFOUND",
-        "about:blank",
-      ],
-      { stdio: ["ignore", "ignore", "pipe"], detached: false },
-    );
-    child.stderr?.setEncoding("utf8");
-    child.stderr?.on("data", (chunk: string) => {
-      stderr = (stderr + chunk).slice(-MAX_BROWSER_STDERR);
-    });
-    // Never add --no-sandbox. A sandbox failure fails closed here.
+    let child: ChildProcess | undefined;
+    // Never add --no-sandbox. Both spawn and sandbox failures fail closed here.
     try {
+      child = spawn(
+        executable,
+        [
+          "--headless=new",
+          "--remote-debugging-port=0",
+          `--user-data-dir=${profileDir}`,
+          "--no-first-run",
+          "--no-default-browser-check",
+          "--disable-gpu",
+          "--disable-dev-shm-usage",
+          "--disable-background-networking",
+          "--disable-component-update",
+          "--disable-sync",
+          "--metrics-recording-only",
+          "--mute-audio",
+          "--hide-scrollbars",
+          "--disable-features=Translate,BackForwardCache,AcceptCHFrame",
+          "--host-resolver-rules=MAP * ~NOTFOUND",
+          "about:blank",
+        ],
+        { stdio: ["ignore", "ignore", "pipe"], detached: false },
+      );
+      child.stderr?.setEncoding("utf8");
+      child.stderr?.on("data", (chunk: string) => {
+        stderr = (stderr + chunk).slice(-MAX_BROWSER_STDERR);
+      });
       const port = await waitForDevToolsPort(profileDir, child, BROWSER_START_TIMEOUT_MS);
       let path = "";
       try {
@@ -480,7 +491,7 @@ export function createRenderer(options: RendererOptions = {}): FullRenderer {
       options.onBrowserLaunch?.();
       return { cdp, child, profileDir };
     } catch (error) {
-      child.kill("SIGKILL");
+      child?.kill("SIGKILL");
       await fs.rm(profileDir, { recursive: true, force: true }).catch(() => {});
       const detail = stderr.trim().split("\n").slice(0, 3).join(" ");
       throw new RenderError(
