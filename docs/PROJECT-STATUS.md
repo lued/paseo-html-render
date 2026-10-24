@@ -1,7 +1,7 @@
 # HTML Render: release checklist
 
 Updated: 2026-10-24
-Target: first npm release, proposed version 2.2.0; preserve existing v2.1.0.
+Target: first npm release, candidate version 2.2.0; preserve existing v2.1.0.
 User direction: build it, dogfood the user-facing cases through Paseo here, then
 release. No publication before the evidence gates pass.
 
@@ -28,11 +28,15 @@ release. No publication before the evidence gates pass.
    fingerprints (including assets/report/frame metadata), and explicit degraded
    attribution/lifecycle warnings. Parent reviewed implementation and full tests.
    Exact comparison is not semantic duplicate prevention; restart clears history.
-2. **npm readiness — current stage:** exact production-only tarball install/host
-   compilation, dependency/type resolution, packed public docs/assets, aligned
-   2.2.0 package/adapter versions, tested support and CI. Correct stale docs about
-   normalization/cwd fallback. Isolate install tests; do not replace the user's
-   home configuration.
+2. **npm readiness — final review fixes:** commits `907be95`–`e2e5732` fix the
+   reproduced production type-resolution failure, pack public docs/assets, align
+   package/adapter 2.2.0 and add package/isolated-host checks + CI. Actual tarball
+   smoke passed Node 22.18/Paseo 0.12 and Node 26.12/Paseo 0.13.0-beta.2; parent
+   inspected evidence and ran 253/253 full tests with zero skips/failures.
+   Parent then fixed invalid Chromium override crashes in `793ae7c` (24/24
+   focused renderer tests, typecheck/bundles PASS). Refresh the candidate tarball
+   and smoke matrix after that fix. Finish script path/diagnostic/npm-source gates,
+   release-neutral README wording and sandbox-capable CI before live dogfood.
 3. **Real Paseo dogfood:** reload the validated candidate as necessary, use fresh
    agents and actual tools/artifacts/UI. Cover the matrix in the release plan.
    Record observed results separately from unit/mounted-component tests; do not

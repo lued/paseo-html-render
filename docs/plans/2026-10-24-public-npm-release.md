@@ -191,7 +191,22 @@ permanent duplicate prevention from a 50-entry in-memory history.
 
 ### B. Prove the actual npm install, not a checkout install
 
-The packed package imports `PaseoApi` from `@getpaseo/client` in
+Implementation checkpoint `907be95`–`e2e5732`: the prior missing-type failure was
+reproduced using actual production flags/daemon. The SDK-owned
+`PluginHandlerContext["paseo"]` type seam removes the direct client coupling.
+An exact 72-entry candidate passed real isolated preview/publish/authorized
+readback on Node 22.18/Paseo 0.12 and Node 26.12/Paseo 0.13.0-beta.2, including
+true missing-browser errors. Parent inspected receipts and ran 253/253 tests,
+zero skips/failures. Evidence is under `/tmp/hr-release-2.2.0/`.
+
+That candidate is **superseded**, not a final publish artifact: parent reproduced
+an unhandled spawn error for a bad explicit Chromium override and fixed it in
+`793ae7c` (24/24 focused renderer tests, typecheck/bundles pass). Refresh tarball
+and install evidence after that fix and final review corrections. Script CLI
+resolution/negative diagnostics, actual npm-source acquisition, release-neutral
+README wording and sandbox-capable CI remain to finish before live dogfood.
+
+Historical blocker at the audit baseline: the packed package imports `PaseoApi` from `@getpaseo/client` in
 `server/authority.ts` and `server/contribute.ts`, but does not declare that
 package as a production dependency. The installed Paseo npm acquisition path uses
 `--legacy-peer-deps --omit=dev --ignore-scripts`; the documented release rehearsal
