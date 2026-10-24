@@ -20,20 +20,26 @@ New agents get two injected MCP tools: `html_preview` checks the page as a PNG, 
 
 ## Install
 
-The first npm release is **2.2.0**, but it is not published yet. Until the registry listing appears, install the tested checkout:
+The tested package version is **2.2.0**. Check the registry for that exact version first:
+
+```sh
+npm view paseo-html-render@2.2.0 version dist.integrity
+```
+
+If it is available, install it:
+
+```sh
+paseo plugin install npm:paseo-html-render@2.2.0
+paseo plugin ls
+```
+
+Otherwise, use the tested checkout:
 
 ```sh
 git clone https://github.com/lued/paseo-html-render.git
 cd paseo-html-render
 npm ci --ignore-scripts
 paseo plugin install .
-paseo plugin ls
-```
-
-When `npm view paseo-html-render version` reports `2.2.0`, the released package can be installed instead:
-
-```sh
-paseo plugin install npm:paseo-html-render@2.2.0
 paseo plugin ls
 ```
 

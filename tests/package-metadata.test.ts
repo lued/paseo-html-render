@@ -52,10 +52,12 @@ test("the packed allowlist is public and excludes private working material", asy
 
 test("README keeps a conditional npm path and a checkout fallback", async () => {
   const readme = await read("README.md");
-  assert.match(readme, /not published yet/i);
+  assert.match(readme, /npm view paseo-html-render@2\.2\.0 version dist\.integrity/);
+  assert.doesNotMatch(readme, /not published yet/i);
+  assert.match(readme, /If it is available/);
+  assert.match(readme, /Otherwise, use the tested checkout/);
   assert.match(readme, /paseo plugin install npm:paseo-html-render@2\.2\.0/);
   assert.match(readme, /git clone https:\/\/github\.com\/lued\/paseo-html-render\.git/);
-  assert.match(readme, /npm view paseo-html-render version/);
   assert.match(readme, />=0\.12\.0 <0\.14\.0/);
   assert.match(readme, /0\.12\.0 and 0\.13\.0-beta\.2/);
   assert.match(readme, /Node 22\.18 or newer/);
@@ -90,6 +92,10 @@ test("release notes describe the production-only install and preserve v2.1.0", a
   assert.match(release, /smoke:package/);
   assert.match(release, /check:package/);
   assert.match(release, /v2\.1\.0/);
+  assert.doesNotMatch(release, /not published yet/i);
+  assert.match(release, /--npm-source/);
+  assert.match(release, /npm publish \/tmp\/hr-package\/paseo-html-render-2\.2\.0\.tgz --tag next/);
+  assert.match(release, /positive npm-source result/);
   assert.match(release, /never (?:overwrite|rewrite)/i);
   assert.match(release, /Node.*22\.18\.0/s);
   assert.match(release, /Paseo.*0\.12\.0/s);

@@ -47,7 +47,9 @@ test("README is short, truthful about install and labels the demo capture", asyn
   assert.ok(lines.length <= 80, `README has ${lines.length} lines; keep it scannable`);
   assert.ok(readme.split(/\s+/).length <= 700, "README should stay a front page, not a manual");
 
-  assert.match(readme, /not published yet/i);
+  assert.match(readme, /npm view paseo-html-render@2\.2\.0 version dist\.integrity/);
+  assert.match(readme, /If it is available/);
+  assert.match(readme, /Otherwise, use the tested checkout/);
   assert.match(readme, /git clone https:\/\/github\.com\/lued\/paseo-html-render\.git/);
   assert.match(readme, /npm ci --ignore-scripts/);
   assert.match(readme, /paseo plugin install \./);

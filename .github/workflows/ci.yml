@@ -14,7 +14,7 @@ concurrency:
 jobs:
   checks:
     name: Checks (Node 22.18, Chromium)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -23,17 +23,24 @@ jobs:
           node-version: 22.18.0
           cache: npm
           cache-dependency-path: package-lock.json
-      - uses: browser-actions/setup-chrome@v1
-        id: chrome
-        with:
-          chrome-version: stable
+      - name: Locate sandbox-capable Chrome
+        run: |
+          chrome="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
+          if [ -z "$chrome" ] || [ ! -x "$chrome" ]; then
+            echo "No Google Chrome/Chromium executable is available on this runner." >&2
+            exit 1
+          fi
+          "$chrome" --version
+          echo "PASEO_HTML_RENDER_CHROMIUM=$chrome" >> "$GITHUB_ENV"
       - name: Install dependencies
         run: npm ci --ignore-scripts
+      - name: Require real Chromium for tests
+        run: |
+          test -n "$PASEO_HTML_RENDER_CHROMIUM"
+          node --input-type=module -e 'import { findChromiumExecutable } from "./server/renderer.ts"; const found = findChromiumExecutable(); if (!found) { console.error("no discoverable Chromium"); process.exit(1); } console.log(found);'
       - name: Typecheck
         run: npm run typecheck
       - name: Full serial tests
-        env:
-          PASEO_HTML_RENDER_CHROMIUM: ${{ steps.chrome.outputs.chrome-path }}
         run: npm test
       - name: Bundle boundaries
         run: npm run check:bundles
@@ -50,7 +57,7 @@ jobs:
 
   install-smoke:
     name: Isolated install smoke (Paseo ${{ matrix.paseo }})
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -65,10 +72,15 @@ jobs:
           node-version: 22.18.0
           cache: npm
           cache-dependency-path: package-lock.json
-      - uses: browser-actions/setup-chrome@v1
-        id: chrome
-        with:
-          chrome-version: stable
+      - name: Locate sandbox-capable Chrome
+        run: |
+          chrome="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
+          if [ -z "$chrome" ] || [ ! -x "$chrome" ]; then
+            echo "No Google Chrome/Chromium executable is available on this runner." >&2
+            exit 1
+          fi
+          "$chrome" --version
+          echo "PASEO_HTML_RENDER_CHROMIUM=$chrome" >> "$GITHUB_ENV"
       - name: Install dependencies and build tarball
         run: |
           npm ci --ignore-scripts
@@ -80,9 +92,7 @@ jobs:
           npm install --prefix "$RUNNER_TEMP/pi" "@earendil-works/pi-coding-agent@1.4.0" \
             --omit=dev --ignore-scripts --no-audit --no-fund
           echo "$RUNNER_TEMP/pi/node_modules/.bin" >> "$GITHUB_PATH"
-      - name: Isolated package install and adapter readback
-        env:
-          PASEO_HTML_RENDER_CHROMIUM: ${{ steps.chrome.outputs.chrome-path }}
+      - name: Isolated reference-tarball install and adapter readback
         run: |
           node scripts/smoke-package.mjs \
             --tarball "$RUNNER_TEMP/hr-package/paseo-html-render-2.2.0.tgz" \

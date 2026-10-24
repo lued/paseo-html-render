@@ -6,7 +6,12 @@
  *
  * Usage:
  *   node scripts/smoke-package.mjs --tarball <file.tgz> [--paseo <bin>] [--out <dir>]
+ *     [--npm-source npm:paseo-html-render@<exact-version>]
  *     [--provider pi] [--skip-missing-browser] [--keep-fixtures]
+ *
+ * --npm-source is opt-in and requires the reference --tarball. It checks the
+ * registry version/integrity, then asks the real Paseo CLI to acquire the npm
+ * source into the isolated home. It never substitutes a hand-installed directory.
  *
  * The daemon and every home are isolated under --out/work-*. Only the owned
  * daemon is stopped. No global tool, plugin or default Paseo home is touched.
@@ -14,12 +19,12 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, promises as fs, readdirSync, realpathSync } from "node:fs";
+import { accessSync, constants, existsSync, promises as fs, readdirSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import net from "node:net";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -29,7 +34,8 @@ const option = (name, fallback) => {
   return at === -1 ? fallback : args[at + 1];
 };
 const has = (name) => args.includes(`--${name}`);
-const outDir = resolve(option("out", await fs.mkdtemp(join(tmpdir(), "html-render-smoke-"))));
+const outOption = option("out");
+const outDir = resolve(outOption ?? await fs.mkdtemp(join(tmpdir(), "html-render-smoke-")));
 const provider = option("provider", "pi");
 const model = option("model", "smoke/local");
 const skipMissingBrowser = has("skip-missing-browser");
@@ -82,6 +88,26 @@ function run(command, commandArgs, options = {}) {
       else reject(new Error(`${command} ${commandArgs.join(" ")} exited ${code}\n${stderr.slice(-4000)}`));
     });
   });
+}
+
+function resolvePaseoCommand(input) {
+  const value = (input ?? "").trim();
+  if (!value) throw new Error("Paseo command is empty; pass --paseo <path-or-command> or set PASEO_BIN");
+  const explicitPath = isAbsolute(value) || value.includes("/") || value.includes("\\");
+  const candidates = explicitPath
+    ? [value]
+    : (process.env.PATH ?? "").split(delimiter).filter(Boolean).map((directory) => join(directory, value));
+  for (const candidate of candidates) {
+    if (!existsSync(candidate)) continue;
+    try {
+      accessSync(candidate, constants.X_OK);
+      return realpathSync(candidate);
+    } catch {
+      /* keep searching; an explicit path still reports a meaningful miss below */
+    }
+  }
+  const searched = explicitPath ? value : `PATH entries (${process.env.PATH ?? ""})`;
+  throw new Error(`Paseo command not found or not executable: ${value}; searched ${searched}`);
 }
 
 async function paseo(paseoBin, home, commandArgs, extraEnv = {}, timeoutMs = 180_000) {
@@ -165,7 +191,9 @@ async function startDaemon(paseoBin, home, envExtra = {}) {
   const { stdout } = await paseo(paseoBin, home, ["daemon", "start", "--home", home, "--timeout", "120", "--json"], envExtra, 180_000);
   const parsed = JSON.parse(stdout.slice(stdout.indexOf("{")).trim());
   if (parsed.listen === undefined && parsed.pid === undefined) throw new Error(`unexpected daemon start output: ${stdout.slice(0, 500)}`);
-  return parsed;
+  const { stdout: statusOut } = await paseo(paseoBin, home, ["daemon", "status", "--home", home, "--json"], envExtra, 30_000);
+  const status = JSON.parse(statusOut.slice(statusOut.indexOf("{")).trim());
+  return { ...parsed, daemonVersion: status.daemonVersion ?? parsed.daemonVersion ?? null };
 }
 
 async function stopDaemon(paseoBin, home) {
@@ -199,13 +227,79 @@ async function installAndWait(paseoBin, home, pluginDirectory, envExtra = {}) {
   throw new Error(`plugin did not reach running/Plugin ready: ${JSON.stringify(last)}`);
 }
 
+async function packageVersionNear(req, specifier) {
+  let resolved;
+  try {
+    resolved = req.resolve(specifier);
+  } catch {
+    return null;
+  }
+  let directory = dirname(resolved);
+  for (let depth = 0; depth < 10; depth += 1) {
+    try {
+      const pkg = JSON.parse(await fs.readFile(join(directory, "package.json"), "utf8"));
+      if (pkg.name === specifier) return pkg.version;
+    } catch { /* keep walking */ }
+    const parent = dirname(directory);
+    if (parent === directory) break;
+    directory = parent;
+  }
+  return null;
+}
+
+async function readTarballPackage(tarball) {
+  const { stdout } = await run("tar", ["-xOf", tarball, "package/package.json"], { timeoutMs: 30_000 });
+  return JSON.parse(stdout);
+}
+
+async function inspectInstalledSource({ sourceMode, packagePath, expectedVersion, referenceIntegrity }) {
+  const installed = JSON.parse(await fs.readFile(join(packagePath, "package.json"), "utf8"));
+  if (installed.version !== expectedVersion) {
+    throw new Error(`installed version ${installed.version} != reference ${expectedVersion} at ${packagePath}`);
+  }
+  let acquiredIntegrity = null;
+  if (sourceMode === "npm") {
+    const versionRoot = dirname(dirname(packagePath));
+    const lockPath = join(versionRoot, "package-lock.json");
+    const lock = JSON.parse(await fs.readFile(lockPath, "utf8"));
+    const artifact = lock.packages?.["node_modules/paseo-html-render"];
+    if (!artifact?.version || artifact.version !== expectedVersion || !artifact.integrity) {
+      throw new Error(`Paseo npm acquisition left no matching lock artifact at ${lockPath}`);
+    }
+    acquiredIntegrity = artifact.integrity;
+    if (acquiredIntegrity !== referenceIntegrity) {
+      throw new Error(`acquired npm integrity ${acquiredIntegrity} != reference ${referenceIntegrity}`);
+    }
+    if (existsSync(join(versionRoot, "node_modules", "@getpaseo", "client"))) {
+      throw new Error("Paseo npm acquisition installed @getpaseo/client; production tree would rely on it");
+    }
+  }
+  return { path: packagePath, version: installed.version, integrity: acquiredIntegrity };
+}
+
+async function installFromSource({ paseoBin, home, pluginSource, envExtra, expectedVersion, sourceMode, referenceIntegrity }) {
+  const installed = await installAndWait(paseoBin, home, pluginSource, envExtra);
+  const sourceInfo = await inspectInstalledSource({
+    sourceMode,
+    packagePath: installed.plugin.path,
+    expectedVersion,
+    referenceIntegrity,
+  });
+  return { ...installed, sourceInfo };
+}
+
 async function loadPaseoModules(paseoBin) {
   const real = realpathSync(paseoBin);
   const packageRoot = dirname(dirname(real));
   const cliPackage = JSON.parse(await fs.readFile(join(packageRoot, "package.json"), "utf8"));
   const clientModule = await import(pathToFileURL(join(packageRoot, "dist", "utils", "client.js")).href);
   if (typeof clientModule.connectToDaemon !== "function") throw new Error("Paseo CLI has no connectToDaemon client helper");
-  return { connectToDaemon: clientModule.connectToDaemon, cliVersion: cliPackage.version };
+  const req = createRequire(join(packageRoot, "package.json"));
+  return {
+    connectToDaemon: clientModule.connectToDaemon,
+    cliVersion: cliPackage.version,
+    sdkVersion: await packageVersionNear(req, "@getpaseo/plugin"),
+  };
 }
 
 async function connectClient(modules, home) {
@@ -309,7 +403,7 @@ async function readWithRetry(client, artifactId, agentId) {
   throw lastError;
 }
 
-async function exercisePlugin({ modules, home, paseoBin, mcp, record, agent, workspace, agentHome, roots }) {
+async function exercisePlugin({ modules, home, paseoBin, mcp, record, agent, workspace, agentHome, roots, expectedVersion }) {
   const env = {
     ...process.env,
     ...mcp.env,
@@ -327,7 +421,7 @@ async function exercisePlugin({ modules, home, paseoBin, mcp, record, agent, wor
       clientInfo: { name: "html-render-package-smoke", version: "1" },
     });
     assert.equal(init.serverInfo.name, "html-render");
-    assert.equal(init.serverInfo.version, "2.2.0");
+    assert.equal(init.serverInfo.version, expectedVersion);
     adapter.notify("notifications/initialized");
     const listing = await adapter.request("tools/list", {});
     assert.deepEqual(listing.tools.map((tool) => tool.name).sort(), ["html_preview", "html_render"]);
@@ -387,55 +481,85 @@ async function exercisePlugin({ modules, home, paseoBin, mcp, record, agent, wor
   }
 }
 
-async function missingBrowserProof({ modules, paseoBin, tarball, workRoot, daemonHome, chromium }) {
-  const home = join(workRoot, "missing-home");
-  const workspace = join(workRoot, "missing-workspace");
-  const agentHome = join(workRoot, "missing-agent-home");
-  evidenceHomes.push({ home, label: "missing", roots: [[workspace, "<missing-workspace>"], [agentHome, "<missing-agent-home>"]] });
+async function runBrowserNegative({
+  label,
+  home,
+  workspace,
+  agentHome,
+  envExtra,
+  modules,
+  paseoBin,
+  pluginSource,
+  expectedVersion,
+  sourceMode,
+  referenceIntegrity,
+  calls,
+}) {
+  evidenceHomes.push({ home, label, roots: [[workspace, `<${label}-workspace>`], [agentHome, `<${label}-agent-home>`]] });
   await writeHomeConfig(home, await freePort());
   await writePiModels(home);
-  const envExtra = {
-    HOME: home,
-    XDG_CONFIG_HOME: join(home, ".config"),
-    XDG_CACHE_HOME: join(home, ".cache"),
-    XDG_DATA_HOME: join(home, ".local", "share"),
-  };
-  const discoverable = findExistingChromium(home, false);
-  if (discoverable) throw new Error(`a Chromium is still discoverable at ${discoverable}; cannot prove the missing-browser path in this environment`);
+  await writePiModels(agentHome);
   try {
-    await startDaemon(paseoBin, home, envExtra);
-    const installed = await installAndWait(paseoBin, home, join(workRoot, "pkg", "node_modules", "paseo-html-render"), envExtra);
+    const daemon = await startDaemon(paseoBin, home, envExtra);
+    const installed = await installFromSource({
+      paseoBin,
+      home,
+      pluginSource,
+      envExtra,
+      expectedVersion,
+      sourceMode,
+      referenceIntegrity,
+    });
     const client = await connectClient(modules, home);
+    let adapter = null;
     try {
-      await writePiModels(agentHome);
       const { agent, record, mcp } = await createDisposableAgent(client, home, workspace, agentHome);
-      const adapter = new Adapter(mcp.args[0], {
+      adapter = new Adapter(mcp.args[0], {
         ...process.env,
         ...mcp.env,
         PASEO_AGENT_ID: agent.id,
         HOME: agentHome,
       });
-      try {
-        await adapter.request("initialize", {
-          protocolVersion: "2024-11-05",
-          capabilities: {},
-          clientInfo: { name: "html-render-missing-browser", version: "1" },
-        });
-        adapter.notify("notifications/initialized");
+      await adapter.request("initialize", {
+        protocolVersion: "2024-11-05",
+        capabilities: {},
+        clientInfo: { name: `html-render-${label}`, version: "1" },
+      });
+      adapter.notify("notifications/initialized");
+      const errors = [];
+      for (let attempt = 0; attempt < calls; attempt += 1) {
         const preview = await adapter.request("tools/call", {
           name: "html_preview",
-          arguments: { html: "<h1>No browser</h1>", width: 728 },
+          arguments: { html: `<h1>${label} ${attempt + 1}</h1>`, width: 728 },
         });
         const text = toolText(preview);
-        if (preview.isError !== true) throw new Error(`missing-browser probe unexpectedly rendered: ${text.slice(0, 500)}`);
-        if (!/No sandboxed Chromium found|browser_unavailable|Chromium/i.test(text)) {
-          throw new Error(`missing-browser probe did not report the expected error: ${text.slice(0, 500)}`);
+        if (preview.isError !== true) throw new Error(`${label} unexpectedly rendered: ${text.slice(0, 500)}`);
+        if (!/browser_unavailable|No sandboxed Chromium found|Chromium/i.test(text)) {
+          throw new Error(`${label} did not report the expected browser error: ${text.slice(0, 500)}`);
         }
-        return { result: "pass", pluginLogs: installed.logs.length, error: text.slice(0, 500), recordWorkspaceId: record.workspaceId };
-      } finally {
-        adapter.close();
+        errors.push(text.slice(0, 500));
       }
+      const listing = JSON.parse((await paseo(paseoBin, home, ["plugin", "--home", home, "ls", "--json"], envExtra, 30_000)).stdout);
+      const plugin = listing.find((entry) => entry.id === "html-render");
+      if (plugin?.status !== "running") {
+        throw new Error(`${label} left the plugin not running after ${calls} call(s): ${JSON.stringify(plugin)}`);
+      }
+      const logs = JSON.parse((await paseo(paseoBin, home, ["plugin", "--home", home, "logs", "html-render", "--json"], envExtra, 30_000)).stdout);
+      if (logs.some((entry) => /\[paseo\] Plugin failed|Unhandled 'error' event/i.test(entry.message))) {
+        throw new Error(`${label} logged a plugin failure: ${JSON.stringify(logs.slice(-5))}`);
+      }
+      return {
+        result: "pass",
+        calls,
+        errors,
+        pluginStatus: plugin.status,
+        daemonVersion: daemon.daemonVersion,
+        installed: installed.sourceInfo,
+        recordWorkspaceId: record.workspaceId,
+        agentId: agent.id,
+      };
     } finally {
+      adapter?.close();
       await client.close();
     }
   } finally {
@@ -443,10 +567,87 @@ async function missingBrowserProof({ modules, paseoBin, tarball, workRoot, daemo
   }
 }
 
+async function missingBrowserProof({
+  modules,
+  paseoBin,
+  workRoot,
+  pluginSource,
+  expectedVersion,
+  sourceMode,
+  referenceIntegrity,
+}) {
+  const label = "missing-browser";
+  const home = join(workRoot, "missing-home");
+  const workspace = join(workRoot, "missing-workspace");
+  const agentHome = join(workRoot, "missing-agent-home");
+  const discoverable = findExistingChromium(home, false);
+  if (discoverable) throw new Error(`a Chromium is still discoverable at ${discoverable}; cannot prove the missing-browser path in this environment`);
+  const envExtra = {
+    HOME: home,
+    XDG_CONFIG_HOME: join(home, ".config"),
+    XDG_CACHE_HOME: join(home, ".cache"),
+    XDG_DATA_HOME: join(home, ".local", "share"),
+    // Clear any caller override so this fixture really has no Chromium source.
+    PASEO_HTML_RENDER_CHROMIUM: "",
+    PLAYWRIGHT_BROWSERS_PATH: "",
+  };
+  return runBrowserNegative({
+    label,
+    home,
+    workspace,
+    agentHome,
+    envExtra,
+    modules,
+    paseoBin,
+    pluginSource,
+    expectedVersion,
+    sourceMode,
+    referenceIntegrity,
+    calls: 1,
+  });
+}
+
+async function badOverrideProof({
+  modules,
+  paseoBin,
+  workRoot,
+  pluginSource,
+  expectedVersion,
+  sourceMode,
+  referenceIntegrity,
+}) {
+  const label = "bad-override";
+  const home = join(workRoot, "bad-override-home");
+  const workspace = join(workRoot, "bad-override-workspace");
+  const agentHome = join(workRoot, "bad-override-agent-home");
+  const envExtra = {
+    HOME: home,
+    XDG_CONFIG_HOME: join(home, ".config"),
+    XDG_CACHE_HOME: join(home, ".cache"),
+    XDG_DATA_HOME: join(home, ".local", "share"),
+    PASEO_HTML_RENDER_CHROMIUM: join(workRoot, "chromium-does-not-exist"),
+    PLAYWRIGHT_BROWSERS_PATH: "",
+  };
+  return runBrowserNegative({
+    label,
+    home,
+    workspace,
+    agentHome,
+    envExtra,
+    modules,
+    paseoBin,
+    pluginSource,
+    expectedVersion,
+    sourceMode,
+    referenceIntegrity,
+    calls: 2,
+  });
+}
+
 async function main() {
   await fs.mkdir(outDir, { recursive: true, mode: 0o700 });
   workRoot = await fs.mkdtemp(join(outDir, "work-"));
-  const paseoBin = realpathSync(option("paseo", process.env.PASEO_BIN ?? "paseo"));
+  const paseoBin = resolvePaseoCommand(option("paseo", process.env.PASEO_BIN ?? "paseo"));
   paseoBinPath = paseoBin;
   const modules = await loadPaseoModules(paseoBin);
   const npmVersion = (await run("npm", ["--version"], { timeoutMs: 30_000 })).stdout.trim();
@@ -454,6 +655,18 @@ async function main() {
   result.npm = npmVersion;
   result.paseo = paseoVersion;
   result.clientVersion = modules.cliVersion;
+  result.sdkVersion = modules.sdkVersion;
+
+  const npmSourceOption = option("npm-source");
+  let npmSource = null;
+  let npmSourceMatch = null;
+  if (npmSourceOption) {
+    npmSource = npmSourceOption.trim();
+    npmSourceMatch = /^npm:paseo-html-render@(\d+\.\d+\.\d+)$/.exec(npmSource);
+    if (!npmSourceMatch) throw new Error("--npm-source must be npm:paseo-html-render@<exact-version>");
+    if (!option("tarball")) throw new Error("--npm-source requires the reference --tarball for version/integrity comparison");
+  }
+  const sourceMode = npmSource ? "npm" : "tarball";
 
   let tarball = option("tarball");
   if (!tarball) {
@@ -463,10 +676,53 @@ async function main() {
   }
   tarball = resolve(tarball);
   const bytes = await fs.readFile(tarball);
+  const referencePackage = await readTarballPackage(tarball);
+  const expectedVersion = referencePackage.version;
   result.tarball = tarball;
+  result.version = expectedVersion;
   result.sha256 = createHash("sha256").update(bytes).digest("hex");
   result.integrity = `sha512-${createHash("sha512").update(bytes).digest("base64")}`;
   result.size = bytes.byteLength;
+  result.source = {
+    mode: sourceMode,
+    request: npmSource,
+    proof: sourceMode === "npm" ? "pending" : "reference-tarball",
+    reference: {
+      tarball,
+      version: expectedVersion,
+      sha256: result.sha256,
+      integrity: result.integrity,
+      size: result.size,
+    },
+    registry: null,
+    installed: null,
+  };
+  if (npmSourceMatch && npmSourceMatch[1] !== expectedVersion) {
+    throw new Error(`--npm-source version ${npmSourceMatch[1]} != reference tarball version ${expectedVersion}`);
+  }
+  if (npmSource) {
+    let view;
+    try {
+      view = JSON.parse((await run("npm", [
+        "view", `paseo-html-render@${expectedVersion}`,
+        "version", "dist.integrity", "dist.tarball", "--json",
+      ], { timeoutMs: 120_000 })).stdout);
+    } catch (error) {
+      throw new Error(`npm source ${npmSource} is not available from the registry; positive remote proof remains pending until the parent publishes the exact verified tarball. ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`);
+    }
+    const entry = Array.isArray(view) ? view[0] : view;
+    const registryIntegrity = entry?.["dist.integrity"] ?? entry?.dist?.integrity;
+    const registryVersion = entry?.version;
+    if (registryVersion !== expectedVersion || registryIntegrity !== result.integrity) {
+      throw new Error(`registry artifact does not match the reference tarball: version=${registryVersion} integrity=${registryIntegrity ?? "missing"} expected=${expectedVersion}/${result.integrity}`);
+    }
+    result.source.registry = {
+      requested: npmSource,
+      version: registryVersion,
+      integrity: registryIntegrity,
+      tarball: entry?.["dist.tarball"] ?? entry?.dist?.tarball ?? null,
+    };
+  }
 
   const pkgDir = join(workRoot, "pkg");
   const home = join(workRoot, "home");
@@ -477,27 +733,34 @@ async function main() {
   const chromium = chromiumOption ? resolve(chromiumOption) : "";
   if (!chromium || !existsSync(chromium)) throw new Error("no Chromium found; set PASEO_HTML_RENDER_CHROMIUM to an existing sandbox-capable browser");
   result.chromium = chromium;
-  await fs.mkdir(pkgDir, { recursive: true, mode: 0o700 });
+
+  let pluginSource;
+  if (sourceMode === "tarball") {
+    await fs.mkdir(pkgDir, { recursive: true, mode: 0o700 });
+    await fs.writeFile(join(pkgDir, "package.json"), `${JSON.stringify({ name: "html-render-package-smoke", version: "1.0.0", private: true }, null, 2)}\n`);
+    await run("npm", [
+      "install", tarball,
+      "--omit=dev", "--ignore-scripts", "--legacy-peer-deps",
+      "--no-audit", "--no-fund", "--global=false", "--workspaces=false",
+      "--package-lock=true", "--lockfile-version=3",
+    ], {
+      cwd: pkgDir,
+      env: { ...process.env, NODE_PATH: "" },
+      timeoutMs: 180_000,
+    });
+    const installedPackage = JSON.parse(await fs.readFile(join(pkgDir, "node_modules", "paseo-html-render", "package.json"), "utf8"));
+    assert.equal(installedPackage.version, expectedVersion);
+    assert.ok(existsSync(join(pkgDir, "node_modules", "pele")));
+    assert.equal(existsSync(join(pkgDir, "node_modules", "@getpaseo", "client")), false, "production tree must not rely on @getpaseo/client");
+    pluginSource = join(pkgDir, "node_modules", "paseo-html-render");
+    result.checks.productionTree = { source: "reference-tarball", version: installedPackage.version, pele: true, getpaseoClient: false };
+  } else {
+    pluginSource = npmSource;
+    result.checks.productionTree = { source: "npm", request: npmSource, version: expectedVersion };
+  }
+
   await writePiModels(home);
   await writePiModels(agentHome);
-  await fs.writeFile(join(pkgDir, "package.json"), `${JSON.stringify({ name: "html-render-package-smoke", version: "1.0.0", private: true }, null, 2)}\n`);
-
-  await run("npm", [
-    "install", tarball,
-    "--omit=dev", "--ignore-scripts", "--legacy-peer-deps",
-    "--no-audit", "--no-fund", "--global=false", "--workspaces=false",
-    "--package-lock=true", "--lockfile-version=3",
-  ], {
-    cwd: pkgDir,
-    env: { ...process.env, NODE_PATH: "" },
-    timeoutMs: 180_000,
-  });
-  const installedPackage = JSON.parse(await fs.readFile(join(pkgDir, "node_modules", "paseo-html-render", "package.json"), "utf8"));
-  assert.equal(installedPackage.version, "2.2.0");
-  assert.ok(existsSync(join(pkgDir, "node_modules", "pele")));
-  assert.equal(existsSync(join(pkgDir, "node_modules", "@getpaseo", "client")), false, "production tree must not rely on @getpaseo/client");
-  result.checks.productionTree = { version: installedPackage.version, pele: true, getpaseoClient: false };
-
   await writeHomeConfig(home, await freePort());
   const daemonEnv = {
     HOME: home,
@@ -506,11 +769,33 @@ async function main() {
     XDG_DATA_HOME: join(home, ".local", "share"),
     PASEO_HTML_RENDER_CHROMIUM: chromium,
   };
-  const daemon = await startDaemon(paseoBin, home, daemonEnv);
-  result.checks.daemon = { listen: daemon.listen, pid: daemon.pid };
   try {
-    const installed = await installAndWait(paseoBin, home, join(pkgDir, "node_modules", "paseo-html-render"), daemonEnv);
+    const daemon = await startDaemon(paseoBin, home, daemonEnv);
+    result.checks.daemon = { listen: daemon.listen, pid: daemon.pid, version: daemon.daemonVersion };
+    result.daemonVersion = daemon.daemonVersion;
+    const installed = await installFromSource({
+      paseoBin,
+      home,
+      pluginSource,
+      envExtra: daemonEnv,
+      expectedVersion,
+      sourceMode,
+      referenceIntegrity: result.integrity,
+    });
     result.checks.plugin = { status: installed.plugin.status, path: installed.plugin.path, ready: true };
+    if (sourceMode === "npm") {
+      result.checks.productionTree = {
+        source: "npm",
+        request: npmSource,
+        version: installed.sourceInfo.version,
+        integrity: installed.sourceInfo.integrity,
+        getpaseoClient: false,
+      };
+      result.source.installed = installed.sourceInfo;
+      result.source.proof = "registry";
+    } else {
+      result.source.installed = installed.sourceInfo;
+    }
     const client = await connectClient(modules, home);
     try {
       const disposable = await createDisposableAgent(client, home, workspace, agentHome);
@@ -530,6 +815,7 @@ async function main() {
         workspace,
         agentHome,
         roots: { home, workspace, agentHome },
+        expectedVersion,
       });
     } finally {
       await client.close();
@@ -539,9 +825,27 @@ async function main() {
   }
 
   if (!skipMissingBrowser) {
-    result.checks.missingBrowser = await missingBrowserProof({ modules, paseoBin, tarball, workRoot, daemonHome: home, chromium });
+    result.checks.missingBrowser = await missingBrowserProof({
+      modules,
+      paseoBin,
+      workRoot,
+      pluginSource,
+      expectedVersion,
+      sourceMode,
+      referenceIntegrity: result.integrity,
+    });
+    result.checks.badOverride = await badOverrideProof({
+      modules,
+      paseoBin,
+      workRoot,
+      pluginSource,
+      expectedVersion,
+      sourceMode,
+      referenceIntegrity: result.integrity,
+    });
   } else {
     result.checks.missingBrowser = { result: "skipped", reason: "--skip-missing-browser" };
+    result.checks.badOverride = { result: "skipped", reason: "--skip-missing-browser" };
   }
 
   result.result = "pass";
@@ -550,11 +854,15 @@ async function main() {
   console.log(JSON.stringify({
     result: result.result,
     tarball: result.tarball,
+    version: result.version,
     integrity: result.integrity,
     sha256: result.sha256,
     node: result.node,
     npm: result.npm,
     paseo: result.paseo,
+    daemonVersion: result.daemonVersion,
+    sdkVersion: result.sdkVersion,
+    source: result.source,
     checks: Object.fromEntries(Object.entries(result.checks).map(([key, value]) => [key, value.result ?? (value.ready ? "pass" : value.status ?? "recorded")])),
     outDir,
   }, null, 2));

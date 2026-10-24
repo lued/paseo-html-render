@@ -18,6 +18,7 @@ import { existsSync, promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertNoDirectClientImports, isExternalTarget, resolvePackedTarget } from "./package-check-lib.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -109,17 +110,16 @@ try {
     const source = await fs.readFile(join(packageRoot, path), "utf8");
     const withoutFences = source.replace(/```[\s\S]*?```/g, "").replace(/`[^`\n]*`/g, "");
     for (const match of withoutFences.matchAll(/!?\[[^\]]*\]\(([^)]+)\)/g)) {
-      const raw = match[1].trim().replace(/^<|>$/g, "");
+      const raw = match[1].trim();
       if (!raw || raw.startsWith("#")) continue;
-      if (/^(?:https?:|mailto:|data:|\/\/)/i.test(raw) || raw.startsWith("/") || /^[A-Za-z]:[\\/]/.test(raw)) {
+      if (isExternalTarget(raw)) {
         externalLinkCount.value += 1;
         continue;
       }
-      const target = decodeURIComponent(raw.split("#")[0].split("?")[0]);
-      if (!target) continue;
-      const absolute = resolve(dirname(join(packageRoot, path)), target);
+      const resolved = resolvePackedTarget(packageRoot, path, raw);
+      if (!resolved) continue;
       publicLinkCount.value += 1;
-      if (!existsSync(absolute)) missingLinks.push(`${path} -> ${raw}`);
+      if (!existsSync(resolved.absolute)) missingLinks.push(`${path} -> ${raw}`);
     }
   }
   if (missingLinks.length > 0) fail(`packed Markdown has missing local targets:\n${missingLinks.join("\n")}`);
@@ -129,10 +129,10 @@ try {
     const source = await fs.readFile(join(packageRoot, path), "utf8");
     for (const match of source.matchAll(/\b(?:src|href)="([^"]+)"/gi)) {
       const raw = match[1].trim();
-      if (!raw || raw.startsWith("#") || /^(?:https?:|mailto:|data:|\/\/)/i.test(raw) || raw.startsWith("/")) continue;
-      const target = decodeURIComponent(raw.split("#")[0].split("?")[0]);
-      const absolute = resolve(dirname(join(packageRoot, path)), target);
-      if (!existsSync(absolute)) fail(`packed example has a missing local target: ${path} -> ${raw}`);
+      if (!raw || raw.startsWith("#") || isExternalTarget(raw)) continue;
+      const resolved = resolvePackedTarget(packageRoot, path, raw);
+      if (!resolved) continue;
+      if (!existsSync(resolved.absolute)) fail(`packed example has a missing local target: ${path} -> ${raw}`);
     }
   }
 
@@ -153,13 +153,8 @@ try {
   }
   if (!manifest.requirements?.paseo) fail("packed manifest has no Paseo requirement");
 
-  const serverSource = files.filter((path) => path.startsWith("server/") && path.endsWith(".ts"))
-    .map((path) => fs.readFile(join(packageRoot, path), "utf8"));
-  for (const [index, source] of (await Promise.all(serverSource)).entries()) {
-    if (/from\s+["']@getpaseo\/client["']/.test(source)) {
-      fail(`packed server source still imports @getpaseo/client directly: ${serverFiles[index]}`);
-    }
-  }
+  const serverFiles = files.filter((path) => path.startsWith("server/") && path.endsWith(".ts"));
+  await assertNoDirectClientImports(serverFiles, async (path) => fs.readFile(join(packageRoot, path), "utf8"));
 
   const readme = await fs.readFile(join(packageRoot, "README.md"), "utf8");
   if (!readme.includes(`paseo plugin install npm:paseo-html-render@${packedPackage.version}`)) {

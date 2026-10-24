@@ -53,7 +53,7 @@
     "check:trigger": "node scripts/trigger-eval.mjs",
     "check:package": "node scripts/check-package.mjs",
     "smoke:package": "node scripts/smoke-package.mjs",
-    "test:package": "node --test tests/package-metadata.test.ts tests/showcase-docs.test.ts",
+    "test:package": "node --test tests/package-metadata.test.ts tests/showcase-docs.test.ts tests/package-check.test.ts",
     "prepublishOnly": "npm run typecheck && npm run check:bundles && npm run check:package"
   },
   "devDependencies": {
