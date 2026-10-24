@@ -457,8 +457,7 @@ async function main() {
 
   let tarball = option("tarball");
   if (!tarball) {
-    const packDir = join(workRoot, "pack");
-    await fs.mkdir(packDir, { recursive: true });
+    const packDir = await fs.mkdtemp(join(outDir, "pack-"));
     const packed = JSON.parse((await run("npm", ["pack", "--pack-destination", packDir, "--json"], { timeoutMs: 120_000 })).stdout)[0];
     tarball = join(packDir, packed.filename);
   }
