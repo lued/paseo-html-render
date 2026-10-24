@@ -24,7 +24,13 @@ import { inlineWorkspaceImages, InlineImagesError } from "./images.ts";
 import type { Appearance, RenderInput, RenderOutput, Renderer } from "./renderer.ts";
 import { RenderError } from "./renderer.ts";
 import { DEFAULT_MEASURE_WIDTHS } from "./renderer-types.ts";
-import { guardKey, htmlFingerprint, type TurnGuard } from "./turn-guard.ts";
+import {
+  GUARD_UNATTRIBUTED_WARNING,
+  guardKey,
+  publishFingerprint,
+  type TurnGuard,
+  type TurnGuardReservation,
+} from "./turn-guard.ts";
 
 /**
  * Tool inputs mirror the observed T3 contract:
@@ -262,21 +268,51 @@ export function createHtmlTools(deps: {
         throw new ToolError("invalid_input", parsed.error.issues[0]?.message ?? "Invalid html_render input");
       }
       if (!context.workspaceId) throw new ToolError("invalid_input", "No owning workspace");
-      // Check before image inlining and rendering so a refusal costs nothing.
-      const key = guardKey(context.agentId, context.cwd);
-      const hash = guard ? htmlFingerprint(parsed.data.html) : "";
-      if (guard) {
-        const decision = guard.check({ key, hash });
-        if (!decision.ok) throw new ToolError("duplicate", decision.message);
-      }
+
+      // Snapshot the turn before any await. A publish that finishes after the
+      // lifecycle has moved on must still charge the turn it started in.
+      const key = guard ? guardKey(context.agentId) : null;
       const warnings: string[] = [];
+      if (guard && key === null) warnings.push(GUARD_UNATTRIBUTED_WARNING);
+      let ticket = guard && key ? guard.captureTurn(key) : null;
+      let reservation: TurnGuardReservation | null = null;
+
+      const title = parsed.data.title.trim().slice(0, MAX_TITLE_CHARS);
+      const summary = parsed.data.summary?.trim().slice(0, MAX_SUMMARY_CHARS) || null;
+      const height = Math.max(RENDER_MIN_HEIGHT, Math.min(parsed.data.height, RENDER_MAX_HEIGHT));
+      const renderMode = parsed.data.renderMode;
+      const report = parsed.data.report;
+
       try {
+        // Image preparation is part of the observable publish input: the
+        // fingerprint uses the prepared HTML so changed local raster bytes are
+        // a different card, not "nothing changed".
         const inlined = await inlineWorkspaceImages(parsed.data.html, {
           workspaceRoot: context.workspaceRoot ?? context.cwd,
           cwd: context.cwd,
           signal: context.signal,
         });
         const prepared = inlined.html !== parsed.data.html;
+        const hash = guard && key && ticket
+          ? publishFingerprint({
+              html: inlined.html,
+              workspaceId: context.workspaceId,
+              title,
+              height,
+              summary,
+              renderMode,
+              report,
+            })
+          : "";
+        if (guard && key && ticket) {
+          const decision = guard.reserve(ticket, hash);
+          // The ticket is consumed whether the reservation succeeds or refuses.
+          ticket = null;
+          if (!decision.ok) throw new ToolError("duplicate", decision.message);
+          reservation = decision.reservation;
+          if (decision.warning) warnings.push(decision.warning);
+        }
+
         const rendered = await renderPrepared(
           renderer,
           { html: inlined.html, width: PREVIEW_DEFAULT_WIDTH, appearance: "dark", signal: context.signal },
@@ -284,7 +320,6 @@ export function createHtmlTools(deps: {
         );
         // The T3 contract's height is the reader-facing frame height, so keep the
         // requested bounded height. The measured capture is recorded separately.
-        const height = Math.max(RENDER_MIN_HEIGHT, Math.min(parsed.data.height, RENDER_MAX_HEIGHT));
         const heights = await measureWidths(renderer, inlined.html, prepared, context.signal);
         context.signal?.throwIfAborted();
         if (rendered.capturedHeight < Math.min(rendered.contentHeight, 4000)) {
@@ -303,7 +338,6 @@ export function createHtmlTools(deps: {
           warnings.push(boundedWarning("Light preview unavailable", error));
         }
 
-        const report = parsed.data.report;
         let graph: {
           metadata: GraphMetadata;
           dark?: Buffer;
@@ -330,13 +364,13 @@ export function createHtmlTools(deps: {
         context.signal?.throwIfAborted();
         const interactiveHtml = buildInteractiveDocument({
           html: inlined.html,
-          title: parsed.data.title,
+          title,
         });
 
         const stored = await deps.store.save({
           html: parsed.data.html,
-          title: parsed.data.title,
-          summary: parsed.data.summary ?? null,
+          title,
+          summary,
           width: rendered.width,
           height,
           workspaceId: context.workspaceId,
@@ -344,13 +378,25 @@ export function createHtmlTools(deps: {
           signal: context.signal,
           measuredHeight: rendered.capturedHeight,
           ...heights.length === 0 ? {} : { heights },
-          renderMode: parsed.data.renderMode,
+          renderMode,
           previewPng: rendered.png,
           ...previewLightPng === undefined ? {} : { previewLightPng },
           interactiveHtml,
           ...report === undefined ? {} : { report },
           ...graph === undefined ? {} : { graph },
         });
+
+        // The card exists from this point. Commit before deriving the file path
+        // so a late path failure cannot leave a stored card unremembered and
+        // invite a duplicate retry.
+        if (reservation) {
+          guard?.commit(reservation, {
+            workspaceId: context.workspaceId,
+            artifactId: stored.manifest.artifactId,
+            title: stored.manifest.title,
+          });
+          reservation = null;
+        }
 
         const interactivePath = await deps.store.interactivePath(
           stored.manifest.artifactId,
@@ -359,15 +405,6 @@ export function createHtmlTools(deps: {
         if (!interactivePath) {
           throw new ToolError("store_failed", "The interactive report could not be stored");
         }
-        // Recorded only once the card is fully stored, so a failed publish does
-        // not spend the turn's budget or poison duplicate detection.
-        guard?.record({
-          key,
-          workspaceId: context.workspaceId,
-          artifactId: stored.manifest.artifactId,
-          hash,
-          title: stored.manifest.title,
-        });
         const measuredHeight = stored.manifest.measuredHeight;
         return {
           htmlRender: {
@@ -379,7 +416,7 @@ export function createHtmlTools(deps: {
             ...stored.manifest.heights === undefined ? {} : { heights: stored.manifest.heights },
           },
           summary: stored.manifest.summary,
-          renderMode: parsed.data.renderMode,
+          renderMode,
           hasReport: report !== undefined,
           interactivePath,
           ...warnings.length === 0 ? {} : { warnings },
@@ -387,6 +424,8 @@ export function createHtmlTools(deps: {
           message: `${PUBLISH_MESSAGE} ${interactiveLinkInstruction(interactivePath)}`,
         };
       } catch (error) {
+        if (reservation) guard?.release(reservation);
+        else if (ticket) guard?.abandon(ticket);
         throw mapError(error);
       }
     },

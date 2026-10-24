@@ -194,14 +194,16 @@ export default function contribute(server: PluginServerContext, options: Contrib
   // turn so the next tool call does not fail closed with "not part of an open
   // Paseo workspace". The same event is the only place a counted turn begins.
   server.on("agent.turn_started", async ({ agent, turnId }, context) => {
-    guard.beginTurn(guardKey(agent.id, agent.cwd), turnId);
+    const key = guardKey(agent.id);
+    if (key) guard.beginTurn(key, turnId);
     await warmAuthority(context.paseo, agent.id, agent.cwd);
   });
 
   // Closing the turn keeps the remembered publishes, so an identical card is
   // still refused in a later turn; only the per-turn count resets.
-  server.on("agent.turn_ended", ({ agent }) => {
-    guard.endTurn(guardKey(agent.id, agent.cwd));
+  server.on("agent.turn_ended", ({ agent, turnId }) => {
+    const key = guardKey(agent.id);
+    if (key) guard.endTurn(key, turnId);
   });
 
   // Non-destructive by default: only an explicit `PASEO_HTML_RENDER_PURGE_ON_ARCHIVE`

@@ -258,8 +258,9 @@ export async function startBridge(options: BridgeOptions, token?: string): Promi
       };
     }
     try {
-      // Only a non-empty string is trusted; anything else falls back to cwd
-      // instead of rejecting a request the adapter could still serve.
+      // Only a non-empty string is trusted. Anything else is an unattributed
+      // request: the tools report a degraded guard instead of guessing an
+      // agent from a directory that several agents may share.
       const agentId =
         typeof request.agentId === "string" && request.agentId.trim()
           ? request.agentId.trim()

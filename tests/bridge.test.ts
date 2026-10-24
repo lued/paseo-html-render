@@ -11,7 +11,7 @@ import type { Authority } from "../server/authority.ts";
 import { loadOrCreateBridgeToken, startBridge, type Bridge } from "../server/bridge.ts";
 import { createRenderer } from "../server/renderer.ts";
 import { createHtmlTools } from "../server/tools.ts";
-import { createTurnGuard } from "../server/turn-guard.ts";
+import { createTurnGuard, GUARD_UNATTRIBUTED_WARNING } from "../server/turn-guard.ts";
 import { ADAPTER_SOURCE } from "../server/adapter-source.ts";
 import { POLICY_SUMMARY, POLICY_SUMMARY_MAX_CHARS } from "../shared/policy.ts";
 import { decodeReportReference } from "../shared/recognize.ts";
@@ -469,9 +469,9 @@ test("the bridge publishes a hashed adapter version and tells stale adapters to 
 
 test("a publish reaches the guard under the agent the adapter reports", async () => {
   // End-to-end seam: the adapter sends PASEO_AGENT_ID, the bridge forwards it as
-  // ToolContext.agentId, and the guard keys the turn on it. A cwd-only fallback
-  // would let the second publish through, so this asserts the wiring and not
-  // just the state machine.
+  // ToolContext.agentId, and the guard keys the turn on it. A missing attribution
+  // is an explicit degraded publish now, never a shared cwd key, so this pins
+  // the agent-keyed path and not just the state machine.
   const root = await fs.mkdtemp(join(tmpdir(), "hr-guard-"));
   const guard = createTurnGuard({ maxCardsPerTurn: 1 });
   const guarded = await startBridge({
@@ -514,6 +514,50 @@ test("a publish reaches the guard under the agent the adapter reports", async ()
       input: { html: "<p>guard two</p>", title: "Guard two", height: 100 },
     }, guarded.socketPath)) as { ok: boolean };
     assert.equal(other.ok, true);
+  } finally {
+    await guarded.close().catch(() => {});
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a bridge publish without agentId warns and never consumes another agent's turn", async () => {
+  const root = await fs.mkdtemp(join(tmpdir(), "hr-unattributed-"));
+  const guard = createTurnGuard({ maxCardsPerTurn: 1 });
+  const guarded = await startBridge({
+    dataRoot: root,
+    tools: createHtmlTools({ renderer, store, guard }),
+    authority,
+  });
+  try {
+    guard.beginTurn("agent:agent_a", "turn-1");
+    const publish = (agentId?: string) => rawBridge({
+      token: guarded.token,
+      tool: "html_render",
+      cwd: workspace,
+      ...(agentId === undefined ? {} : { agentId }),
+      adapterVersion: guarded.adapterVersion,
+      input: { html: "<p>unattributed</p>", title: "Unattributed", height: 100 },
+    }, guarded.socketPath) as Promise<{ ok: boolean; result?: { warnings?: string[] } }>;
+
+    const first = await publish();
+    assert.equal(first.ok, true);
+    assert.ok(first.result?.warnings?.includes(GUARD_UNATTRIBUTED_WARNING));
+
+    // Skipping attribution means no shared history and no guessed cwd budget.
+    const second = await publish();
+    assert.equal(second.ok, true);
+    assert.ok(second.result?.warnings?.includes(GUARD_UNATTRIBUTED_WARNING));
+
+    // agent_a's real turn is still unused by the unattributed calls.
+    const attributed = await rawBridge({
+      token: guarded.token,
+      tool: "html_render",
+      cwd: workspace,
+      agentId: "agent_a",
+      adapterVersion: guarded.adapterVersion,
+      input: { html: "<p>attributed</p>", title: "Attributed", height: 100 },
+    }, guarded.socketPath) as { ok: boolean };
+    assert.equal(attributed.ok, true);
   } finally {
     await guarded.close().catch(() => {});
     await fs.rm(root, { recursive: true, force: true });
