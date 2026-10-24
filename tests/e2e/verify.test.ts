@@ -746,7 +746,7 @@ test("G6 real hosted client timeline and file preview", { timeout: 300_000 }, as
         const script = join(SOURCE_ROOT, "scripts", "e2e-client.mjs");
         const output = await run(
           process.execPath,
-          [script, "--agent", agentId, "--out", EVIDENCE_DIR, "--title", "html-render verify e2e"],
+          [script, "--agent", agentId, "--out", EVIDENCE_DIR, "--title", process.env.PASEO_E2E_TITLE ?? "html-render verify e2e"],
           280_000,
         );
         const report = JSON.parse(await fs.readFile(evidencePath("g6-client.json"), "utf8")) as {

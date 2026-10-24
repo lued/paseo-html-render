@@ -82,7 +82,7 @@ in the actual hosted client. These cases are the remaining live acceptance work:
 
 | Case | Status |
 | --- | --- |
-| D1 fresh injection and text-only single-fact selection | Pending |
+| D1 fresh injection and text-only single-fact selection | PASS: fresh 2.2.0 adapter injected; agent read package.json and replied `2.2.0`; zero HTML calls |
 | D2 chart of real repository/tool data | Pending |
 | D3 source-based flow and built-in Pele/report graph | Pending |
 | D4 all three showcase pages published and inspected | Pending |

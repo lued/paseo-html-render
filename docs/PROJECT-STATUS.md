@@ -35,11 +35,14 @@ release. No publication before the evidence gates pass.
    invalid-override failures without crashing. The refreshed 72-entry tarball SHA
    begins `5543c437`; old `0112c118` is superseded. Parent repack matches it.
    CI and hosted-client browser checks retain the sandbox; remote CI is pending.
-3. **Real Paseo dogfood — current stage:** load the validated candidate, then use
-   one fresh agent and actual tools/artifacts/UI for the release-plan cases.
+3. **Real Paseo dogfood — current stage:** candidate reloaded and running;
+   one fresh main-workspace agent `afe8aedd-47b4-482b-8eee-a92fca3df601`
+   (Release dogfood: real Paseo cases) is reused sequentially. D1 passed:
+   verified adapter 2.2.0 injection, actual package read, text-only `2.2.0`,
+   zero HTML calls. Next: real-data chart with CLIENT ACCEPTANCE heading, then
+   full G1–G6 against that one-card agent, then remaining source/guard/UI cases.
    Record each result in docs/verification.md. Tests/fixtures are not live model
-   evidence; physical native/Electron/macOS coverage remains explicitly unverified.
-   Full G1–G6 e2e follows a suitable one-card acceptance agent turn.
+   evidence; physical native/Electron/macOS coverage remains unverified.
 4. **Publication:** after successful checks/dogfood, publish the exact package to
    npm next, verify an actual npm-source install, then promote and create the
    matching GitHub release/tag. Never overwrite v2.1.0 or an npm version.
