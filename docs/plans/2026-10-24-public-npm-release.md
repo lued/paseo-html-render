@@ -191,16 +191,22 @@ permanent duplicate prevention from a 50-entry in-memory history.
 
 ### B. Prove the actual npm install, not a checkout install
 
-**Current local gate complete at `a5f2b18`:** exact candidate SHA-256
-`5543c437450f1ac3a7d7d464dde8b44d63a660ca0a7869a950c2e5c15198762b`,
-72 entries, 1,554,106 bytes, 43 required files and 40 checked local links.
-Parent independently repacked to the same hash, ran 258/258 full tests on BOTH
+**Current local gate complete at `a477d8d`:** exact candidate SHA-256
+`bd514b08bcb7d036674d713848272595475198be2c0a82d0d18b21ee30c5f115`,
+72 entries, 1,554,597 bytes, 43 required files and 40 checked local links.
+Parent independently repacked to the same hash, ran 259/259 full tests on BOTH
 Node 22.18 and 26.12 (zero skips/failures), and reran actual isolated smokes on
 Paseo 0.12 and 0.13.0-beta.2. Both browser-negative cases passed without a plugin
 crash. Reviewed receipts and parent runs live under `/tmp/hr-release-2.2.0/`.
 Positive actual npm-source acquisition remains a separate post-next gate;
 pre-publication registry unavailability correctly fails rather than passing.
-See `docs/verification.md` for the current case ledger and exact integrity.
+The `motion-target/` tarball supersedes both `5543c437` and `0112c118`.
+Actual dogfood found a mid-animation PNG chart defect: fixed at `a477d8d`,
+with reduced-motion captures/measurements, a regression and clarified guidance.
+G1–G5 pass on the new candidate. G6 has not passed: browser permission
+diagnostics reached a host password requirement; visible browser automation
+also timed out. Host and npm authentication require user action, never a
+password/token in chat. See `docs/verification.md` for the case ledger/integrity.
 
 Historical implementation checkpoint `907be95`–`e2e5732`: the prior missing-type failure was
 reproduced using actual production flags/daemon. The SDK-owned
@@ -319,15 +325,17 @@ Keep work sequential on main; no new feature lanes. Ownership boundaries:
 
 ## Launch sequence and rollback
 
-1. Approve the release commit/version and external publication actions. Confirm npm
-   account, name ownership, 2FA and GitHub security/reporting settings privately.
-2. Push the release commit and a new matching tag; do not rewrite v2.1.0.
+1. Recheck the authorized release commit/version and applicable acceptance gates.
+   Confirm npm account, name ownership, 2FA and GitHub security/reporting settings
+   privately. Authorization does not waive failed or unavailable evidence.
+2. Push the release commit and obtain remote CI evidence. Do not tag yet; never
+   rewrite v2.1.0.
 3. Publish stable version 2.2.0 under the npm `next` dist-tag first (not `latest`).
    An npm version is immutable: if this candidate fails, fix it under a new version.
 4. In a clean isolated home, install the exact published npm version and run the
    first-user smoke. Check registry integrity against the release tarball.
-5. Promote that tested stable artifact to `latest`, then publish the GitHub release
-   and request feedback. The final install command is verified, not hypothetical.
+5. Promote that tested stable artifact to `latest`, then create its matching new
+   tag and GitHub release and request feedback. The final install command is verified, not hypothetical.
 6. Keep the last known-good checkout/package available. If rollout fails, stop
    promotion; adjust dist-tags or install the known-good version. Never delete or
    rewrite existing private artifacts or version tags to make a release look green.

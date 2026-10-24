@@ -6,28 +6,30 @@ or live client acceptance has finished. Historical `v2.1.0` stays unchanged.
 
 ## Candidate identity
 
-Runtime content through `a5f2b18`, including atomic guard `e3987a1`, production
-type-resolution fix `907be95` and Chromium launch-error fix `793ae7c`.
+Runtime content through `a477d8d`, including atomic guard `e3987a1`, production
+type-resolution fix `907be95`, Chromium launch-error fix `793ae7c` and the
+live-dogfood reduced-motion capture correction.
 Verification-only scripts/docs/CI changes do not enter the package allowlist.
 Any change to a packed file requires a new integrity check and acceptance run.
 
 | Artifact property | Verified value |
 | --- | --- |
 | Filename | `paseo-html-render-2.2.0.tgz` |
-| SHA-256 | `5543c437450f1ac3a7d7d464dde8b44d63a660ca0a7869a950c2e5c15198762b` |
-| npm integrity | `sha512-eyntKJo0hFIAjbYZDHLNL625RkYUgbq2gxmBjg4p1NG0Vkb8kBqdY5orxlxoamQ+6NFpXRPkA3Q8Alk3ColNRA==` |
-| Packed / unpacked | 1,554,106 / 2,026,680 bytes |
+| SHA-256 | `bd514b08bcb7d036674d713848272595475198be2c0a82d0d18b21ee30c5f115` |
+| npm integrity | `sha512-geTDAtz997DT0lFa3B3/kIokbR32qfFO+2YmQp1SkfqNNgof6qrVRAyMwse9u46ftHoablknJZUkBCDmA70s3Q==` |
+| Packed / unpacked | 1,554,597 / 2,027,970 bytes |
 | Contents | 72 entries; 43 required public files; 40 local Markdown links checked; zero forbidden/private matches |
 
 Parent independently repacked the tree and matched the same SHA-256. The older
-candidate beginning `0112c118` is superseded and must not be published.
+candidates beginning `0112c118` and `5543c437` are superseded and must not be
+published. The verified release file is in `/tmp/hr-release-2.2.0/motion-target/`.
 
 ## Independently executed local gates
 
 | Gate | Result |
 | --- | --- |
-| Full serial suite, Node 26.12.1 | **258/258 pass**, zero skipped/failures/cancelled |
-| Full serial suite, Node 22.18.0 | **258/258 pass**, zero skipped/failures/cancelled |
+| Full serial suite, Node 26.12.1 | **259/259 pass**, zero skipped/failures/cancelled |
+| Full serial suite, Node 22.18.0 | **259/259 pass**, zero skipped/failures/cancelled |
 | Typecheck | PASS |
 | Bundle boundaries | PASS; 15 client / 24 server inputs; Pele server-only |
 | Actual tarball contents/links | PASS, integrity above |
@@ -70,8 +72,8 @@ override returned it on **two consecutive calls**. The plugin stayed running in
 both cases. Missing, non-executable and synchronously invalid paths also have
 retry/cleanup regressions. No browser was downloaded or sandbox disabled.
 
-Local private receipts: `/tmp/hr-release-2.2.0/parent-smoke-012/`,
-`parent-smoke-013/` and `parent-package-check/`. Raw logs/screenshots remain
+Current private receipts: `/tmp/hr-release-2.2.0/motion-smoke-012/`,
+`motion-smoke-013/`, `motion-target/` and independent `motion-repack/`. Raw logs/screenshots remain
 private; pairing offers, bridge credentials and unrelated user data are not
 release artifacts. Commands for reproducing the checks are in [release.md](release.md).
 
@@ -83,20 +85,47 @@ in the actual hosted client. These cases are the remaining live acceptance work:
 | Case | Status |
 | --- | --- |
 | D1 fresh injection and text-only single-fact selection | PASS: fresh 2.2.0 adapter injected; agent read package.json and replied `2.2.0`; zero HTML calls |
-| D2 chart of real repository/tool data | Pending |
+| D2 chart of real repository/tool data | Counts 14/7/9 independently verified; initial PNG captured intermediate animation. Fixed at `a477d8d`; parent geometry/PNG check and real model post-reload preview PASS. Final hosted acceptance pending |
 | D3 source-based flow and built-in Pele/report graph | Pending |
 | D4 all three showcase pages published and inspected | Pending |
 | D5 flow/inspector/filter controls, keyboard, motion and reflow | Pending |
-| D6 actual web auto/iframe/static/report views and file link | Pending |
+| D6 actual web auto/iframe/static/report views and file link | BLOCKED: real hosted client requires host authentication; not passed |
 | D7 same-turn/concurrent/unchanged refusals and next-turn update | Pending |
 | D8 image/report/metadata changes, missing-image diagnostics and ownership/readback | Pending |
 | D9 persisted history, refresh and one card per artifact | Pending |
 | D10 exact production tarball / actual published npm-source acquisition | Tarball PASS; npm-source pending |
 
-G1–G6 `npm run verify:e2e` results will be recorded separately. G2 mounts real
+The full live `npm run verify:e2e` run produced **5 pass / 1 fail**: G1–G5
+passed; G6 timed out while the real hosted client was connecting, before a card
+was displayed. Private evidence is in `live/e2e/` under the receipt root.
+Chrome 153 initially blocked local/loopback networking. Per-origin permission
+grants in a disposable QA profile removed that block; the actual app then
+reported **Password required**. No password was read, authentication disabled,
+or browser sandbox/CSP weakened. A visible Paseo-browser attempt also timed out;
+its owned pending tab was closed. Host authentication/browser availability needs
+human input before live UI acceptance can proceed.
+
+After the capture correction, G1–G5 were rerun at `a477d8d`: **5/5 pass**,
+zero skips/cancellations (`live/motion-e2e/`). G6 was deliberately not selected
+in that targeted rerun and is **not** counted as passing. G2 mounts real
 components but uses a native shim; it is **not** physical iOS/Android evidence.
 G6 drives the real hosted Paseo web application, not the outer Electron shell.
 A blocked/unavailable gate is never counted as a pass.
+
+### Static-chart defect found by actual dogfood
+
+The first model-generated chart used an entrance animation. Its labels were
+correct, but the stored PNG showed intermediate bar lengths. The original
+artifact remains unchanged as failure evidence. A new regression first failed
+with active animation and near-zero bar width, then passed with the reduced
+motion media preference set before page load. Captures and measurements now
+request that preference; page scripts remain disabled and live motion is
+unchanged. Rendering the exact original source now produces the correct 14/7/9
+geometry. The same live agent then read the exact source and made one actual
+`html_preview` call after reload: PASS, 728×380 PNG, bar endpoints measured at
+14/7/9 units; no republish or artifact mutation. CSS can ignore the preference,
+so guidance also prohibits animating essential chart geometry on initial load.
+This is not a general CSS freeze.
 
 ## Boundaries and unverified claims
 
