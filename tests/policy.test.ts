@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { ADAPTER_SOURCE } from "../server/adapter-source.ts";
+import { COMMON_VISUAL_PACKAGES, COMMON_VISUAL_PACKAGE_HINTS } from "../shared/visual-packages.ts";
 import {
   HTML_DESCRIPTION,
   LAYOUT_DESCRIPTION,
@@ -49,6 +50,35 @@ test("the long form agrees with the summary's brake and text rule", () => {
   assert.match(POLICY_INSTRUCTIONS, /Reply in text for a single fact, one sentence, code, file contents or config/);
   for (const line of lines) {
     assert.ok(!line.toLowerCase().includes("one card per reply"), `contradicting line: ${line}`);
+  }
+});
+
+test("the common-package list is compact npm-name data, not a dependency or profile registry", () => {
+  const names = Object.values(COMMON_VISUAL_PACKAGES).flat();
+  assert.equal(new Set(names).size, names.length, "package names must be unique");
+  assert.ok(COMMON_VISUAL_PACKAGE_HINTS.length < 600, "keep discovery hints small");
+  for (const name of names) {
+    assert.match(name, /^(?:@[a-z0-9._-]+\/)?[a-z0-9._-]+$/);
+    assert.ok(COMMON_VISUAL_PACKAGE_HINTS.includes(name));
+  }
+  for (const name of ["pele", "three", "motion", "echarts", "@observablehq/plot", "lucide-static", "shadcn"]) {
+    assert.ok(names.some(candidate => candidate === name), `${name} is a common discovery hint`);
+  }
+});
+
+test("design guidance matches one npm global inventory while leaving choices to the agent", () => {
+  for (const description of [POLICY_INSTRUCTIONS, HTML_DESCRIPTION, RENDER_DESCRIPTION]) {
+    assert.match(description, /npm ls --global --depth=0 --json once per session/);
+    assert.match(description, /match package names in its top-level dependencies/);
+    assert.ok(description.includes(COMMON_VISUAL_PACKAGE_HINTS));
+    assert.match(description, /reuse the inventory/);
+    assert.match(description, /npm root --global only when you need a package's location/);
+    assert.match(description, /starting point, not an allowlist/);
+    assert.match(description, /other available packages are also options/);
+    assert.match(description, /Use your own design judgment/);
+    assert.match(description, /If no installed match fits, use other available tools or plain HTML\/CSS\/SVG/);
+    assert.match(description, /do not install packages unless asked/);
+    assert.doesNotMatch(description, /chart-svg|motion-web|icons-svg|recipe-verified/);
   }
 });
 
