@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How a card reaches you — HTML Render showcase</title>
+<!--
+  Showcase example: flow diagram with clickable local stages.
+
+  Natural prompt: "Show me how a visual gets from my request into the timeline,
+  including what my phone sees."
+
+  Demo content: this diagram describes the plugin's real display paths as
+  documented in docs/compatibility.md. The controls are local radio inputs and
+  CSS only; no host commands and no network.
+-->
+<style>
+  :root {
+    color-scheme: dark;
+    --_bg: var(--background, #111111);
+    --_fg: var(--foreground, #eeeeee);
+    --_muted: var(--muted-foreground, #a3a3a3);
+    --_panel: var(--card, #1a1a1a);
+    --_panel-2: var(--secondary, #232323);
+    --_border: var(--border, #333333);
+    --_accent: var(--accent, #6ea8fe);
+    --_accent-ink: var(--accent-foreground, #0b0b0b);
+    --_success: var(--success, #10b981);
+    --_warning: var(--warning, #fbbf24);
+    --_radius: var(--radius, 10px);
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      color-scheme: light;
+      --_bg: var(--background, #ffffff);
+      --_fg: var(--foreground, #111111);
+      --_muted: var(--muted-foreground, #52525b);
+      --_panel: var(--card, #ffffff);
+      --_panel-2: var(--secondary, #f4f4f5);
+      --_border: var(--border, #e4e4e7);
+      --_accent: var(--accent, #2563eb);
+      --_accent-ink: var(--accent-foreground, #ffffff);
+      --_success: var(--success, #047857);
+      --_warning: var(--warning, #b45309);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 22px;
+    background: var(--_bg);
+    color: var(--_fg);
+    font: 14px/1.5 var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif);
+    -webkit-font-smoothing: antialiased;
+  }
+  .shell { max-width: 780px; margin: 0 auto; }
+  .eyebrow {
+    margin: 0 0 6px;
+    color: var(--_muted);
+    font: 600 11px/1.4 var(--font-mono, "SF Mono", Menlo, Consolas, monospace);
+    letter-spacing: .1em;
+    text-transform: uppercase;
+  }
+  h1 { margin: 0 0 6px; font-size: clamp(20px, 3.4vw, 24px); line-height: 1.2; letter-spacing: -.02em; }
+  .lede { margin: 0; color: var(--_muted); max-width: 64ch; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 5px; margin-left: 4px;
+    padding: 1px 7px; border: 1px solid var(--_border); border-radius: 999px;
+    font-size: 10.5px; color: var(--_fg); white-space: nowrap;
+  }
+  .badge::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--_accent); }
+  .explorer { margin-top: 20px; }
+  .control-input {
+    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip-path: inset(50%); white-space: nowrap;
+  }
+  .flow {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px; position: relative; align-items: stretch;
+  }
+  .node {
+    position: relative; z-index: 1; display: flex; flex-direction: column; gap: 7px;
+    min-height: 112px; padding: 12px 12px 11px;
+    border: 1px solid var(--_border); border-radius: var(--_radius);
+    background: var(--_panel); cursor: pointer; user-select: none;
+  }
+  .node::after {
+    content: ""; position: absolute; z-index: -1; top: 28px; right: -9px;
+    width: 10px; height: 1px; background: var(--_border);
+  }
+  .node:last-of-type::after { display: none; }
+  .node .step {
+    display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+    border: 1px solid var(--_border); color: var(--_muted);
+    font: 700 10px/1 var(--font-mono, Menlo, monospace);
+  }
+  .node strong { font-size: 13px; line-height: 1.3; }
+  .node small { color: var(--_muted); font-size: 11px; line-height: 1.4; }
+  .node .tag { margin-top: auto; color: var(--_muted); font-size: 10px; letter-spacing: .02em; }
+  #stage-1:checked ~ .flow .node[data-stage="1"],
+  #stage-2:checked ~ .flow .node[data-stage="2"],
+  #stage-3:checked ~ .flow .node[data-stage="3"],
+  #stage-4:checked ~ .flow .node[data-stage="4"] {
+    border-color: var(--_accent);
+    background: color-mix(in srgb, var(--_accent) 9%, var(--_panel));
+    box-shadow: 0 0 0 1px var(--_accent) inset;
+  }
+  #stage-1:checked ~ .flow .node[data-stage="1"] .step,
+  #stage-2:checked ~ .flow .node[data-stage="2"] .step,
+  #stage-3:checked ~ .flow .node[data-stage="3"] .step,
+  #stage-4:checked ~ .flow .node[data-stage="4"] .step {
+    border-color: var(--_accent); background: var(--_accent); color: var(--_accent-ink);
+  }
+  #stage-1:focus-visible ~ .flow .node[data-stage="1"],
+  #stage-2:focus-visible ~ .flow .node[data-stage="2"],
+  #stage-3:focus-visible ~ .flow .node[data-stage="3"],
+  #stage-4:focus-visible ~ .flow .node[data-stage="4"] {
+    outline: 2px solid var(--_accent); outline-offset: 2px;
+  }
+  .outcomes {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px; margin-top: 10px;
+  }
+  .outcome {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 9px 10px; border: 1px solid var(--_border); border-radius: 8px;
+    background: var(--_panel-2);
+  }
+  .outcome .dot { flex: none; width: 7px; height: 7px; margin-top: 5px; border-radius: 50%; background: var(--_muted); }
+  .outcome.live .dot { background: var(--_success); }
+  .outcome.static .dot { background: var(--_warning); }
+  .outcome.link .dot { background: var(--_accent); }
+  .outcome strong { display: block; font-size: 11.5px; line-height: 1.35; }
+  .outcome small { display: block; color: var(--_muted); font-size: 10.5px; line-height: 1.4; }
+  .detail {
+    margin-top: 10px; padding: 13px 15px; min-height: 108px;
+    border: 1px solid var(--_border); border-radius: var(--_radius);
+    background: var(--_panel);
+  }
+  .panel { display: none; }
+  #stage-1:checked ~ .detail .p1,
+  #stage-2:checked ~ .detail .p2,
+  #stage-3:checked ~ .detail .p3,
+  #stage-4:checked ~ .detail .p4 { display: block; }
+  .panel .kicker {
+    margin: 0 0 3px; color: var(--_accent);
+    font: 600 10px/1.4 var(--font-mono, Menlo, monospace);
+    letter-spacing: .08em; text-transform: uppercase;
+  }
+  .panel h2 { margin: 0 0 4px; font-size: 14px; }
+  .panel p { margin: 0; color: var(--_muted); font-size: 12.5px; max-width: 66ch; }
+  .panel p + p { margin-top: 5px; }
+  .foot { margin: 12px 0 0; color: var(--_muted); font-size: 11px; }
+  @media (max-width: 620px) {
+    body { padding: 14px; }
+    .flow { grid-template-columns: 1fr; }
+    .node { min-height: 0; flex-direction: row; align-items: center; flex-wrap: wrap; }
+    .node .step { flex: none; }
+    .node strong { flex: 1 1 auto; }
+    .node small { flex: 1 1 100%; padding-left: 30px; }
+    .node .tag { margin: 0 0 0 auto; }
+    .node::after { top: auto; bottom: -9px; left: 22px; right: auto; width: 1px; height: 10px; }
+    .outcomes { grid-template-columns: 1fr; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <p class="eyebrow">HTML Render showcase · 02</p>
+      <h1>How a card reaches you</h1>
+      <p class="lede">From a request to a private artifact, then to the right surface. Pick a stage to read what happens there. <span class="badge">Click a stage</span></p>
+    </header>
+
+    <section class="explorer" aria-label="Card pipeline">
+      <input class="control-input" type="radio" name="stage" id="stage-1">
+      <input class="control-input" type="radio" name="stage" id="stage-2">
+      <input class="control-input" type="radio" name="stage" id="stage-3">
+      <input class="control-input" type="radio" name="stage" id="stage-4" checked>
+
+      <div class="flow" role="group" aria-label="Pipeline stages">
+        <label class="node" data-stage="1" for="stage-1">
+          <span class="step">01</span>
+          <strong>Ask</strong>
+          <small>Compare, inspect, explain or chart something.</small>
+          <span class="tag">conversation</span>
+        </label>
+        <label class="node" data-stage="2" for="stage-2">
+          <span class="step">02</span>
+          <strong>Compose</strong>
+          <small>One self-contained HTML page: inline CSS, SVG and local images.</small>
+          <span class="tag">agent</span>
+        </label>
+        <label class="node" data-stage="3" for="stage-3">
+          <span class="step">03</span>
+          <strong>Preview</strong>
+          <small>A PNG check with page scripts disabled. Fix clipping before publishing.</small>
+          <span class="tag">html_preview</span>
+        </label>
+        <label class="node" data-stage="4" for="stage-4">
+          <span class="step">04</span>
+          <strong>Publish</strong>
+          <small>A private artifact becomes a card above the reply, plus a file link.</small>
+          <span class="tag">html_render</span>
+        </label>
+      </div>
+
+      <div class="outcomes" aria-label="Display surfaces">
+        <div class="outcome live"><span class="dot"></span><span><strong>Web / desktop</strong><small>Live sandboxed frame; local controls work.</small></span></div>
+        <div class="outcome static"><span class="dot"></span><span><strong>Phone</strong><small>Static PNG or a structured native report.</small></span></div>
+        <div class="outcome link"><span class="dot"></span><span><strong>Reply link</strong><small>Opens the full interactive HTML file.</small></span></div>
+      </div>
+
+      <div class="detail">
+        <div class="panel p1">
+          <p class="kicker">01 · Ask</p>
+          <h2>Start with the question, not a template</h2>
+          <p>“Compare these screenshots.” “Map this flow.” “Show the last six deploy steps.” The agent decides whether a card answers it better than prose, and writes the page for that one request.</p>
+        </div>
+        <div class="panel p2">
+          <p class="kicker">02 · Compose</p>
+          <h2>One page that still makes sense without scripts</h2>
+          <p>HTML, inline CSS, inline SVG and workspace raster images. Remote fonts, scripts, styles and images are blocked, so the page is portable by construction.</p>
+        </div>
+        <div class="panel p3">
+          <p class="kicker">03 · Preview</p>
+          <h2>See the static result before anyone else does</h2>
+          <p><code>html_preview</code> captures a PNG with JavaScript disabled and reports the content height. That is also the image a phone or a script-disabled viewer may see, so the page has to read without interaction.</p>
+        </div>
+        <div class="panel p4">
+          <p class="kicker">04 · Publish</p>
+          <h2>The card appears above the reply</h2>
+          <p><code>html_render</code> stores the artifact privately and mounts the live frame on web and desktop. The final reply keeps a link to <code>interactive.html</code>; native clients get a static image or the native report.</p>
+        </div>
+      </div>
+    </section>
+
+    <p class="foot">Local diagram controls only. The page cannot control Paseo agents, workspaces or files. Remote resources stay blocked; host link and image opening is limited to the documented frame messages.</p>
+  </main>
+</body>
+</html>
