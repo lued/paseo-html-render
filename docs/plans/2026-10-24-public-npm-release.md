@@ -1,18 +1,20 @@
 # HTML Render: first public npm release
 
 Date: 2026-10-24
-Status: user authorized build, hardening, real Paseo dogfood and release; execution on main only; publication gated on successful evidence and npm login
+Status: PAUSED by user request; preserve candidate/evidence, no further release execution until resumed; live client acceptance, remote CI and authentication remain incomplete
 Recommended release: 2.2.0 (the first npm release, not a rewrite of v2.1.0)
 review: none
 
 ## Authorized execution and Paseo dogfood
 
-The user's latest direction authorizes building and releasing after dogfooding
-through the actual Paseo installation here, and cleaning up all superseded
-workspaces/subagents. Presentation is now fast-forwarded onto main at `3cde577`;
+The user has paused release execution and requested a candid readiness summary
+and visible examples. Do not resume work, push, tag or publish without a resume
+instruction. Earlier authorization was conditional on actual Paseo dogfood and
+cleanup; it did not waive failed or unavailable gates. Presentation is now fast-forwarded onto main at `3cde577`;
 the integration workspace and its two agents have been archived through Paseo.
-Only main remains. Reuse existing DeepSeek audit helpers sequentially (models.csv
-row deepseek-v4-1-flash, max); no new feature workspaces or delegated research.
+Only main remains. Code helpers and the dogfood agent are archived. After an
+explicit resume, use at most one dogfood agent in main, following current model
+availability; no new feature workspaces or delegated research.
 Parent owns verification, live dogfood and publication; helpers cannot publish,
 reload, archive or delegate. Retire helpers once their evidence is captured.
 

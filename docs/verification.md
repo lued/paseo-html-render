@@ -4,6 +4,10 @@ Date: 2026-10-24. Candidate: **paseo-html-render 2.2.0**, plugin id
 `html-render`. This is a staged release record, not a claim that npm publication
 or live client acceptance has finished. Historical `v2.1.0` stays unchanged.
 
+**Release paused by the user. Not production-accepted.** The dogfood agent is
+archived after saving evidence; no further release execution is authorized until
+the user resumes. Nothing has been pushed, tagged or published to npm.
+
 ## Candidate identity
 
 Runtime content through `a477d8d`, including atomic guard `e3987a1`, production
@@ -87,7 +91,7 @@ in the actual hosted client. These cases are the remaining live acceptance work:
 | D1 fresh injection and text-only single-fact selection | PASS: fresh 2.2.0 adapter injected; agent read package.json and replied `2.2.0`; zero HTML calls |
 | D2 chart of real repository/tool data | Counts 14/7/9 independently verified; initial PNG captured intermediate animation. Fixed at `a477d8d`; parent geometry/PNG check and real model post-reload preview PASS. Final hosted acceptance pending |
 | D3 source-based flow and built-in Pele/report graph | Pending |
-| D4 all three showcase pages published and inspected | Pending |
+| D4 all three showcase pages published and inspected | Pending: one existing pipeline example was provided in the parent thread on request at pause; this is not completed hosted-client acceptance |
 | D5 flow/inspector/filter controls, keyboard, motion and reflow | Pending |
 | D6 actual web auto/iframe/static/report views and file link | BLOCKED: real hosted client requires host authentication; not passed |
 | D7 same-turn/concurrent/unchanged refusals and next-turn update | Pending |
@@ -111,6 +115,13 @@ in that targeted rerun and is **not** counted as passing. G2 mounts real
 components but uses a native shim; it is **not** physical iOS/Android evidence.
 G6 drives the real hosted Paseo web application, not the outer Electron shell.
 A blocked/unavailable gate is never counted as a pass.
+
+At pause the parent conversation previewed/published an existing showcase page
+so the user could see a render in this thread. That conversation still has
+adapter 2.1.1, which correctly warns to reconnect to 2.2.0; its publish also
+warned of an unknown counted turn. It is not fresh-adapter or guard acceptance
+evidence. The fresh agent above used 2.2.0. Neither the requested example nor
+the local tests establish that the user actually viewed the hosted UI.
 
 ### Static-chart defect found by actual dogfood
 

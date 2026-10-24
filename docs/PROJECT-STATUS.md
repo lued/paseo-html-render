@@ -5,6 +5,10 @@ Target: first npm release, candidate version 2.2.0; preserve existing v2.1.0.
 User direction: build it, dogfood the user-facing cases through Paseo here, then
 release. No publication before the evidence gates pass.
 
+**PAUSED by user request.** Preserve the candidate and evidence. Do not resume
+release execution, push, tag or publish until the user asks to resume. The code
+is locally verified, not production-accepted; remaining work is listed below.
+
 ## Repository and cleanup
 
 - Consolidated presentation work is fast-forwarded onto `main` at `3cde577`.
@@ -12,9 +16,10 @@ release. No publication before the evidence gates pass.
   README/showcase and Release integration were archived through Paseo with user
   approval; their owned agents and worktree directories were retired. All source
   commits are preserved in main.
-- No additional workspaces. Both code helpers are reviewed and archived. Use one
-  fresh dogfood agent in main for real MCP injection/model cases and reuse it
-  sequentially; retire it after evidence is saved. No feature/research lanes.
+- No additional workspaces. Both code helpers and the dogfood agent are archived;
+  evidence/history is preserved. No child task is running. After an explicit
+  resume, use at most one dogfood agent in main, sequentially. No feature/research
+  lanes.
 - Parent independently verified guard commit `e3987a1`: **247/247 tests pass**,
   zero failures/skips/cancellations, typecheck PASS and bundles PASS (15 client /
   24 server inputs). Private full log: `/tmp/html-render-guard-full-tests.log`.
@@ -38,14 +43,16 @@ release. No publication before the evidence gates pass.
    be published. Parent repack matches the new file in
    `/tmp/hr-release-2.2.0/motion-target/paseo-html-render-2.2.0.tgz`.
    CI and hosted-client browser checks retain the sandbox; remote CI is pending.
-3. **Real Paseo dogfood — current stage:** candidate reloaded and running;
-   one fresh main-workspace agent `afe8aedd-47b4-482b-8eee-a92fca3df601`
-   (Release dogfood: real Paseo cases) is reused sequentially. D1 passed:
+3. **Real Paseo dogfood — paused, incomplete:** candidate reloaded and running;
+   main-workspace agent `afe8aedd-47b4-482b-8eee-a92fca3df601`
+   (Release dogfood: real Paseo cases) was reused sequentially and archived at
+   the pause after its evidence was saved. D1 passed:
    verified adapter 2.2.0 injection, actual package read, text-only `2.2.0`,
    zero HTML calls. D2 real counts are 14/7/9; its initial PNG exposed a
    mid-animation chart defect, corrected in `a477d8d` with a failing-then-passing
    regression. The same agent made one real post-reload preview of the exact
-   source: PASS, final 14/7/9 bar geometry; original artifact preserved. Full G1–G6 produced 5 pass / 1 fail:
+   source: PASS, final 14/7/9 bar geometry; original artifact preserved.
+   Full G1–G6 produced 5 pass / 1 fail:
    the hosted client could not connect. Diagnostics progressed past browser
    network permissions to a host password requirement; no password was read.
    Fresh G1–G5 on the new candidate pass; G6 remains unpassed. Obtain an
@@ -64,9 +71,13 @@ release. No publication before the evidence gates pass.
 - Real hosted-client acceptance needs host authentication; the Paseo browser
   automation host also timed out. Ask the user to authenticate in a visible
   client, never send or retrieve the password in chat. Do not disable host auth.
-- Latest npm check after `a477d8d`: ENEEDAUTH. A visible Paseo terminal named `npm release login`
-  is running npm login. The user must complete authentication there, not send
-  credentials in chat. Recheck npm identity before publishing.
+- Latest npm check after `a477d8d`: ENEEDAUTH. A visible Paseo terminal named
+  `npm release login` was opened for sign-in; the attempt may need restarting
+  after the pause. Authentication stays in a visible terminal, never chat.
+  Recheck npm identity before publishing.
+- This parent conversation still uses adapter 2.1.1 and emits a reconnect warning.
+  Fresh agent adapter 2.2.0 was verified separately. Reconnect before further
+  acceptance work; do not count the parent example as fresh-adapter/guard proof.
 - Stop on failed safety/install/dogfood gates, missing auth or unavailable required
   client coverage. Report the blocker rather than substitute a test for dogfood.
 
