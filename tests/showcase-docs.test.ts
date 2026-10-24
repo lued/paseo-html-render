@@ -12,7 +12,6 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const IMAGES = join(ROOT, "docs/images/showcase");
 const EXAMPLES = join(ROOT, "examples/showcase");
 const PAGES = ["image-inspection.html", "render-pipeline.html", "incident-timeline.html"];
-const ONLY_ALLOWED_MISSING = "docs/interactivity.md";
 
 async function text(path: string): Promise<string> {
   return fs.readFile(path, "utf8");
@@ -99,14 +98,12 @@ test("the gallery links the three examples, their assets and their sources", asy
   assert.ok(existsSync(join(IMAGES, "CAPTURES.md")), "capture provenance survives");
 });
 
-test("local links in README and gallery resolve; only the cross-lane guide may be pending", async () => {
+test("all local links in README and gallery resolve in the integrated tree", async () => {
   const missing: string[] = [];
   for (const file of [join(ROOT, "README.md"), join(ROOT, "docs/showcase.md")]) {
     assertLinksResolve(file, await text(file), missing);
   }
-  const unexpected = missing.filter((entry) => !entry.endsWith(ONLY_ALLOWED_MISSING));
-  assert.deepEqual(unexpected, [], `unexpected broken local links:\n${unexpected.join("\n")}`);
-  assert.ok(missing.every((entry) => entry.endsWith(ONLY_ALLOWED_MISSING)));
+  assert.deepEqual(missing, [], `broken local links:\n${missing.join("\n")}`);
 });
 
 test("showcase sources are self-contained, static-first and honest about data", async () => {
