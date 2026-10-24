@@ -12,21 +12,27 @@ release. No publication before the evidence gates pass.
   README/showcase and Release integration were archived through Paseo with user
   approval; their owned agents and worktree directories were retired. All source
   commits are preserved in main.
-- No additional workspaces. Reuse the existing DeepSeek audit helpers sequentially
-  for release hardening, then archive them after recording their results. Fresh
+- No additional workspaces. The guard helper is reviewed and archived. Reuse the
+  existing DeepSeek npm audit helper for the next stage, then retire it. Fresh
   dogfood agents may be needed to test MCP injection; retire them after evidence
   is saved. Do not create feature/research lanes.
-- Baseline: 225/225 tests passed, zero skips; typecheck/bundles passed (15 client /
-  24 server inputs). Re-run after hardening; this is not final release evidence.
+- Parent independently verified guard commit `e3987a1`: **247/247 tests pass**,
+  zero failures/skips/cancellations, typecheck PASS and bundles PASS (15 client /
+  24 server inputs). Private full log: `/tmp/html-render-guard-full-tests.log`.
+  This is local code evidence, not live Paseo or final package acceptance.
 
 ## Execution, in order
 
-1. **Guard hardening — next:** concurrent publish reservation/accounting, null-ID
-   lifecycle, conservative fingerprints covering meaningful publish inputs/assets,
-   safe attribution and honest old-adapter degradation. Add regressions and commit.
-2. **npm readiness:** exact production-only tarball install/host compilation,
-   dependency/type resolution, packed public docs/assets, versions/support and CI.
-   Isolate install tests; do not replace the user's home configuration.
+1. **Guard hardening — locally complete:** `e3987a1` adds atomic reservation and
+   captured-turn accounting, counted synthetic null-ID turns, exact prepared-input
+   fingerprints (including assets/report/frame metadata), and explicit degraded
+   attribution/lifecycle warnings. Parent reviewed implementation and full tests.
+   Exact comparison is not semantic duplicate prevention; restart clears history.
+2. **npm readiness — current stage:** exact production-only tarball install/host
+   compilation, dependency/type resolution, packed public docs/assets, aligned
+   2.2.0 package/adapter versions, tested support and CI. Correct stale docs about
+   normalization/cwd fallback. Isolate install tests; do not replace the user's
+   home configuration.
 3. **Real Paseo dogfood:** reload the validated candidate as necessary, use fresh
    agents and actual tools/artifacts/UI. Cover the matrix in the release plan.
    Record observed results separately from unit/mounted-component tests; do not

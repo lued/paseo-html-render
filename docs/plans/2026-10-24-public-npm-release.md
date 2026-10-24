@@ -137,8 +137,22 @@ gates below remain open; subsequent work is on main only.
 
 ### A. Close correctness holes in the new guard
 
-Independently reproduced from the existing source, using fake rendering and a
-temporary artifact store (no live plugin replacement):
+Local code gate completed by `e3987a1` (2026-10-24): parent independently read the
+reservation/fingerprint/tool/lifecycle implementation and ran **247/247 tests**,
+zero failures/skips/cancellations, typecheck and bundle checks (15 client / 24
+server inputs). Full private log: `/tmp/html-render-guard-full-tests.log`. Guard
+helper archived after capturing its report. Live adapter/lifecycle dogfood remains
+in D7, not inferred from these tests.
+
+Comparison is deliberately exact over prepared HTML and published options, not
+semantic equivalence: cosmetic changes can pass. Missing agent attribution warns
+and skips guarding; unknown turn lifecycle warns and retains duplicate-only
+checking. A successful durable save commits the guard even if a later interactive
+path lookup fails; this avoids storing a duplicate on retry but can leave a failed
+tool result. State is per-process, with 50 remembered publishes per key.
+
+Historical audit findings, reproduced with fake rendering and a temporary
+artifact store before this fix (no live plugin replacement):
 
 1. **Concurrent publishing bypasses the count.** `publish()` checks the guard,
    awaits rendering/storage, then records. Two simultaneous calls both pass
