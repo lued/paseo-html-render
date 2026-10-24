@@ -1,0 +1,228 @@
+<!doctype html><body lang="en">
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  html { background: transparent; }
+  body { margin: 0; background: transparent; color: var(--foreground); }
+  .page { width: 100%; min-width: 0; padding: 2px 0 4px; }
+  .eyebrow { margin: 0 0 6px; color: var(--muted-foreground); font-size: .72rem; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
+  h1 { margin: 0; font-size: clamp(1.2rem, 2.4vw, 1.55rem); line-height: 1.18; letter-spacing: -.01em; }
+  .lede { max-width: 62ch; margin: 8px 0 0; color: var(--muted-foreground); font-size: .9rem; line-height: 1.45; }
+  .hint { margin: 10px 0 0; color: var(--muted-foreground); font-size: .78rem; }
+  .hint-js { display: none; }
+  html.js .hint-js { display: inline; }
+  html.js .hint-static { display: none; }
+
+  .flow { width: 100%; margin-top: 16px; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); }
+  .track { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; align-items: stretch; }
+  .stage { display: flex; min-width: 0; flex-direction: column; gap: 4px; padding: 11px 12px; border: 1px solid var(--border); border-radius: calc(var(--radius) - 2px); background: var(--muted); color: var(--foreground); font: inherit; text-align: left; cursor: pointer; transition: border-color .15s ease, background-color .15s ease; }
+  .stage:disabled { opacity: 1; cursor: default; }
+  .stage:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+  .stage[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-surface); box-shadow: inset 0 0 0 1px var(--accent); }
+  .stage-number { color: var(--muted-foreground); font-family: var(--font-mono); font-size: .7rem; line-height: 1; }
+  .stage-title { font-size: .93rem; font-weight: 650; line-height: 1.2; }
+  .stage-line { color: var(--muted-foreground); font-size: .76rem; line-height: 1.35; overflow-wrap: anywhere; }
+  .chevron { display: grid; place-items: center; align-self: center; color: var(--muted-foreground); font-size: 1.1rem; line-height: 1; }
+
+  .details { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .details h2 { margin: 0; font-size: .92rem; line-height: 1.3; }
+  .details-live { display: none; }
+  html.js .details-live { display: block; }
+  html.js .details-static { display: none; }
+  .detail-kicker { color: var(--muted-foreground); font-size: .7rem; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; }
+  .detail-summary { margin: 6px 0 0; color: var(--muted-foreground); font-size: .84rem; line-height: 1.45; }
+  .detail-checks { display: grid; gap: 4px; margin: 10px 0 0; padding: 0; list-style: none; }
+  .detail-checks li { position: relative; padding-left: 18px; color: var(--foreground); font-size: .82rem; line-height: 1.4; }
+  .detail-checks li::before { content: "✓"; position: absolute; left: 0; color: var(--success-foreground, var(--success)); font-weight: 700; }
+  .detail-panel.is-updated { animation: detail-in .18s ease-out; }
+  @keyframes detail-in { from { opacity: .45; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+
+  .details-static dl { display: grid; gap: 10px; margin: 9px 0 0; }
+  .details-static dl > div { display: grid; grid-template-columns: minmax(6.2rem, 10rem) minmax(0, 1fr); gap: 10px; align-items: start; }
+  .details-static dt { color: var(--foreground); font-size: .82rem; font-weight: 650; }
+  .details-static dd { margin: 0; color: var(--muted-foreground); font-size: .82rem; line-height: 1.42; }
+  .check { display: block; margin-top: 3px; color: var(--foreground); font-size: .77rem; }
+
+  @media (max-width: 720px) {
+    .track { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+    .chevron { height: 14px; transform: rotate(90deg); }
+    .details-static dl > div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .stage { transition: none; }
+    .detail-panel.is-updated { animation: none; }
+  }
+  html[data-motion="reduce"] .stage { transition: none; }
+  html[data-motion="reduce"] .detail-panel.is-updated { animation: none; }
+</style>
+
+<div class="page">
+  <p class="eyebrow">Example flow · select a stage</p>
+  <h1>From a commit to a release</h1>
+  <p class="lede">A four-stage release path. Each stage names the decision and the check that keeps the next one honest.</p>
+  <p class="hint"><span class="hint-static">All stage details are listed below.</span><span class="hint-js">Click a stage, or focus it and use the arrow keys.</span></p>
+
+  <section class="flow" aria-label="Release pipeline">
+    <div class="track" id="stage-track">
+      <button type="button" class="stage" data-stage="build" aria-controls="detail-panel" aria-pressed="true" disabled>
+        <span class="stage-number">01</span>
+        <span class="stage-title">Build</span>
+        <span class="stage-line">Compile and bundle</span>
+      </button>
+      <span class="chevron" aria-hidden="true">›</span>
+      <button type="button" class="stage" data-stage="verify" aria-controls="detail-panel" aria-pressed="false" disabled>
+        <span class="stage-number">02</span>
+        <span class="stage-title">Verify</span>
+        <span class="stage-line">Test the real output</span>
+      </button>
+      <span class="chevron" aria-hidden="true">›</span>
+      <button type="button" class="stage" data-stage="stage" aria-controls="detail-panel" aria-pressed="false" disabled>
+        <span class="stage-number">03</span>
+        <span class="stage-title">Stage</span>
+        <span class="stage-line">Inspect at two widths</span>
+      </button>
+      <span class="chevron" aria-hidden="true">›</span>
+      <button type="button" class="stage" data-stage="release" aria-controls="detail-panel" aria-pressed="false" disabled>
+        <span class="stage-number">04</span>
+        <span class="stage-title">Release</span>
+        <span class="stage-line">Promote and watch</span>
+      </button>
+    </div>
+
+    <div class="details">
+      <div class="details-static">
+        <h2>What happens at each stage</h2>
+        <dl>
+          <div>
+            <dt>Build</dt>
+            <dd>Compile the app and bundle assets from the locked dependency tree.<span class="check">Check: lockfile unchanged and output reproducible.</span></dd>
+          </div>
+          <div>
+            <dt>Verify</dt>
+            <dd>Run the focused tests and a browser smoke check against a production build.<span class="check">Check: tests pass and the console stays clean.</span></dd>
+          </div>
+          <div>
+            <dt>Stage</dt>
+            <dd>Publish to a staging URL and inspect the real page at phone and desktop widths.<span class="check">Check: no horizontal overflow and the static view stays readable.</span></dd>
+          </div>
+          <div>
+            <dt>Release</dt>
+            <dd>Promote the verified build and watch the first health checks.<span class="check">Check: the rollback path is known before traffic moves.</span></dd>
+          </div>
+        </dl>
+      </div>
+
+      <div class="details-live">
+        <div class="detail-panel" id="detail-panel" aria-live="polite" aria-atomic="true">
+          <div class="detail-kicker">Selected stage</div>
+          <h2 class="detail-title" id="detail-title">Build</h2>
+          <p class="detail-summary" id="detail-summary">Compile one deterministic artifact from the locked dependency tree.</p>
+          <ul class="detail-checks" id="detail-checks">
+            <li>Lockfile unchanged</li>
+            <li>Output is reproducible</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  var track = document.getElementById("stage-track");
+  var panel = document.getElementById("detail-panel");
+  var title = document.getElementById("detail-title");
+  var summary = document.getElementById("detail-summary");
+  var checks = document.getElementById("detail-checks");
+  var buttons = Array.prototype.slice.call(track.querySelectorAll(".stage"));
+  var mq = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+
+  var stages = {
+    build: {
+      title: "Build",
+      summary: "Compile one deterministic artifact from the locked dependency tree.",
+      checks: ["Lockfile unchanged", "Output is reproducible"]
+    },
+    verify: {
+      title: "Verify",
+      summary: "Exercise the production output, not only the source tree.",
+      checks: ["Focused tests pass", "Browser smoke check is clean"]
+    },
+    stage: {
+      title: "Stage",
+      summary: "Look at the real page in a narrow phone column and a wide desktop column.",
+      checks: ["No horizontal overflow", "Static content remains readable"]
+    },
+    release: {
+      title: "Release",
+      summary: "Promote only after the checks above, then watch the first health signals.",
+      checks: ["Rollback path is known", "Traffic moves gradually"]
+    }
+  };
+
+  function syncMotion() {
+    root.setAttribute("data-motion", mq && mq.matches ? "reduce" : "full");
+  }
+  syncMotion();
+  if (mq && mq.addEventListener) mq.addEventListener("change", syncMotion);
+
+  function pulse() {
+    if (root.getAttribute("data-motion") === "reduce") return;
+    panel.classList.remove("is-updated");
+    // Restart the short reveal when the selected stage changes.
+    void panel.offsetWidth;
+    panel.classList.add("is-updated");
+  }
+
+  function select(id, animate) {
+    var item = stages[id];
+    if (!item) return;
+    for (var i = 0; i < buttons.length; i += 1) {
+      buttons[i].setAttribute("aria-pressed", buttons[i].getAttribute("data-stage") === id ? "true" : "false");
+    }
+    title.textContent = item.title;
+    summary.textContent = item.summary;
+    checks.textContent = "";
+    for (var j = 0; j < item.checks.length; j += 1) {
+      var li = document.createElement("li");
+      li.textContent = item.checks[j];
+      checks.appendChild(li);
+    }
+    if (animate) pulse();
+  }
+
+  function move(delta) {
+    var current = buttons.indexOf(document.activeElement);
+    if (current < 0) return;
+    var next = buttons[(current + delta + buttons.length) % buttons.length];
+    next.focus();
+    select(next.getAttribute("data-stage"), true);
+  }
+
+  for (var i = 0; i < buttons.length; i += 1) {
+    buttons[i].disabled = false;
+    buttons[i].addEventListener("click", function () {
+      select(this.getAttribute("data-stage"), true);
+    });
+  }
+
+  track.addEventListener("keydown", function (event) {
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      event.preventDefault();
+      move(1);
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      event.preventDefault();
+      move(-1);
+    } else if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      var next = event.key === "Home" ? buttons[0] : buttons[buttons.length - 1];
+      next.focus();
+      select(next.getAttribute("data-stage"), true);
+    }
+  });
+
+  select("build", false);
+  root.classList.add("js");
+})();
+</script>
+</body>

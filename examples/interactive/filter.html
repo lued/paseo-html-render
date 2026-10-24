@@ -1,0 +1,195 @@
+<!doctype html><body lang="en">
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  html { background: transparent; }
+  body { margin: 0; background: transparent; color: var(--foreground); }
+  .page { width: 100%; min-width: 0; padding: 2px 0 4px; }
+  .eyebrow { margin: 0 0 6px; color: var(--muted-foreground); font-size: .72rem; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
+  h1 { margin: 0; font-size: clamp(1.2rem, 2.4vw, 1.55rem); line-height: 1.18; letter-spacing: -.01em; }
+  .lede { max-width: 62ch; margin: 8px 0 0; color: var(--muted-foreground); font-size: .9rem; line-height: 1.45; }
+  .demo-note { display: inline-block; margin: 10px 0 0; padding: 3px 8px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted-foreground); font-size: .72rem; line-height: 1.4; }
+
+  .chart-panel { width: 100%; margin-top: 14px; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); }
+  .chart-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; }
+  .chart-head h2 { margin: 0; font-size: .95rem; line-height: 1.3; }
+  .chart-unit { color: var(--muted-foreground); font-size: .76rem; }
+  .filters { display: none; flex-wrap: wrap; gap: 6px; margin: 10px 0 0; }
+  html.js .filters { display: flex; }
+  .filter { padding: 5px 11px; border: 1px solid var(--border); border-radius: 999px; background: var(--muted); color: var(--foreground); font: inherit; font-size: .78rem; cursor: pointer; transition: border-color .15s ease, background-color .15s ease; }
+  .filter:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+  .filter[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-surface); color: var(--foreground); }
+  .filter:disabled { opacity: 1; cursor: default; }
+  .filter-count { color: var(--muted-foreground); font-family: var(--font-mono); font-size: .7rem; }
+
+  .bars { display: grid; gap: 8px; margin: 14px 0 0; padding: 0; list-style: none; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+  .bar-row { display: grid; grid-template-columns: minmax(5.6rem, 9rem) minmax(0, 1fr) auto; gap: 10px; align-items: center; min-width: 0; }
+  .bar-row[hidden] { display: none; }
+  .bar-label { overflow-wrap: anywhere; font-size: .82rem; font-weight: 550; line-height: 1.25; }
+  .bar-track { display: block; height: 14px; overflow: hidden; border-radius: 3px; background: var(--muted); }
+  .bar-fill { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
+  .bar-row[data-group="content"] .bar-fill { background: var(--chart-2); }
+  .bar-value { min-width: 2.5rem; color: var(--foreground); font-family: var(--font-mono); font-size: .76rem; text-align: right; }
+  .bar-row.is-entering { animation: row-in .16s ease-out; }
+  @keyframes row-in { from { opacity: .3; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+
+  .filter-summary { margin: 12px 0 0; color: var(--muted-foreground); font-size: .78rem; line-height: 1.4; }
+  .static-note { margin: 8px 0 0; color: var(--muted-foreground); font-size: .78rem; line-height: 1.4; }
+  html.js .static-note { display: none; }
+
+  .data-table { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
+  .data-table summary { cursor: pointer; color: var(--foreground); font-size: .8rem; font-weight: 600; }
+  .data-table table { width: 100%; margin-top: 8px; border-collapse: collapse; font-size: .78rem; }
+  .data-table th, .data-table td { padding: 5px 8px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+  .data-table th { color: var(--muted-foreground); font-weight: 600; }
+  .data-table td:last-child, .data-table th:last-child { text-align: right; font-family: var(--font-mono); }
+  .data-table caption { margin-bottom: 4px; color: var(--muted-foreground); font-size: .74rem; text-align: left; }
+
+  @media (max-width: 460px) {
+    .bar-row { grid-template-columns: minmax(0, 1fr) auto; gap: 3px 8px; }
+    .bar-track { grid-column: 1 / -1; grid-row: 2; }
+    .bar-value { grid-column: 2; grid-row: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .bar-row.is-entering { animation: none; }
+    .filter { transition: none; }
+  }
+  html[data-motion="reduce"] .bar-row.is-entering { animation: none; }
+  html[data-motion="reduce"] .filter { transition: none; }
+</style>
+
+<div class="page">
+  <p class="eyebrow">Example chart · synthetic data</p>
+  <h1>Weekly requests by service</h1>
+  <p class="lede">A filtered bar view for comparing two groups without losing the exact values. The filter is a local control; the static view always shows all services.</p>
+  <p class="demo-note">Synthetic demo data · not a measurement</p>
+
+  <section class="chart-panel" aria-labelledby="chart-title">
+    <div class="chart-head">
+      <h2 id="chart-title">Requests per week</h2>
+      <span class="chart-unit">requests / week</span>
+    </div>
+
+    <div class="filters" role="group" aria-label="Filter services by group">
+      <button type="button" class="filter" data-filter="all" aria-controls="bars" aria-pressed="true" disabled>All <span class="filter-count">6</span></button>
+      <button type="button" class="filter" data-filter="platform" aria-controls="bars" aria-pressed="false" disabled>Platform <span class="filter-count">3</span></button>
+      <button type="button" class="filter" data-filter="content" aria-controls="bars" aria-pressed="false" disabled>Content <span class="filter-count">3</span></button>
+    </div>
+
+    <ul class="bars" id="bars">
+      <li class="bar-row" data-group="platform" data-value="520">
+        <span class="bar-label">API</span>
+        <span class="bar-track" aria-hidden="true"><span class="bar-fill" style="width: 100%"></span></span>
+        <span class="bar-value"><span class="sr-only">Requests: </span>520</span>
+      </li>
+      <li class="bar-row" data-group="platform" data-value="410">
+        <span class="bar-label">Web app</span>
+        <span class="bar-track" aria-hidden="true"><span class="bar-fill" style="width: 79%"></span></span>
+        <span class="bar-value"><span class="sr-only">Requests: </span>410</span>
+      </li>
+      <li class="bar-row" data-group="platform" data-value="190">
+        <span class="bar-label">Webhooks</span>
+        <span class="bar-track" aria-hidden="true"><span class="bar-fill" style="width: 37%"></span></span>
+        <span class="bar-value"><span class="sr-only">Requests: </span>190</span>
+      </li>
+      <li class="bar-row" data-group="content" data-value="260">
+        <span class="bar-label">Search</span>
+        <span class="bar-track" aria-hidden="true"><span class="bar-fill" style="width: 50%"></span></span>
+        <span class="bar-value"><span class="sr-only">Requests: </span>260</span>
+      </li>
+      <li class="bar-row" data-group="content" data-value="180">
+        <span class="bar-label">Docs</span>
+        <span class="bar-track" aria-hidden="true"><span class="bar-fill" style="width: 35%"></span></span>
+        <span class="bar-value"><span class="sr-only">Requests: </span>180</span>
+      </li>
+      <li class="bar-row" data-group="content" data-value="90">
+        <span class="bar-label">Status</span>
+        <span class="bar-track" aria-hidden="true"><span class="bar-fill" style="width: 17%"></span></span>
+        <span class="bar-value"><span class="sr-only">Requests: </span>90</span>
+      </li>
+    </ul>
+
+    <p class="filter-summary" id="filter-summary" aria-live="polite">All 6 services · 1,650 requests</p>
+    <p class="static-note">All six services are shown. Filter controls are an optional enhancement.</p>
+
+    <details class="data-table">
+      <summary>View exact values</summary>
+      <table>
+        <caption>Synthetic demo data. Group totals: Platform 1,120; Content 530.</caption>
+        <thead>
+          <tr><th scope="col">Service</th><th scope="col">Group</th><th scope="col">Requests</th></tr>
+        </thead>
+        <tbody>
+          <tr data-group="platform"><td>API</td><td>Platform</td><td>520</td></tr>
+          <tr data-group="platform"><td>Web app</td><td>Platform</td><td>410</td></tr>
+          <tr data-group="platform"><td>Webhooks</td><td>Platform</td><td>190</td></tr>
+          <tr data-group="content"><td>Search</td><td>Content</td><td>260</td></tr>
+          <tr data-group="content"><td>Docs</td><td>Content</td><td>180</td></tr>
+          <tr data-group="content"><td>Status</td><td>Content</td><td>90</td></tr>
+        </tbody>
+      </table>
+    </details>
+  </section>
+</div>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  var buttons = Array.prototype.slice.call(document.querySelectorAll(".filter"));
+  var rows = Array.prototype.slice.call(document.querySelectorAll(".bar-row"));
+  var tableRows = Array.prototype.slice.call(document.querySelectorAll(".data-table tbody tr"));
+  var summary = document.getElementById("filter-summary");
+  var mq = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+
+  function syncMotion() {
+    root.setAttribute("data-motion", mq && mq.matches ? "reduce" : "full");
+  }
+  syncMotion();
+  if (mq && mq.addEventListener) mq.addEventListener("change", syncMotion);
+
+  function format(total) {
+    return String(total).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  }
+
+  function apply(filter, animate) {
+    var shown = 0;
+    var total = 0;
+    for (var i = 0; i < rows.length; i += 1) {
+      var row = rows[i];
+      var match = filter === "all" || row.getAttribute("data-group") === filter;
+      row.hidden = !match;
+      if (match) {
+        shown += 1;
+        total += Number(row.getAttribute("data-value"));
+        if (animate && root.getAttribute("data-motion") !== "reduce") {
+          row.classList.remove("is-entering");
+          // Restart a short reveal only for rows that came back into view.
+          void row.offsetWidth;
+          row.classList.add("is-entering");
+        }
+      } else {
+        row.classList.remove("is-entering");
+      }
+    }
+    for (var j = 0; j < tableRows.length; j += 1) {
+      tableRows[j].hidden = filter !== "all" && tableRows[j].getAttribute("data-group") !== filter;
+    }
+    for (var k = 0; k < buttons.length; k += 1) {
+      buttons[k].setAttribute("aria-pressed", buttons[k].getAttribute("data-filter") === filter ? "true" : "false");
+    }
+    var label = filter === "all" ? "All" : filter.charAt(0).toUpperCase() + filter.slice(1);
+    summary.textContent = label + " · " + shown + " of " + rows.length + " services · " + format(total) + " requests";
+  }
+
+  for (var i = 0; i < buttons.length; i += 1) {
+    buttons[i].disabled = false;
+    buttons[i].addEventListener("click", function () {
+      apply(this.getAttribute("data-filter"), true);
+    });
+  }
+
+  apply("all", false);
+  root.classList.add("js");
+})();
+</script>
+</body>

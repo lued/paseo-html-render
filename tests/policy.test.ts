@@ -81,6 +81,25 @@ test("both HTML descriptions carry the chart fit and honesty rules", () => {
   }
 });
 
+test("both HTML descriptions keep interaction optional, static-first, and sandbox-bound", () => {
+  for (const description of [HTML_DESCRIPTION, RENDER_DESCRIPTION]) {
+    assert.match(description, /Use interaction only when it helps the reader/);
+    assert.match(description, /do not make every answer animated or interactive/);
+    assert.match(description, /Motion must be optional and purposeful/);
+    assert.match(description, /short reveal or state change/);
+    assert.match(description, /Inline scripts and styles are the only executable capabilities/);
+    assert.match(description, /remote libraries, fonts, images and network calls are blocked/);
+    assert.match(description, /Static previews execute no JavaScript/);
+    assert.match(description, /default markup must stay readable/);
+    assert.match(description, /controls must be progressive enhancement/);
+    assert.match(description, /native buttons and labels with visible focus and keyboard operation/);
+    assert.match(description, /respect prefers-reduced-motion in both CSS and script logic/);
+    assert.match(description, /continuous animation needs a visible pause or stop/);
+    assert.match(description, /must not run by default/);
+    assert.match(description, /never imply control of Paseo agents, workspaces or other host actions/);
+  }
+});
+
 test("the built adapter embeds the policy and stays template-safe", () => {
   // The summary is the first line of the injected instructions string, so it
   // appears verbatim followed by an escaped newline rather than as its own

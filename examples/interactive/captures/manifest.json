@@ -1,0 +1,59 @@
+{
+  "note": "Static previews rendered by server/renderer.ts with page JavaScript disabled.",
+  "appearance": "dark",
+  "widths": [
+    390,
+    1024
+  ],
+  "generatedBy": "scripts/capture-interactivity.mjs",
+  "examples": {
+    "flow": {
+      "source": "examples/interactive/flow.html",
+      "sourceSha256": "4fe25ae32188fe74dde9f1b84bf5111502edeb6e7d23604eb84b7608a3da335a",
+      "captures": {
+        "390": {
+          "file": "examples/interactive/captures/flow-390.png",
+          "contentHeight": 864,
+          "capturedHeight": 864
+        },
+        "1024": {
+          "file": "examples/interactive/captures/flow-1024.png",
+          "contentHeight": 463,
+          "capturedHeight": 463
+        }
+      }
+    },
+    "inspector": {
+      "source": "examples/interactive/inspector.html",
+      "sourceSha256": "8f9816591c12a0818a19bee393a454caf86b0a7c717ad4e30b1843baec65f8c7",
+      "captures": {
+        "390": {
+          "file": "examples/interactive/captures/inspector-390.png",
+          "contentHeight": 640,
+          "capturedHeight": 640
+        },
+        "1024": {
+          "file": "examples/interactive/captures/inspector-1024.png",
+          "contentHeight": 466,
+          "capturedHeight": 466
+        }
+      }
+    },
+    "filter": {
+      "source": "examples/interactive/filter.html",
+      "sourceSha256": "205f615bf3f1753e4fcc8628780ab0bbf96e4a33013186ff7b35d63b15e234d9",
+      "captures": {
+        "390": {
+          "file": "examples/interactive/captures/filter-390.png",
+          "contentHeight": 562,
+          "capturedHeight": 562
+        },
+        "1024": {
+          "file": "examples/interactive/captures/filter-1024.png",
+          "contentHeight": 432,
+          "capturedHeight": 432
+        }
+      }
+    }
+  }
+}

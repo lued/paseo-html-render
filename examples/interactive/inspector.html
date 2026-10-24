@@ -1,0 +1,210 @@
+<!doctype html><body lang="en">
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  html { background: transparent; }
+  body { margin: 0; background: transparent; color: var(--foreground); }
+  .page { width: 100%; min-width: 0; padding: 2px 0 4px; }
+  .eyebrow { margin: 0 0 6px; color: var(--muted-foreground); font-size: .72rem; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
+  h1 { margin: 0; font-size: clamp(1.2rem, 2.4vw, 1.55rem); line-height: 1.18; letter-spacing: -.01em; }
+  .lede { max-width: 62ch; margin: 8px 0 0; color: var(--muted-foreground); font-size: .9rem; line-height: 1.45; }
+
+  .compare { width: 100%; min-width: 0; margin: 16px 0 0; }
+  .compare-stage { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; width: 100%; min-width: 0; }
+  .compare-layer { position: relative; min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); }
+  .compare-layer svg { display: block; width: 100%; height: auto; }
+  .compare-after { clip-path: none; }
+  .compare-divider { display: none; }
+  .compare-handle { display: none; }
+
+  html.js .compare-stage { position: relative; display: block; aspect-ratio: 16 / 9; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); }
+  html.js .compare-layer { position: absolute; inset: 0; border: 0; border-radius: 0; }
+  html.js .compare-layer svg { width: 100%; height: 100%; }
+  html.js .compare-after { clip-path: inset(0 0 0 calc(100% - var(--split, 62%))); }
+  html.js .compare-divider { position: absolute; top: 0; bottom: 0; left: calc(100% - var(--split, 62%)); display: block; width: 2px; margin-left: -1px; background: var(--accent); box-shadow: 0 0 0 1px var(--background); pointer-events: none; }
+  html.js .compare-handle { position: absolute; top: 50%; left: calc(100% - var(--split, 62%)); display: grid; place-items: center; width: 32px; height: 32px; margin: -16px 0 0 -16px; border: 2px solid var(--accent); border-radius: 50%; background: var(--background); color: var(--accent); font-size: .8rem; font-weight: 700; pointer-events: none; }
+
+  .compare-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 9px 0 0; color: var(--muted-foreground); font-size: .78rem; line-height: 1.4; }
+  .compare-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; background: var(--muted-foreground); }
+  .swatch.after { background: var(--accent); }
+  .static-note { margin: 8px 0 0; color: var(--muted-foreground); font-size: .78rem; line-height: 1.4; }
+  html.js .static-note { display: none; }
+
+  .compare-controls { display: none; align-items: center; gap: 10px; margin-top: 10px; }
+  html.js .compare-controls { display: flex; }
+  .compare-controls label { flex: 0 0 auto; color: var(--foreground); font-size: .8rem; font-weight: 600; }
+  .compare-controls input[type="range"] { width: min(100%, 22rem); min-width: 0; accent-color: var(--accent); }
+  .comparison-output { flex: 0 0 auto; min-width: 4.2rem; color: var(--muted-foreground); font-family: var(--font-mono); font-size: .75rem; text-align: right; }
+
+  .art-bg { fill: var(--card); }
+  .art-bar { fill: var(--surface2, var(--muted)); }
+  .art-panel { fill: var(--muted); stroke: var(--border); stroke-width: 1; }
+  .art-faint { fill: var(--muted-foreground); opacity: .28; }
+  .art-line { fill: var(--muted-foreground); opacity: .45; }
+  .art-accent { fill: var(--accent); }
+  .art-accent-soft { fill: var(--accent); opacity: .35; }
+  .art-good { fill: var(--success); opacity: .8; }
+  .art-text { fill: var(--foreground); font-family: var(--font-sans); font-size: 11px; font-weight: 600; }
+  .art-muted { fill: var(--muted-foreground); }
+
+  @media (max-width: 520px) {
+    .compare-stage { grid-template-columns: minmax(0, 1fr); }
+    .compare-controls { align-items: flex-start; flex-direction: column; gap: 6px; }
+    .comparison-output { text-align: left; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .compare-layer, .compare-divider { transition: none; }
+  }
+  html[data-motion="reduce"] .compare-layer, html[data-motion="reduce"] .compare-divider { transition: none; }
+</style>
+
+<div class="page">
+  <p class="eyebrow">Example comparison · local control</p>
+  <h1>Before and after a layout pass</h1>
+  <p class="lede">A synthetic layout comparison: the draft is dense and faint; the final uses fewer panels, stronger hierarchy and a readable chart. Drag the slider to compare the same area.</p>
+
+  <figure class="compare" id="compare" style="--split: 62%">
+    <div class="compare-stage">
+      <div class="compare-layer compare-before" role="img" aria-label="Before: a dense draft with small, low-contrast panels and a crowded sidebar.">
+        <svg viewBox="0 0 640 360" preserveAspectRatio="xMidYMid meet" aria-hidden="true" focusable="false">
+          <title id="draft-title">Draft layout</title>
+          <desc id="draft-desc">A dense dashboard with many small, low-contrast panels and a crowded sidebar.</desc>
+          <rect class="art-bg" width="640" height="360" rx="0"/>
+          <rect class="art-bar" width="640" height="40"/>
+          <circle class="art-faint" cx="20" cy="20" r="5"/>
+          <circle class="art-faint" cx="36" cy="20" r="5"/>
+          <circle class="art-faint" cx="52" cy="20" r="5"/>
+          <rect class="art-faint" x="78" y="16" width="78" height="7" rx="3.5"/>
+          <rect class="art-faint" x="540" y="15" width="76" height="9" rx="4.5"/>
+          <rect class="art-panel" x="14" y="54" width="146" height="290" rx="5"/>
+          <rect class="art-faint" x="26" y="68" width="96" height="7" rx="3.5"/>
+          <rect class="art-line" x="26" y="88" width="116" height="5" rx="2.5"/>
+          <rect class="art-line" x="26" y="101" width="88" height="5" rx="2.5"/>
+          <rect class="art-line" x="26" y="114" width="108" height="5" rx="2.5"/>
+          <rect class="art-line" x="26" y="127" width="74" height="5" rx="2.5"/>
+          <rect class="art-line" x="26" y="148" width="100" height="5" rx="2.5"/>
+          <rect class="art-line" x="26" y="161" width="82" height="5" rx="2.5"/>
+          <rect class="art-line" x="26" y="174" width="112" height="5" rx="2.5"/>
+          <rect class="art-line" x="26" y="195" width="90" height="5" rx="2.5"/>
+          <rect class="art-line" x="26" y="208" width="104" height="5" rx="2.5"/>
+          <rect class="art-line" x="26" y="221" width="72" height="5" rx="2.5"/>
+          <rect class="art-line" x="26" y="242" width="98" height="5" rx="2.5"/>
+          <rect class="art-line" x="26" y="255" width="84" height="5" rx="2.5"/>
+          <rect class="art-line" x="26" y="268" width="110" height="5" rx="2.5"/>
+          <rect class="art-panel" x="174" y="54" width="452" height="116" rx="5"/>
+          <rect class="art-faint" x="188" y="68" width="120" height="7" rx="3.5"/>
+          <rect class="art-line" x="188" y="86" width="180" height="5" rx="2.5"/>
+          <rect class="art-line" x="188" y="99" width="142" height="5" rx="2.5"/>
+          <rect class="art-faint" x="440" y="66" width="58" height="18" rx="4"/>
+          <rect class="art-panel" x="174" y="182" width="142" height="78" rx="5"/>
+          <rect class="art-faint" x="186" y="194" width="72" height="6" rx="3"/>
+          <rect class="art-line" x="186" y="210" width="110" height="4" rx="2"/>
+          <rect class="art-line" x="186" y="222" width="88" height="4" rx="2"/>
+          <rect class="art-line" x="186" y="234" width="98" height="4" rx="2"/>
+          <rect class="art-panel" x="328" y="182" width="142" height="78" rx="5"/>
+          <rect class="art-faint" x="340" y="194" width="82" height="6" rx="3"/>
+          <rect class="art-line" x="340" y="210" width="104" height="4" rx="2"/>
+          <rect class="art-line" x="340" y="222" width="76" height="4" rx="2"/>
+          <rect class="art-line" x="340" y="234" width="96" height="4" rx="2"/>
+          <rect class="art-panel" x="482" y="182" width="144" height="78" rx="5"/>
+          <rect class="art-faint" x="494" y="194" width="66" height="6" rx="3"/>
+          <rect class="art-line" x="494" y="210" width="104" height="4" rx="2"/>
+          <rect class="art-line" x="494" y="222" width="82" height="4" rx="2"/>
+          <rect class="art-line" x="494" y="234" width="92" height="4" rx="2"/>
+          <rect class="art-panel" x="174" y="272" width="452" height="72" rx="5"/>
+          <rect class="art-faint" x="188" y="285" width="106" height="6" rx="3"/>
+          <rect class="art-line" x="188" y="302" width="330" height="4" rx="2"/>
+          <rect class="art-line" x="188" y="314" width="270" height="4" rx="2"/>
+          <rect class="art-line" x="188" y="326" width="300" height="4" rx="2"/>
+        </svg>
+      </div>
+
+      <div class="compare-layer compare-after" role="img" aria-label="After: a clearer final with fewer panels, stronger hierarchy and a four-bar chart.">
+        <svg viewBox="0 0 640 360" preserveAspectRatio="xMidYMid meet" aria-hidden="true" focusable="false">
+          <title id="final-title">Final layout</title>
+          <desc id="final-desc">A clearer dashboard with a shorter sidebar, two large summary panels and a four-bar chart.</desc>
+          <rect class="art-bg" width="640" height="360" rx="0"/>
+          <rect class="art-bar" width="640" height="52"/>
+          <circle class="art-accent" cx="24" cy="26" r="6"/>
+          <rect class="art-faint" x="40" y="22" width="96" height="8" rx="4"/>
+          <rect class="art-accent-soft" x="520" y="17" width="96" height="18" rx="9"/>
+          <rect class="art-panel" x="18" y="68" width="168" height="274" rx="8"/>
+          <rect class="art-faint" x="34" y="86" width="86" height="7" rx="3.5"/>
+          <rect class="art-line" x="34" y="114" width="122" height="6" rx="3"/>
+          <rect class="art-line" x="34" y="132" width="104" height="6" rx="3"/>
+          <rect class="art-line" x="34" y="150" width="116" height="6" rx="3"/>
+          <rect class="art-line" x="34" y="190" width="86" height="6" rx="3"/>
+          <rect class="art-line" x="34" y="208" width="110" height="6" rx="3"/>
+          <rect class="art-line" x="34" y="226" width="96" height="6" rx="3"/>
+          <rect class="art-accent-soft" x="34" y="272" width="136" height="36" rx="6"/>
+          <rect class="art-panel" x="202" y="68" width="420" height="126" rx="8"/>
+          <rect class="art-faint" x="220" y="86" width="128" height="8" rx="4"/>
+          <rect class="art-line" x="220" y="108" width="214" height="6" rx="3"/>
+          <rect class="art-line" x="220" y="124" width="176" height="6" rx="3"/>
+          <rect class="art-accent" x="220" y="154" width="70" height="20" rx="5"/>
+          <rect class="art-panel" x="202" y="210" width="420" height="132" rx="8"/>
+          <rect class="art-faint" x="220" y="226" width="100" height="7" rx="3.5"/>
+          <rect class="art-line" x="220" y="246" width="384" height="1.5" rx=".75"/>
+          <rect class="art-accent" x="232" y="272" width="38" height="50" rx="4"/>
+          <rect class="art-good" x="294" y="290" width="38" height="32" rx="4"/>
+          <rect class="art-accent" x="356" y="262" width="38" height="60" rx="4"/>
+          <rect class="art-good" x="418" y="282" width="38" height="40" rx="4"/>
+          <rect class="art-accent-soft" x="480" y="300" width="38" height="22" rx="4"/>
+          <rect class="art-faint" x="542" y="300" width="38" height="22" rx="4"/>
+          <rect class="art-muted" x="232" y="330" width="22" height="4" rx="2" opacity=".5"/>
+          <rect class="art-muted" x="294" y="330" width="30" height="4" rx="2" opacity=".5"/>
+          <rect class="art-muted" x="356" y="330" width="26" height="4" rx="2" opacity=".5"/>
+          <rect class="art-muted" x="418" y="330" width="34" height="4" rx="2" opacity=".5"/>
+          <rect class="art-muted" x="480" y="330" width="22" height="4" rx="2" opacity=".5"/>
+          <rect class="art-muted" x="542" y="330" width="28" height="4" rx="2" opacity=".5"/>
+        </svg>
+      </div>
+
+      <div class="compare-divider" aria-hidden="true"></div>
+      <div class="compare-handle" aria-hidden="true">↔</div>
+    </div>
+
+    <figcaption class="compare-legend">
+      <span><i class="swatch"></i>Before: dense draft</span>
+      <span><i class="swatch after"></i>After: clearer final</span>
+    </figcaption>
+    <p class="static-note">Both versions are shown side by side. The draggable comparison is an optional enhancement.</p>
+
+    <div class="compare-controls">
+      <label for="split">Final layout visible</label>
+      <input id="split" type="range" min="0" max="100" step="1" value="62" aria-describedby="split-readout" disabled>
+      <output class="comparison-output" id="split-readout" for="split" aria-live="polite">62% after</output>
+    </div>
+  </figure>
+</div>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  var compare = document.getElementById("compare");
+  var input = document.getElementById("split");
+  var output = document.getElementById("split-readout");
+  var mq = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+
+  function syncMotion() {
+    root.setAttribute("data-motion", mq && mq.matches ? "reduce" : "full");
+  }
+  syncMotion();
+  if (mq && mq.addEventListener) mq.addEventListener("change", syncMotion);
+
+  function apply(value) {
+    var split = Math.max(0, Math.min(100, Number(value) || 0));
+    compare.style.setProperty("--split", split + "%");
+    output.textContent = split + "% after";
+    input.setAttribute("aria-valuetext", split + " percent of the final layout visible");
+  }
+
+  input.disabled = false;
+  input.addEventListener("input", function () {
+    apply(input.value);
+  });
+  apply(input.value);
+  root.classList.add("js");
+})();
+</script>
+</body>

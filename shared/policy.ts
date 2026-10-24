@@ -73,6 +73,21 @@ const CHART_RULES =
   "No 3D, no gradients, no truncated axes, no dual axes. " +
   "Plot only numbers actually obtained from a tool, caption the source, and omit the chart rather than invent data.";
 
+/**
+ * Interaction is a presentation choice, not a default. The same rules ride on
+ * both HTML inputs so a live-looking page cannot quietly become the expected
+ * shape of every answer.
+ */
+const INTERACTION_RULES =
+  "Fit the form to the answer, and prefer one full-width visual over a grid of decorated boxes. " +
+  "Use interaction only when it helps the reader; do not make every answer animated or interactive. " +
+  "Motion must be optional and purposeful: a short reveal or state change that shows what changed, not decoration. " +
+  "Inline scripts and styles are the only executable capabilities; remote libraries, fonts, images and network calls are blocked. " +
+  "Static previews execute no JavaScript, so the default markup must stay readable and controls must be progressive enhancement. " +
+  "Use native buttons and labels with visible focus and keyboard operation, and respect prefers-reduced-motion in both CSS and script logic. " +
+  "Any continuous animation needs a visible pause or stop and must not run by default. " +
+  "Local diagram, image and chart controls work inside the sandbox; never imply control of Paseo agents, workspaces or other host actions.";
+
 export const HTML_DESCRIPTION =
   "A complete, self-contained HTML document. Lead with something visual: a diagram, chart, flow, " +
   "comparison, timeline or small interactive. Keep labels short; the page is not an essay. " +
@@ -82,7 +97,7 @@ export const HTML_DESCRIPTION =
   "Remote http(s) resources and local file:// paths are blocked. Workspace-local raster images " +
   "(PNG, JPEG, GIF, WebP, AVIF) referenced by img src, srcset, or CSS url() are inlined for previews " +
   "and published pages. Local SVG files are not inlined; inline SVG markup is supported. Remote resources stay blocked. " +
-  CHART_RULES_BRIEF;
+  INTERACTION_RULES + " " + CHART_RULES_BRIEF;
 
 export const RENDER_DESCRIPTION =
   "Publish a visual HTML card when the answer has structure: a comparison, several findings, status, " +
@@ -101,4 +116,4 @@ export const RENDER_DESCRIPTION =
   "background; keep the outermost element transparent. The result includes an absolute interactive path. " +
   "In your final reply include exactly [Open interactive report](<path>) on its own line. Do not repeat " +
   "or describe the page in your reply. " +
-  CHART_RULES;
+  INTERACTION_RULES + " " + CHART_RULES;
