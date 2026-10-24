@@ -268,7 +268,7 @@ test("examples are useful and reflow without overflow when JavaScript is disable
         assert.match(String(observed.text), /After: clearer final/);
         assert.deepEqual(observed.labels, [
           "Before: a dense draft with small, low-contrast panels and a crowded sidebar.",
-          "After: a clearer final with fewer panels, stronger hierarchy and a four-bar chart.",
+          "After: a clearer final with fewer panels, stronger hierarchy and a bar chart.",
         ]);
         assert.ok(
           (observed.disabledControls as Array<{ tag: string; disabled: boolean }>).some(
@@ -425,6 +425,63 @@ const filterRun = `
   parent.postMessage({ kind: "interactivity-test", results: out }, "*");
 `;
 
+/**
+ * No `data-motion` write here: the example must derive its motion state from the
+ * browser preference before the click. The click then proves the reduced-motion
+ * branch does not add a nonessential animation.
+ */
+function emulatedMotionRun(example: ExampleName): string {
+  return `
+  var out = { innerWidth: innerWidth, example: ${JSON.stringify(example)} };
+  try {
+    window.focus();
+    var root = document.documentElement;
+    out.csp = !!document.querySelector('meta[http-equiv="Content-Security-Policy"]');
+    out.width = innerWidth;
+    out.mediaMatches = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    out.dataMotion = root.getAttribute("data-motion");
+    out.animation = "not-applicable";
+    if (${JSON.stringify(example)} === "flow") {
+      document.querySelector('[data-stage="verify"]').click();
+      out.selection = document.getElementById("detail-title").textContent;
+      out.animation = getComputedStyle(document.getElementById("detail-panel")).animationName;
+    } else if (${JSON.stringify(example)} === "filter") {
+      document.querySelector('[data-filter="content"]').click();
+      out.selection = document.getElementById("filter-summary").textContent;
+      out.animation = getComputedStyle(document.querySelector(".bar-row:not([hidden])")).animationName;
+    } else {
+      var range = document.getElementById("split");
+      range.value = "25";
+      range.dispatchEvent(new Event("input", { bubbles: true }));
+      out.selection = document.getElementById("split-readout").textContent;
+      out.animation = getComputedStyle(document.querySelector(".compare-after")).animationName;
+    }
+    out.overflow = document.documentElement.scrollWidth > innerWidth + 1 ||
+      document.body.scrollWidth > innerWidth + 1;
+  } catch (error) {
+    out.error = String(error);
+    out.stack = error && error.stack;
+  }
+  window.__result = out;
+`;
+}
+
+/**
+ * Chromium applies media emulation to the top-level target; a srcdoc iframe
+ * keeps its own default media state. This loads the same built live document at
+ * top level, while the existing live tests still exercise the frame sandbox.
+ */
+function emulatedMotionDocument(example: ExampleName): string {
+  return buildLiveDocument({
+    html: source[example].replace(
+      "</body>",
+      `<script>setTimeout(function () { ${emulatedMotionRun(example)} }, 30);</script></body>`,
+    ),
+    title: `Emulated motion: ${example}`,
+    theme: defaultDocumentTheme("dark"),
+  });
+}
+
 test("the flow example changes state by click and keyboard in the sandbox", { timeout: 60_000 }, async (t) => {
   if (skipIfUnavailable(t)) return;
   const result = await runLive("flow", flowRun);
@@ -471,7 +528,7 @@ test("the inspector changes its split and keeps both images labelled", { timeout
     assert.equal(seen.focus, true, "the native range accepts focus");
     assert.deepEqual(seen.labels, [
       "Before: a dense draft with small, low-contrast panels and a crowded sidebar.",
-      "After: a clearer final with fewer panels, stronger hierarchy and a four-bar chart.",
+      "After: a clearer final with fewer panels, stronger hierarchy and a bar chart.",
     ]);
     assert.deepEqual(seen.resources, [], "a local control loads no external resource");
     assert.equal(seen.overflow, false);
@@ -500,5 +557,42 @@ test("the chart filter keeps exact values and reduces motion in the sandbox", { 
     assert.equal(seen.mediaQuery, true);
     assert.deepEqual(seen.resources, []);
     assert.equal(seen.overflow, false);
+  }
+});
+
+test("emulated prefers-reduced-motion reaches matchMedia and JS without a manual state write", { timeout: 90_000 }, async (t) => {
+  if (skipIfUnavailable(t)) return;
+
+  const fullAnimation = { flow: "detail-in", inspector: "none", filter: "row-in" } as const;
+  const selection = {
+    flow: "Verify",
+    inspector: "25% after",
+    filter: "Content · 3 of 6 services · 530 requests",
+  } as const;
+
+  for (const example of EXAMPLES) {
+    for (const preference of ["reduce", "no-preference"] as const) {
+      const reduced = preference === "reduce";
+      const result = (await browserResult(emulatedMotionDocument(example), {
+        viewport: { width: 1024, height: 1000 },
+        reducedMotion: preference,
+      })) as Record<string, any>;
+      assert.equal(result.error, undefined, result.stack);
+      assert.equal(result.csp, true, `${example}: the live document keeps the shared CSP`);
+      assert.equal(result.width, 1024);
+      assert.equal(result.mediaMatches, reduced, `${example}: CDP preference reached matchMedia`);
+      assert.equal(
+        result.dataMotion,
+        reduced ? "reduce" : "full",
+        `${example}: the JS hook derived ${reduced ? "reduce" : "full"} without a manual state write`,
+      );
+      assert.equal(result.selection, selection[example], `${example}: the local interaction still ran`);
+      assert.equal(
+        result.animation,
+        reduced ? "none" : fullAnimation[example],
+        `${example}: ${reduced ? "no nonessential animation" : "the short reveal returns"}`,
+      );
+      assert.equal(result.overflow, false, `${example}: no horizontal overflow`);
+    }
   }
 });

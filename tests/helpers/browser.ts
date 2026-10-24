@@ -10,6 +10,8 @@ export interface BrowserOptions {
   /** Absolute path for a PNG of the rendered page, captured before teardown. */
   screenshotPath?: string;
   viewport?: { width: number; height: number };
+  /** Emulate the top-level OS media preference before the page navigates. */
+  reducedMotion?: "reduce" | "no-preference";
 }
 
 export async function browserResult(html: string, options: BrowserOptions = {}): Promise<unknown> {
@@ -65,6 +67,11 @@ export async function browserResult(html: string, options: BrowserOptions = {}):
     const target = await send("Target.createTarget", { url: "about:blank" });
     const {sessionId} = await send("Target.attachToTarget", {targetId: target.targetId, flatten: true});
     await send("Page.enable", {}, sessionId);
+    if (options.reducedMotion) {
+      await send("Emulation.setEmulatedMedia", {
+        features: [{ name: "prefers-reduced-motion", value: options.reducedMotion }],
+      }, sessionId);
+    }
     await send("Page.addScriptToEvaluateOnNewDocument", { source: `
       window.addEventListener('error', event => {
         window.__result = { error: event.message, stack: event.error && event.error.stack };

@@ -183,6 +183,11 @@ npm run typecheck
 It checks at least one live state change, click and keyboard operation, the
 script-disabled fallback, reduced-motion CSS and script behavior, phone/desktop
 reflow without horizontal overflow, and that no external resource is requested.
+The reduced-motion browser test also emulates Chromium's
+`prefers-reduced-motion` media feature, so `matchMedia` and the example's
+`data-motion` hook are verified from the browser preference rather than a manual
+state write.
+
 The live frames carry the same CSP and never use `allow-same-origin`. The static
 renders use `server/renderer.ts` with `Emulation.setScriptExecutionDisabled`.
 
