@@ -1,5 +1,4 @@
-import type { PluginServerContext } from "@getpaseo/plugin/server";
-import type { PaseoApi } from "@getpaseo/client";
+import type { PluginHandlerContext, PluginServerContext } from "@getpaseo/plugin/server";
 import type { PluginIdentity } from "../shared/identity.ts";
 import { SELECTED_IDENTITY } from "../shared/selected-identity.ts";
 import {
@@ -16,6 +15,9 @@ import { archiveCleanupEnabled, resolveDataRoot } from "./paths.ts";
 import { createRenderer } from "./renderer.ts";
 import { createHtmlTools } from "./tools.ts";
 import { createTurnGuard, guardKey, maxCardsPerTurn } from "./turn-guard.ts";
+
+/** Host-provided API type; the SDK is externalized by the daemon compiler. */
+type PaseoApi = PluginHandlerContext["paseo"];
 
 export interface ContributeOptions {
   /**

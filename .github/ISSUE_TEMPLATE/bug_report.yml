@@ -1,0 +1,59 @@
+name: Bug report
+description: Report a reproducible HTML Render problem without private data
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Remove tokens, private paths, workspace ids and
+        report contents before posting. Security issues belong in the private
+        route in SECURITY.md, not this public form.
+  - type: input
+    id: paseo
+    attributes:
+      label: Paseo version
+      placeholder: "0.13.0-beta.2"
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node and OS on the daemon host
+      placeholder: "Node 22.18.0, Ubuntu 24.04"
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: Client, harness and model
+      placeholder: "Paseo web, Pi, deepseek-v4.1-flash"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Use synthetic content where possible.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual result
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs or screenshot
+      description: Do not include tokens, private paths, workspace ids or report content.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed credentials, private paths, workspace ids and personal report content.
+          required: true
+        - label: This is not a security vulnerability (those go through the private route in SECURITY.md).
+          required: true

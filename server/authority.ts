@@ -1,6 +1,9 @@
-import type { PaseoApi } from "@getpaseo/client";
+import type { PluginHandlerContext } from "@getpaseo/plugin/server";
 import { sep } from "node:path";
 import { canonicalPath } from "./canonical.ts";
+
+/** Host-provided API type; importing the SDK avoids a direct @getpaseo/client dependency. */
+type PaseoApi = PluginHandlerContext["paseo"];
 
 export interface WorkspaceRoot {
   workspaceId: string;

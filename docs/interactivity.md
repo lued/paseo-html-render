@@ -207,7 +207,7 @@ npm test
 ## Related files
 
 - [Policy guidance](../shared/policy.ts) for when a visual is worth making.
-- [Verification notes](verification.md) for the release-gate context and the
+- [Verification notes](https://github.com/lued/paseo-html-render/blob/main/docs/verification.md) for the release-gate context and the
   remaining self-navigation limitation of the live iframe.
 - [Compatibility notes](compatibility.md) for web/desktop versus native
   differences.

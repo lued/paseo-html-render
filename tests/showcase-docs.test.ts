@@ -51,9 +51,9 @@ test("README is short, truthful about install and labels the demo capture", asyn
   assert.match(readme, /git clone https:\/\/github\.com\/lued\/paseo-html-render\.git/);
   assert.match(readme, /npm ci --ignore-scripts/);
   assert.match(readme, /paseo plugin install \./);
-  assert.match(readme, /paseo plugin reload html-render/);
-  assert.match(readme, /Paseo 0\.12\.x/);
-  assert.match(readme, />=0\.12\.0 <0\.13\.0/);
+  assert.match(readme, /paseo plugin ls/);
+  assert.match(readme, /Paseo 0\.12\.0 through 0\.13\.x/);
+  assert.match(readme, /npm:paseo-html-render@2\.2\.0/);
   assert.match(readme, /Node 22\.18 or newer/);
   assert.match(readme, /Chromium/);
   assert.match(readme, /No browser is downloaded or installed/);

@@ -1,12 +1,13 @@
 # T3 compatibility and intentional differences
 
-Reference: local `~/git/t3code`, inspected 2026-10-20. Primary files:
+Reference: T3 Code source inspected 2026-10-20. Primary files:
 `packages/shared/src/htmlRender.ts`, `apps/server/src/htmlRender/HtmlRender.ts`,
 `apps/web/src/components/chat/HtmlRenderFrame.tsx`,
 `apps/web/src/components/files/BrowserDocumentFrame.tsx`,
 `apps/mobile/src/features/threads/HtmlRenderWebView.tsx`.
 Source inspection is not evidence that a Paseo client displayed the implementation.
-See `verification.md` for exact tests and remaining client gates.
+See the [public verification notes](https://github.com/lued/paseo-html-render/blob/main/docs/verification.md)
+for exact tests and remaining client gates.
 
 ## Tool contract
 
@@ -41,6 +42,20 @@ link instruction added:
 The file path is a compatibility adapter into Paseo's existing HTML file preview,
 not a plugin route or guaranteed public navigation API. The card can copy the
 link/path; copying is not represented as opening a file tab.
+
+## Turn guard
+
+`html_render` defaults to one card per counted agent turn. The comparison is an
+exact fingerprint over the **prepared** HTML (after workspace raster inlining),
+the publishing workspace, title, height, summary, `renderMode` and optional report.
+It is deliberately not semantic: a changed comment, whitespace run or cosmetic
+markup is a different input and can bypass the nudge. A bounded in-memory history
+of 50 publishes per agent also refuses an identical card in later turns; a daemon
+restart clears all of it. If agent attribution is missing, the plugin warns and
+skips the guard. If the turn lifecycle is unknown, it warns and keeps duplicate-only
+checking. The durable save commits the reservation before the `interactivePath`
+lookup, so a late path failure can return an error after the card was stored and
+the turn slot consumed. Do not describe this as permanent or semantic deduplication.
 
 ## Display parity
 

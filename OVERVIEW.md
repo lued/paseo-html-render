@@ -15,9 +15,9 @@ No Paseo fork, daemon HTTP route, or shared-browser dependency.
 
 The web/desktop raw iframe is **unsupported by the public plugin SDK**. Native
 views never execute HTML. A compact web viewport is not native-client evidence.
-Verification is fully autonomous: `npm run verify:e2e` renders with real Chromium,
-runs the real MCP adapter, and captures the hosted client. Results and remaining
-gaps are in [`docs/verification.md`](docs/verification.md).
+The repository verification run uses real Chromium, the real MCP adapter and the
+hosted client; results and remaining gaps are in the
+[public verification notes](https://github.com/lued/paseo-html-render/blob/main/docs/verification.md).
 
 ## Layout width
 
@@ -44,6 +44,19 @@ Use CSS variables such as `--background`, `--foreground`, `--card`, `--border`,
 `--accent`, `--primary`, `--muted-foreground`, `--chart-1` through `--chart-6`,
 `--radius`, `--font-sans` and `--font-mono`. Live theme updates preserve page state.
 Keep the outer page fluid, transparent and without duplicate card/title chrome.
+
+## Turn guard
+
+The daemon refuses a second publish in the same counted turn by default (limit 1;
+`PASEO_HTML_RENDER_MAX_CARDS_PER_TURN=0` disables it). It compares exact prepared
+HTML bytes plus the publishing workspace, title, height, summary, `renderMode`
+and report; comments, whitespace and cosmetic changes are different inputs, not
+semantic duplicates. A bounded in-memory history (50 publishes per agent) also
+refuses an identical card across turns; a daemon restart clears that history.
+When agent attribution is missing, the guard warns and skips; when the turn
+lifecycle is unknown, it warns and keeps duplicate-only checking. The durable
+save commits the turn slot before the interactive path lookup, so a late path
+error can return `store_failed` after the card was stored and the slot consumed.
 
 ## Privacy and limits
 
@@ -88,13 +101,13 @@ remain usable if graph thumbnails cannot be generated.
 
 ```sh
 npm ci --ignore-scripts
-npm run verify:e2e     # G1-G6: renderer, mounted card, MCP, dedupe, install, client
-npm run check:trigger  # 10-prompt corpus: structured renders, plain stays text
+npm run verify:e2e     # real Chromium, mounted card, MCP, install, hosted client
+npm run check:trigger  # fixed corpus: structured renders, plain stays text
 npm run typecheck
-npm test               # 178 unit/integration tests
+npm test
 npm run check:bundles
-npm pack --dry-run --json
-paseo plugin install /absolute/path/to/paseo-html-render
+npm run check:package
+npm run smoke:package -- --tarball /tmp/paseo-html-render-2.2.0.tgz
 ```
 
 A sandbox-capable Chromium must already be installed, or set
@@ -102,13 +115,17 @@ A sandbox-capable Chromium must already be installed, or set
 `--no-sandbox` is never used. Missing Chromium fails preview/publish explicitly.
 New agents receive MCP injection plus the rendering policy in the MCP handshake:
 render a card when the answer has structure, answer in text for single facts, prose,
-code, file contents or config. Disabling the plugin removes both the tools and the
-policy; agents created while it was enabled keep their injected config until they are
-recreated. Existing session configurations are never edited. The bridge token is a durable
-0600 file under the private data root, and the adapter re-reads it on every call,
-so a plugin reload does not invalidate MCP tools in existing agents. An adapter
-process that is already running still needs one reconnect to pick up the new
-adapter source.
+code, file contents or config. What the model actually sees is client- and
+configuration-dependent: some harnesses expose MCP tools behind codemode, and a
+client or shared server description can override or truncate the 244-character
+summary. Do not infer universal exposure from one harness. Disabling the plugin
+removes both the tools and the policy; agents created while it was enabled keep
+their injected config until they are recreated. Existing session configurations
+are never edited. The bridge token is a durable 0600 file under the private data
+root, and the adapter re-reads it on every call, so a plugin reload does not
+invalidate MCP tools in existing agents. An adapter process that is already
+running still needs one reconnect to pick up the new adapter source.
 
-See [`docs/compatibility.md`](docs/compatibility.md) for intentional T3 differences
-and [`docs/verification.md`](docs/verification.md) for live results and rollback.
+See [`docs/compatibility.md`](docs/compatibility.md) for intentional T3 differences,
+bounded guard semantics, and the [public verification notes](https://github.com/lued/paseo-html-render/blob/main/docs/verification.md)
+for live results and rollback.

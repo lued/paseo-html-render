@@ -4,55 +4,93 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.2.0] - 2026-10-24
+
+First npm-release candidate. The turn guard is an in-memory nudge, not a
+permanent duplicate database or a semantic HTML diff.
 
 ### Added
 
-- Turn guard: a second `html_render` card in one agent turn is refused with the
-  `duplicate` error code, and so is HTML that differs from an earlier card of the
-  same agent only by comments or whitespace runs. The refusal names the existing
-  artifact id so the model can refer to it instead of republishing. The limit comes
-  from `PASEO_HTML_RENDER_MAX_CARDS_PER_TURN` (integer, default `1`; `0` disables
-  the guard); `html_preview` is never affected. State is in memory per plugin
-  instance, so a daemon restart clears it.
-
-### Fixed
-
-- Chromium discovery: an installed Chromium-family application is now a source, so
-  a host with no Playwright browser cache and no `shared-browser` plugin still has a
-  browser. macOS `/Applications` and `~/Applications` bundles are scanned for Google
-  Chrome, Chromium, Helium, Brave, Edge and Vivaldi; the Linux Brave, Edge and
-  Vivaldi paths are added. Discovery order is `PASEO_HTML_RENDER_CHROMIUM`, the
-  Playwright cache, the `shared-browser` runtime when present, system paths, then app
-  bundles. Nothing is downloaded or installed, and every candidate is launched with
-  the same sandboxed flags.
+- Turn guard: a second `html_render` in one counted agent turn is refused with
+  the `duplicate` error code. The limit comes from
+  `PASEO_HTML_RENDER_MAX_CARDS_PER_TURN` (integer, default `1`; `0` disables it);
+  `html_preview` is never affected. State is per plugin instance.
+- The guard compares an exact fingerprint of the **prepared** HTML (after workspace
+  raster inlining) plus workspace id, title, height, summary, render mode and
+  optional report. Comments, whitespace and cosmetic markup are different inputs;
+  they can bypass the nudge. The guard is not semantic duplicate detection.
+- A bounded in-memory history remembers 50 publishes per agent, so an identical
+  card in a later turn is also refused. A daemon restart clears both the history
+  and the active turn count.
+- Missing agent attribution emits a warning and skips guarding. An unknown turn
+  lifecycle emits a warning and keeps duplicate-only checking (no per-turn count).
+  Known null turn ids create counted synthetic turns; a late end for an earlier
+  known turn cannot clear a newer turn.
+- Adapter `2.2.0`: the generated stdio adapter sends `PASEO_AGENT_ID` with every
+  bridge request, so the guard keys on the agent rather than a caller directory.
+  An adapter injected before this build is reported stale and asks for a reconnect.
 
 ### Changed
 
-- Trigger policy is one source (`shared/policy.ts`) projected twice: a 244-character
-  single-line summary and a longer instruction payload. pi caps MCP instructions at
-  the first line with 250 characters, so the summary has to carry every rule on its
-  own; claude, codex and opencode read the full descriptions instead. The summary
-  now states the brake (one card per turn, never republish unchanged content).
-- Chart guidance is part of both HTML descriptions: line or area for numbers over
-  time, bars from a zero baseline for categories, scatter for two numeric variables,
-  dot or strip for a distribution, sorted bars for a ranking, stacked bars for
-  proportions. Series colours come from the `--chart-1` … `--chart-6` tokens, which
-  the descriptions now advertise. Only numbers obtained from a tool may be plotted.
-- Adapter version `2.1.1`. The adapter now sends `PASEO_AGENT_ID` with every bridge
-  request so the turn guard keys on the agent instead of the caller directory. An
-  adapter injected before this build is reported stale and asks for a reconnect.
-- The G5 e2e gate no longer requires the `shared-browser` plugin to be installed and
-  running. It asserts that a sandbox-capable Chromium is discoverable and records its
-  path, because the renderer's real requirement is a browser, not another plugin.
-  `shared-browser` remains supported as one optional source.
+- Trigger policy remains one source (`shared/policy.ts`) with the unchanged
+  244-character summary and a longer instruction payload. Exposure is not
+  universal: a client, harness or shared server description can override or
+  truncate what the model sees; Pi exposes MCP tools behind codemode and caps the
+  first instruction line at 250 characters. Do not infer a universal selection
+  rate or guarantee.
+- Chart guidance covers line/area for time, bars from a zero baseline for
+  categories, scatter for two numeric variables, dot/strip for distributions,
+  sorted bars for rankings and stacked bars for proportions. Series colours use
+  `--chart-1` … `--chart-6`; only numbers obtained from a tool may be plotted.
+- The G5 e2e gate no longer requires the `shared-browser` plugin. It asserts a
+  sandbox-capable Chromium is discoverable and records its path; `shared-browser`
+  remains one optional source.
+- Release packaging: the server consumes `PluginHandlerContext["paseo"]` instead
+  of a direct `@getpaseo/client` type import, so the production-only tarball no
+  longer depends on a package Paseo’s `--legacy-peer-deps` acquisition does not
+  install. Public compatibility, release and showcase docs, SECURITY, examples and
+  captures are packed; private plans, research, status, tests and scripts are not.
+- Added a package artifact/link check, an isolated production-install smoke script,
+  and CI for the lockfile install, typecheck, full serial tests, bundle boundaries
+  and tarball checks. The release remains a manual, human-published step. Added
+  public contribution guidance and a bug-report template that asks for sanitized
+  host/harness/version details and routes vulnerabilities to the private channel.
+
+### Fixed
+
+- Chromium discovery: an installed Chromium-family application is a source, so a
+  host with no Playwright cache and no `shared-browser` plugin still has a browser.
+  macOS `/Applications` and `~/Applications` bundles are scanned for Google Chrome,
+  Chromium, Helium, Brave, Edge and Vivaldi; Linux Brave, Edge and Vivaldi paths are
+  added. Discovery order is `PASEO_HTML_RENDER_CHROMIUM`, the Playwright cache, the
+  `shared-browser` runtime when present, system paths, then app bundles. Nothing is
+  downloaded or installed, and every candidate is launched with the same sandboxed
+  flags.
 
 ### Security
 
-- Add `SECURITY.md`: supported versions, private vulnerability reporting, the trust model
-  (a trusted, unsandboxed Paseo plugin running as the daemon user) and the out-of-scope list.
-- Remove absolute home paths, a machine name and internal workspace paths from the docs and
-  test fixtures. Tests use a neutral `/home/dev` path; behaviour is unchanged.
+- Add `SECURITY.md`: supported versions, private vulnerability reporting, the trust
+  model (a trusted, unsandboxed Paseo plugin running as the daemon user) and the
+  out-of-scope list.
+- Remove machine-specific home paths from the public release docs; tests use a
+  neutral path.
+
+### Known limits
+
+- A durable save commits the guard reservation before resolving `interactivePath`.
+  If that later lookup fails, the tool returns `store_failed` while the artifact
+  exists and the turn slot is already consumed. Retrying would create a second
+  card; the next turn should reuse the reported card rather than republish.
+- The per-turn guard is an in-memory nudge. A restart, a changed cosmetic byte,
+  missing attribution or an unknown turn lifecycle can allow another card.
+- Native-device and provider behavior depend on the host client/provider and are
+  not guaranteed by this package. A compact web viewport is not native evidence.
+
+### Verified
+
+- Focused package/install checks are recorded in the release evidence; the parent
+  runs the full serial suite and live dogfood before publication. This changelog
+  does not treat a unit-test count as npm or live-client acceptance.
 
 ## [2.1.0] - 2026-10-21
 

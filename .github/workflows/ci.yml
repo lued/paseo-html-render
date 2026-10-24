@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: html-render-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Checks (Node 22.18, Paseo fixture)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.18.0
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - uses: browser-actions/setup-chrome@v1
+        id: chrome
+        with:
+          chrome-version: stable
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Full serial tests
+        env:
+          PASEO_HTML_RENDER_CHROMIUM: ${{ steps.chrome.outputs.chrome-path }}
+        run: npm test
+      - name: Bundle boundaries
+        run: npm run check:bundles
+      - name: Package artifact and links
+        run: npm run check:package -- --out "$RUNNER_TEMP/hr-package"
+      - name: Upload package evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-check
+          path: |
+            ${{ runner.temp }}/hr-package/*.tgz
+            ${{ runner.temp }}/hr-package/package-check.json
+          if-no-files-found: error
+
+  install-smoke:
+    name: Isolated install smoke (Paseo ${{ matrix.paseo }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - paseo: "0.12.0"
+          - paseo: "0.13.0-beta.2"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.18.0
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - uses: browser-actions/setup-chrome@v1
+        id: chrome
+        with:
+          chrome-version: stable
+      - name: Install dependencies and build tarball
+        run: |
+          npm ci --ignore-scripts
+          npm run check:package -- --out "$RUNNER_TEMP/hr-package"
+      - name: Install isolated Paseo and Pi fixture
+        run: |
+          npm install --prefix "$RUNNER_TEMP/paseo" "@getpaseo/cli@${{ matrix.paseo }}" \
+            --omit=dev --ignore-scripts --no-audit --no-fund
+          npm install --prefix "$RUNNER_TEMP/pi" "@earendil-works/pi-coding-agent@1.4.0" \
+            --omit=dev --ignore-scripts --no-audit --no-fund
+          echo "$RUNNER_TEMP/pi/node_modules/.bin" >> "$GITHUB_PATH"
+      - name: Isolated package install and adapter readback
+        env:
+          PASEO_HTML_RENDER_CHROMIUM: ${{ steps.chrome.outputs.chrome-path }}
+        run: |
+          node scripts/smoke-package.mjs \
+            --tarball "$RUNNER_TEMP/hr-package/paseo-html-render-2.2.0.tgz" \
+            --paseo "$RUNNER_TEMP/paseo/node_modules/.bin/paseo" \
+            --out "$RUNNER_TEMP/hr-smoke" \
+            --skip-missing-browser
+      - name: Upload smoke evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-smoke-${{ matrix.paseo }}
+          path: ${{ runner.temp }}/hr-smoke/smoke-result.json
+          if-no-files-found: error

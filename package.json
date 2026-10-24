@@ -1,7 +1,7 @@
 {
   "name": "paseo-html-render",
   "private": false,
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Live sandboxed HTML cards in the Paseo timeline, with static previews and native reports.",
   "license": "MIT",
   "author": "lued",
@@ -26,13 +26,22 @@
     "paseo-plugin.json",
     "README.md",
     "OVERVIEW.md",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
     "LICENSE",
     "CHANGELOG.md",
     "index.client.tsx",
     "index.server.ts",
     "client/",
     "server/",
-    "shared/"
+    "shared/",
+    "docs/compatibility.md",
+    "docs/interactivity.md",
+    "docs/release.md",
+    "docs/showcase.md",
+    "docs/images/showcase/",
+    "examples/showcase/",
+    "examples/interactive/"
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -41,7 +50,11 @@
     "check:bundles": "node scripts/check-bundles.mjs",
     "test:unit": "node --test tests/recognize.test.ts tests/artifacts.test.ts tests/authority.test.ts",
     "verify:e2e": "node --test --test-concurrency=1 tests/e2e/verify.test.ts",
-    "check:trigger": "node scripts/trigger-eval.mjs"
+    "check:trigger": "node scripts/trigger-eval.mjs",
+    "check:package": "node scripts/check-package.mjs",
+    "smoke:package": "node scripts/smoke-package.mjs",
+    "test:package": "node --test tests/package-metadata.test.ts tests/showcase-docs.test.ts",
+    "prepublishOnly": "npm run typecheck && npm run check:bundles && npm run check:package"
   },
   "devDependencies": {
     "@getpaseo/plugin": "0.12.0",
@@ -60,7 +73,7 @@
     "node": ">=22.18.0"
   },
   "peerDependencies": {
-    "@getpaseo/plugin": ">=0.12.0 <0.13.0"
+    "@getpaseo/plugin": ">=0.12.0 <0.14.0"
   },
   "dependencies": {
     "pele": "1.7.0"
