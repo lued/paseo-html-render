@@ -8,7 +8,11 @@ or live client acceptance has finished. Historical `v2.1.0` stays unchanged.
 authorized completing the remaining live cases with OpenCode Go DeepSeek max
 subagents, prioritizing Android. macOS is not a required gate. npm authentication
 and publication remain deferred; nothing has been pushed, tagged or published.
-Previous dogfood history is preserved. See the internal Android-first acceptance
+Previous dogfood history is preserved. The user requires inline interactive
+cards on Android native, Chrome and PWA. PNG/report-only display or opening an
+HTML side pane does not satisfy Android parity; the current forced-static
+implementation does not prove the host cannot support it. Native runtime/host
+capability investigation is required. See the internal Android-first acceptance
 plan for ownership and evidence requirements.
 
 ## Candidate identity

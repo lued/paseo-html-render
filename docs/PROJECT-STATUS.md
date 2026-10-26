@@ -6,8 +6,10 @@ User direction: build it, dogfood the user-facing cases through Paseo here, then
 release. No publication before the evidence gates pass.
 
 **Live acceptance resumed by user request (2026-10-26).** Complete item 2 in
-full using OpenCode Go DeepSeek max subagents; Android is the target. macOS is
-not an acceptance gate. npm authentication/publication remains deferred to the
+full using OpenCode Go DeepSeek max subagents; Android is the target. The user
+requires INLINE INTERACTIVITY on Android native, Chrome and PWA, not PNG-only
+or a separate HTML pane. Current forced-static behavior is not an accepted
+endpoint or evidence of impossibility. macOS is not an acceptance gate. npm authentication/publication remains deferred to the
 last step; no push, tag or registry publication in this phase. Password-protected
 daemons are normal and must remain protected. Execution/evidence contract:
 [Android-first acceptance plan](plans/2026-10-26-android-live-acceptance.md).
@@ -90,7 +92,9 @@ daemons are normal and must remain protected. Execution/evidence contract:
 - Protected-host web acceptance is being repaired using an owned disposable
   daemon and generated test credentials through the real pairing/password UI.
   It does not need the user's password. Never change the user's daemon auth or
-  relay settings. Physical Android needs target-client information/observations.
+  relay settings. Physical Android ultimately needs real-device observations, but the feature
+  target covers native/Chrome/PWA equally; do not ask the user to accept reduced
+  functionality by selecting a platform.
 - Latest npm check after `a477d8d`: ENEEDAUTH. A visible Paseo terminal named
   `npm release login` was opened for sign-in; the attempt may need restarting
   after the pause. Authentication stays in a visible terminal, never chat.
