@@ -256,6 +256,16 @@ export function Icon(props: AnyProps) {
   return createElement("span" as never, { "aria-hidden": "true" } as never, String(props.name ?? ""));
 }
 
+export const Platform = { OS: "android" as const };
+export const StyleSheet = { create: <T,>(value: T): T => value };
+export const UIManager = {
+  dispatchViewManagerCommand: (_tag: number, _command: string, _args: unknown[]): void => undefined,
+};
+export const findNodeHandle = (_value: unknown): number => 1;
+export function DocumentFrame() {
+  return null;
+}
+
 export function useRpc(contract: { name: string }) {
   return async (input: unknown): Promise<unknown> => {
     const handler = globals.__rpc?.[contract.name];

@@ -10,12 +10,62 @@ subagents, prioritizing Android. macOS is not a required gate. npm authenticatio
 and publication remain deferred; nothing has been pushed, tagged or published.
 Previous dogfood history is preserved. The user requires inline interactive
 cards on Android native, Chrome and PWA. PNG/report-only display or opening an
-HTML side pane does not satisfy Android parity; the current forced-static
-implementation does not prove the host cannot support it. Native runtime/host
-capability investigation is required. See the internal Android-first acceptance
-plan for ownership and evidence requirements.
+HTML side pane does not satisfy Android parity. The production Android inline
+candidate is now implemented and deployed as recorded below; actual physical
+Android acceptance remains open. See the internal Android-first acceptance plan
+for ownership and evidence requirements.
 
-## Candidate identity
+## Current integrated candidate — deployed 2026-10-26, 07:53 UTC
+
+The existing user installation of html-render was normally reloaded; no probe
+plugin was installed and no auth, relay or security settings were changed.
+Android auto/iframe cards now fetch authorized original HTML and mount the
+trusted WebView shell with an opaque allow-scripts inner frame. Public runtime
+capabilities are checked; unavailable hosts and load/transport failures are
+explicit degradation, not parity acceptance. Desktop behavior remains covered.
+
+| Check | Independently observed result |
+| --- | --- |
+| Full serial suite, Node 26.12.1 | **287/287 pass**, zero failures/skips/cancellations |
+| Full serial suite, Node 22.18.0 | **287/287 pass**, zero failures/skips/cancellations |
+| Typecheck / bundle boundaries | PASS; 17 client / 24 server inputs; Pele server-only |
+| Full G1–G6 wrapper | **6/6 pass**, zero blocked/unavailable gates; 07:54–07:55 UTC |
+| Exact package install/smoke | PASS, Node 26 / Paseo 0.13.0-beta.2 and Node 22 / Paseo 0.12.0 |
+| Package/repack/source equality | PASS; independent tarballs identical; all 74 packed files match deployed source tree |
+| Package SHA-256 | `11453c79da4528c4df65d1cf3dea4e899c3d6d6d55f1c70bb093617017409dfc` |
+| Package sizes / contents | 1,563,606 packed / 2,062,771 unpacked bytes; 74 entries; 43 required files; 40 local links; zero forbidden matches |
+| Actual host client bundle | 156,969 bytes; SHA-256 `4f5cc85d2cad38ef33450904d3f7851b97fe93ecb089ac4e30f4df277ef0e692` |
+| Deployed bundle equality | Byte-for-byte equal to independent installed-host compilation of current source, including path comments |
+| Physical Android native / Chrome / PWA | **Unverified; ready for the user's single integrated phone pass**, not accepted parity |
+
+Private evidence: `/tmp/hr-acceptance-20261026/integrated-parent/`.
+The exact tarball is under `package/`; matching repack under `repack/`.
+Initial full-suite failure was an obsolete expectation for the corrected
+inspector static note; the expectation was fixed and BOTH full suites rerun.
+The first deployment hash comparison differed only in esbuild path comments;
+matching the daemon's compiler cwd produced exact raw-byte equality. Both
+initial failures are retained, not silently counted as passes.
+
+Native-focused browser/protocol/component tests cover real arbitrary/dynamic
+inline scripts, opaque-parent/storage denial, blocked remote fetch, no RN JS
+bridge, genuine image/link activation, a real multi-chunk PNG opened twice,
+message/session/replay/ack validation, bounded queues/deadlines, ordered theme
+acks during image transfer, stable source across theme changes and document
+identity reset. These remain Chromium/shim evidence, not Android Fabric proof.
+
+G6 used the requested DeepSeek max model, a generated-password disposable host,
+completed render rows and exact authorized original-source readback. Normal
+credential-link UI rejected missing/wrong credentials, admitted only the owned
+host, and displayed one inline card after refresh. Password-prompt-branch and
+mobile-control acceptance are not inferred. Browser/profile/daemon/root cleanup
+was positively verified. npm publication and remote CI remain unperformed.
+
+## Historical candidate identity
+
+**The table below is the last verified historical tarball, not a publishable
+candidate for the current tree.** The accepted flow hit-target repair changes
+packed example content. A new exact package, full suites and install checks are
+required after integration; no replacement tarball has been verified yet.
 
 Runtime content through `a477d8d`, including atomic guard `e3987a1`, production
 type-resolution fix `907be95`, Chromium launch-error fix `793ae7c` and the
@@ -98,15 +148,16 @@ in the actual hosted client. These cases are the remaining live acceptance work:
 | D1 fresh injection and text-only single-fact selection | PASS: fresh 2.2.0 adapter injected; agent read package.json and replied `2.2.0`; zero HTML calls |
 | D2 chart of real repository/tool data | Counts 14/7/9 independently verified; initial PNG captured intermediate animation. Fixed at `a477d8d`; parent geometry/PNG check and real model post-reload preview PASS. Final hosted acceptance pending |
 | D3 source-based flow and built-in Pele/report graph | PARTIAL (2026-10-26): one real publication, four inspected previews; stored 6-node/6-edge report graph has actual light/dark Pele PNGs. Parent inspected source/PNGs. Native-report transport wording corrected in report-only update; actual client/Android checks remain pending |
-| D4 all three showcase pages published and inspected | Pending: one existing pipeline example was provided in the parent thread on request at pause; this is not completed hosted-client acceptance |
-| D5 flow/inspector/filter controls, keyboard, motion and reflow | Pending |
-| D6 actual web auto/iframe/static/report views and file link | Pending: test-only protected fixture/auth correction underway; no user password needed. Actual Android/client views remain unverified |
-| D7 same-turn/concurrent/unchanged refusals and next-turn update | Live pending-reservation race PASS (one success), same-turn unchanged PASS, meaningful next-turn report-only update PASS. Cross-turn exact-repeat check in progress; client/history checks pending |
-| D8 image/report/metadata changes, missing-image diagnostics and ownership/readback | Report-only correction PASS; exact HTML/previews/graph bytes preserved. Image, metadata, diagnostics and ownership/legacy checks remain pending |
-| D9 persisted history, refresh and one card per artifact | Pending |
-| D10 exact production tarball / actual published npm-source acquisition | Tarball PASS; npm-source pending |
+| D4 all three showcase pages published and inspected | PARTIAL: pipeline and image-inspection artifacts available; image preparation/static defaults checked. Incident timeline and complete hosted/Android showcase checks pending |
+| D5 flow/inspector/filter controls, keyboard, motion and reflow | PARTIAL: flow centre-hit defect fixed; corrected saved artifact and inspector controls pass in opaque local frames. Inspector source static wording and captures repaired; filter pending; hosted/physical Android controls unverified |
+| D6 actual web auto/iframe/static/report views and file link | PARTIAL: reviewed protected requested-model run PASS for hosted desktop-web auto inline card and file preview. Other modes, real controls and native/Android surfaces remain pending; file preview is not native parity |
+| D7 same-turn/concurrent/unchanged refusals and next-turn update | Live pending-reservation race PASS (one success), same-turn unchanged PASS, cross-turn exact-repeat PASS (16 ms), meaningful report-only update PASS. Real client/device presentation beyond the protected fixture remains pending |
+| D8 image/report/metadata changes, missing-image diagnostics and ownership/readback | Report-only correction PASS with HTML/previews/graph bytes preserved; image inlining/static checks and preview-only missing-image diagnostic PASS. Metadata, cross-owner/authority and legacy cases remain pending |
+| D9 persisted history, refresh and one card per artifact | PARTIAL: one protected hosted-web artifact survives refresh with exactly one inline card despite outer/direct render rows. Android and remaining artifact/control cases pending |
+| D10 exact production tarball / actual published npm-source acquisition | Historical tarball PASS; current packed changes require a new verified candidate. Registry/npm-source work remains deliberately deferred |
 
-The full live `npm run verify:e2e` run produced **5 pass / 1 fail**: G1–G5
+Historical pre-repair evidence (superseded for the narrow protected fixture by
+the checkpoint below): the full live `npm run verify:e2e` run produced **5 pass / 1 fail**: G1–G5
 passed; G6 timed out while the real hosted client was connecting, before a card
 was displayed. Private evidence is in `live/e2e/` under the receipt root.
 Chrome 153 initially blocked local/loopback networking. Per-origin permission
@@ -176,6 +227,72 @@ geometry. The same live agent then read the exact source and made one actual
 14/7/9 units; no republish or artifact mutation. CSS can ignore the preference,
 so guidance also prohibits animating essential chart geometry on initial load.
 This is not a general CSS freeze.
+
+### 2026-10-26 reviewed protected-host/model/browser checkpoint
+
+Parent independently ran the current fixture with `pi`,
+`ocx/opencode-go/deepseek-v4.1-flash`, thinking `max`: **PASS**,
+04:34:17–04:35:46 UTC, Node 26.12.1 / Paseo 0.13.0-beta.2 / source 2.2.0.
+Private evidence: `/tmp/hr-acceptance-20261026/protected-parent-g6-reviewed-HqPqT8/`.
+Artifact `6446ff61b48360ffbe38ced3c307d576` belonged to this disposable fixture,
+not the user installation; cleanup intentionally removed its live files.
+
+- Bridge socket 58/100 bytes, actual Unix socket, matching current adapter hash.
+  This repairs the first failed run: a deeply nested fixture home caused bridge
+  startup failure even though Paseo reported Plugin ready. That first run had
+  no browser evidence and is not counted as a pass.
+- Both a completed codemode row and a completed direct render row carried the
+  same unique marker/artifact/title. The underlying invocation count cannot be
+  inferred from their two provider row IDs. Authorized plugin readback matched
+  the exact owned interactive file and requested original-source SHA-256.
+- Persisted owned record observed MCP stdio configuration and `alwaysLoad:true`;
+  these are config diagnostics, not proof of provider-runtime alwaysLoad behavior.
+- Server admission rejected missing/wrong passwords with exact reasons and
+  accepted the generated password. Hosted UI used `link_credentials`: real
+  paste-link onboarding, rejected missing/wrong credentials with no admitted
+  host, then connected only the expected fixture host. It does **not** prove the
+  password-prompt UI branch. No stored host/password injection, ambient local
+  bootstrap, user password access or security-setting changes.
+- Parent inspected actual timeline/refresh captures: one opaque allow-scripts
+  inline card with real CSP and marker, still one after refresh. File preview
+  was separately checked as a secondary view, not native-inline acceptance.
+- Browser stopped/profile removed; daemon status proved stopped with null PID;
+  owned work root removed. Missing cleanup evidence downgrades a completed run.
+- Parent typecheck and 15/15 focused tests pass on Node 26 and Node 22, zero
+  failures/skips/cancellations. These do not replace a latest-tree full suite,
+  full G1–G6 wrapper run, all-mode checks or physical Android controls.
+
+### 2026-10-26 example and native-capability checkpoint
+
+Flow artifact `d12fd46cd0fe5e63854131e25cd7b389` exposed rotated decorative
+chevrons covering narrow stage centres. A failing-then-passing mouse/touch
+regression supports the minimal pointer-events repair. Corrected exact artifact
+`47099278b32b0f50e4904bb5a7a6cb69` passes local 375/390/wide interactions,
+keyboard and static/motion checks. Captured PNG bytes stayed unchanged; source
+hash changed. Inspector `6e6109469a633921d28083b17cbfb2be` passes exact-artifact
+range mouse/touch/keyboard, theme, motion, reflow and useful script-disabled
+checks. Its saved artifact retains the old side-by-side note. Source wording,
+captures and both narrow/wide script-disabled regressions are now corrected;
+the saved artifact was not silently rewritten or republished. Receipts: `interactive-flow-fix/` and `interactive-inspector/`
+under the private acceptance root. These are not hosted/phone control evidence.
+
+Actual pinned host source exposes the full public RN root and bundles WebView.
+A raw already-registered RNCWebView string/public-command route compiles without
+deep imports or registry overrides; a mandatory host update is not proven.
+Parent reviewed/hardened the private counter-only prototype: exact script hashes,
+trusted shell plus opaque iframe, parent/source filtering and acknowledged reset
+(including reset at zero). Its 7/7 local Node-reported tests pass, including a
+real Chromium shell check with the OS sandbox explicitly enabled and bypass
+flags checked absent. Controlled forbidden-resource endpoints received zero
+requests; parent/storage/cookie access was refused. Normal isolated SDK install
+passed with generated-password admission and verified fixture cleanup. Reviewed
+client bundle: 20,278 bytes, SHA-256
+`e904d530ac26875273ef9e1507897f2241310bb79df433a161f58b8a99e52023`.
+
+No user-host probe installation or phone execution has happened. The prototype
+is a separate diagnostic screen, not conversation-inline implementation or
+Android parity. Actual native render/events/command/containment checks and full
+inline height/theme/accessibility/history/image behavior remain open.
 
 ## Boundaries and unverified claims
 

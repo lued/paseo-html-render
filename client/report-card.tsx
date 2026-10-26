@@ -14,10 +14,10 @@ import type { PluginTimelineItemProps } from "@getpaseo/plugin/client";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
 import { Modal, useToast } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Image, Pressable, Text, View } from "react-native";
 import type { ImageStyle, TextStyle, ViewStyle } from "react-native";
-import { appearanceFromColors, selectHtmlFrameKind } from "../shared/html-document.ts";
+import { appearanceFromColors } from "../shared/html-document.ts";
 import {
   readArtifactRpc,
   readAssetRpc,
@@ -26,6 +26,7 @@ import {
 } from "../shared/protocol.ts";
 import { isSafeHttpUrl } from "../shared/report-model.ts";
 import { HtmlFrame } from "./html-frame.tsx";
+import { NativeHtmlFrame, nativeHtmlCapability } from "./native-html-frame.tsx";
 import { FileLinkSection, toneColor } from "./report-blocks.tsx";
 import {
   cardHighlights,
@@ -62,6 +63,7 @@ export function ReportCard({ item, agentId, theme, layout }: PluginTimelineItemP
   }, [data.artifactId]);
 
   const appearance = appearanceFromColors(theme.colors);
+  const native = useMemo(() => nativeHtmlCapability(layout.platform), [layout.platform]);
   const artifact = useQuery({
     queryKey: ["html-render", "artifact", data.artifactId, agentId],
     queryFn: () => readArtifact({ artifactId: data.artifactId, agentId }),
@@ -74,7 +76,7 @@ export function ReportCard({ item, agentId, theme, layout }: PluginTimelineItemP
     staleTime: Number.POSITIVE_INFINITY,
     retry: 1,
     enabled:
-      layout.platform === "web" &&
+      (layout.platform === "web" || (layout.platform === "android" && native.available)) &&
       data.renderMode !== "static" &&
       ARTIFACT_ID.test(data.artifactId) &&
       agentId.length > 0,
@@ -84,17 +86,29 @@ export function ReportCard({ item, agentId, theme, layout }: PluginTimelineItemP
   // legacy marker without the field) must not silently turn a static card live
   // or a live card static.
   const effectiveRenderMode = cardRenderMode(data.renderMode, artifact.data?.renderMode);
-  const wantsLive =
-    ARTIFACT_ID.test(data.artifactId) &&
-    agentId.length > 0 &&
-    selectHtmlFrameKind({ platform: layout.platform, renderMode: effectiveRenderMode }) === "live";
   const hasReport = artifact.data?.report !== undefined && artifact.data.report !== null;
   const mode = reportCardMode({
     platform: layout.platform,
     renderMode: effectiveRenderMode,
     hasHtml: original.data !== undefined,
     hasReport,
+    nativeAvailable: native.available,
   });
+
+  const nativeFallback =
+    layout.platform === "android" &&
+    native.available === false &&
+    (effectiveRenderMode === "auto" || effectiveRenderMode === "iframe") &&
+    ARTIFACT_ID.test(data.artifactId) &&
+    agentId.length > 0;
+  const withNativeFallback = (content: ReactNode) => nativeFallback ? (
+    <>
+      <Text style={{ color: theme.colors.statusWarning, fontSize: 12, lineHeight: 18 }}>
+        Interactive HTML is unavailable on this client. Showing a static fallback.
+      </Text>
+      {content}
+    </>
+  ) : content;
 
   const previewName = previewAssetName(appearance, artifact.data?.assets);
   const preview = useQuery({
@@ -184,25 +198,42 @@ export function ReportCard({ item, agentId, theme, layout }: PluginTimelineItemP
     </Modal>
   );
 
-  if (mode === "live") {
+  if (mode === "live" || mode === "native") {
     // Borderless, like the T3 inline frame: no title, summary or outer card.
-    // A structured report is still reachable, or it would be invisible on web.
+    // A structured report is still reachable, or it would be invisible.
     const reportAvailable = artifact.data?.report !== undefined && artifact.data.report !== null;
+    const frame = mode === "native" ? (
+      <NativeHtmlFrame
+        html={liveHtml}
+        title={artifactTitle}
+        artifactKey={data.artifactId}
+        theme={theme}
+        appearance={appearance}
+        requestedHeight={data.height}
+        heights={data.heights}
+        platform={layout.platform}
+        renderMode={effectiveRenderMode}
+        onOpenLink={openLink}
+        onOpenImage={setZoom}
+      />
+    ) : (
+      <HtmlFrame
+        html={liveHtml}
+        title={artifactTitle}
+        artifactKey={data.artifactId}
+        theme={theme}
+        appearance={appearance}
+        requestedHeight={data.height}
+        heights={data.heights}
+        platform={layout.platform}
+        renderMode={effectiveRenderMode}
+        onOpenLink={openLink}
+        onOpenImage={setZoom}
+      />
+    );
     return (
       <>
-        <HtmlFrame
-          html={liveHtml}
-          title={artifactTitle}
-          artifactKey={data.artifactId}
-          theme={theme}
-          appearance={appearance}
-          requestedHeight={data.height}
-          heights={data.heights}
-          platform={layout.platform}
-          renderMode={effectiveRenderMode}
-          onOpenLink={openLink}
-          onOpenImage={setZoom}
-        />
+        {frame}
         {reportAvailable && canOpenReportScreen() ? (
           <Pressable
             accessibilityRole="button"
@@ -248,7 +279,7 @@ export function ReportCard({ item, agentId, theme, layout }: PluginTimelineItemP
     const highlights = cardHighlights(report);
     const graphUri = graph.data ? `data:image/png;base64,${graph.data.base64}` : undefined;
     const graphAspect = imageAspectRatio(graph.data?.width, graph.data?.height);
-    return (
+    return withNativeFallback(
       <View style={styles.card}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           <View
@@ -365,7 +396,7 @@ export function ReportCard({ item, agentId, theme, layout }: PluginTimelineItemP
     );
   }
 
-  return (
+  return withNativeFallback(
     <View style={styles.card} accessibilityLabel={`HTML report: ${artifactTitle}`}>
       {(artifact.data?.summary ?? data.summary) ? (
         <Text style={styles.body}>{artifact.data?.summary ?? data.summary}</Text>

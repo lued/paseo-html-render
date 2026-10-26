@@ -758,7 +758,7 @@ export function readOpenImageRequest(data: unknown): OpenImageRequest | undefine
 
 export type HtmlFramePlatform = "ios" | "android" | "web";
 export type HtmlFrameRenderMode = "static" | "auto" | "iframe" | undefined;
-export type HtmlFrameKind = "live" | "static";
+export type HtmlFrameKind = "live" | "native" | "static";
 export type HtmlFrameFailureReason = "timeout" | "load_error" | "unavailable";
 
 export const HTML_FRAME_MIN_HEIGHT = RENDER_MIN_HEIGHT;
@@ -773,16 +773,34 @@ export function canRenderLiveHtmlFrame(platform: HtmlFramePlatform): boolean {
   return platform === "web";
 }
 
+/** Android may use the reviewed native adapter only when its host capability is ready. */
+export function canRenderNativeHtmlFrame(
+  platform: HtmlFramePlatform,
+  nativeAvailable: boolean,
+): boolean {
+  return platform === "android" && nativeAvailable === true;
+}
+
 /**
- * `auto`/`iframe` mean live HTML on web; `static`, an absent render mode
- * (legacy marker), and every native platform mean the static PNG.
+ * `auto`/`iframe` mean live HTML on web, or the native adapter on Android when
+ * its public host capability is actually ready. `static`, legacy absence, and
+ * unavailable native hosts stay static.
  */
 export function selectHtmlFrameKind(input: {
   platform: HtmlFramePlatform;
   renderMode: HtmlFrameRenderMode;
+  nativeAvailable?: boolean;
 }): HtmlFrameKind {
-  if (!canRenderLiveHtmlFrame(input.platform)) return "static";
-  return input.renderMode === "auto" || input.renderMode === "iframe" ? "live" : "static";
+  if (canRenderLiveHtmlFrame(input.platform)) {
+    return input.renderMode === "auto" || input.renderMode === "iframe" ? "live" : "static";
+  }
+  if (
+    canRenderNativeHtmlFrame(input.platform, input.nativeAvailable === true) &&
+    (input.renderMode === "auto" || input.renderMode === "iframe")
+  ) {
+    return "native";
+  }
+  return "static";
 }
 
 export function clampFrameHeight(height: number): number {

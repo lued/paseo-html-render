@@ -61,12 +61,12 @@ the turn slot consumed. Do not describe this as permanent or semantic deduplicat
 
 | Capability | Plugin implementation / difference |
 | --- | --- |
-| Live inline HTML | Web/desktop raw `srcDoc` iframe, unsupported by public SDK; no inline HTML on native |
+| Live inline HTML | Web/desktop raw `srcDoc` iframe. Android uses a constant trusted native WebView shell plus an opaque `allow-scripts` inner frame only when the public DocumentFrame/WebView host capability is ready. iOS and hosts without that capability keep the static PNG/report. |
 | Theme | T3-like token names mapped to Paseo palette; initial theme plus live messages without reload. Exported file follows OS color preference |
 | Height | T3-style nearest-width fitting and requested cap semantics; measurements at 320/375/430/520/640/728/860/1000/1144 CSS px |
 | Layout width | Live iframe is 100% of the host thread column (roughly 600–1100 CSS px); 728 is only the default capture width. No plugin-side max-width, and no expand/fullscreen surface |
 | Fullscreen | Removed at user request. No expand button, viewport overlay, fullscreen zoom toolbar, or Escape-dismiss channel; iframe fullscreen permission explicitly denied |
-| Native | Structured report views when `report` exists; otherwise static PNG. Full arbitrary HTML via assistant file link where client supports it |
+| Native | Android: inline trusted-shell adapter for original HTML in `auto`/`iframe` when the public host capability is ready; explicit errors/retry on failure. iOS and unavailable Android hosts: structured report when `report` exists, otherwise static PNG. Full arbitrary HTML via assistant file link where the client supports it. |
 | Static fallback | Light/dark PNGs, requested frame cap distinct from actual screenshot dimensions; missing/live-failed states remain readable |
 | Graph | Pinned `pele@1.7.0` converts bounded generated Mermaid to light/dark SVG then inert PNG; native nodes/edges/decisions stay authoritative |
 | Accounting | Usage quantities explicitly measured, estimated or unavailable; no inferred cost/model attribution |

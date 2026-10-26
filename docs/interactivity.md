@@ -31,8 +31,9 @@ hash, renderer, widths and content heights.
 
 ## What works
 
-Inside the live web/desktop frame, and in `interactive.html` when opened in a
-browser, the page may use:
+Inside the live web/desktop frame, in the Android client on a host that exposes
+the public native DocumentFrame/WebView capability, and in `interactive.html`
+when opened in a browser, the page may use:
 
 - inline `<style>`, inline `<script>`, the DOM, inline SVG and `data:` raster
   images;
@@ -45,15 +46,27 @@ browser, the page may use:
 - short CSS transitions or keyframe reveals that show what changed;
 - `prefers-reduced-motion` in CSS and `matchMedia` logic in JavaScript.
 
-The live frame is sandboxed with `allow-scripts` only. It has an opaque origin:
-scripts can change their own document, but cannot read the Paseo page, its
-storage or the session.
+The live web frame is sandboxed with `allow-scripts` only. It has an opaque
+origin: scripts can change their own document, but cannot read the Paseo page,
+its storage or the session.
+
+On Android, the plugin mounts a constant trusted WebView shell only when the
+public host capability is present. The report document stays inert JSON until
+the shell assigns it to an opaque `allow-scripts` inner frame. Only the constant
+shell script runs outside that frame. The shell forwards source-checked ready,
+height, link, image and theme messages through bounded, acknowledged chunks; it
+requires fresh focus/user activation before link/image requests. Missing
+capability, registration, handshake, acknowledgement, load or process failure is
+shown as an explicit error with retry. iOS, older hosts without the public
+capability, and explicit `static` mode continue to use the static PNG or native
+report. Browser/shim tests are not physical Android evidence.
 
 ## Static first
 
-`html_preview` returns a PNG with page JavaScript disabled. Native clients show
-a static PNG or the native report, never the live iframe. A reader may also open
-the published page in a context where scripts fail.
+`html_preview` returns a PNG with page JavaScript disabled. Android uses the
+inline native adapter only when its public host capability is ready; otherwise
+it shows the static PNG or native report. A reader may also open the published
+page in a context where scripts fail.
 
 Design the default markup first:
 
@@ -134,9 +147,11 @@ The current sandbox and CSP deliberately block more than they allow:
   agent, open a workspace, run a command or change the host. The only
   host-reaching actions today are the existing user-activated http(s) link and
   `data:` image open requests; they are not a general host API.
-- live behavior on native clients or in the static preview. Those surfaces get
-  the PNG or native report, so a page must not claim that a control is usable
-  there when it is only a screenshot.
+- live behavior on iOS, older Android hosts without the public WebView
+  capability, and in the static preview. Those surfaces get the PNG or native
+  report, so a page must not claim that a control is usable there when it is only
+  a screenshot. Android inline rendering is available only through the reviewed
+  trusted-shell adapter described above.
 
 One limitation remains in the live iframe: a page can still navigate itself, for
 example by assigning `location` or using a zero-delay meta refresh. CSP and link

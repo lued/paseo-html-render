@@ -399,6 +399,11 @@ test("frame selection is web-only and legacy markers stay static", () => {
   assert.equal(selectHtmlFrameKind({ platform: "web", renderMode: undefined }), "static");
   assert.equal(selectHtmlFrameKind({ platform: "ios", renderMode: "auto" }), "static");
   assert.equal(selectHtmlFrameKind({ platform: "android", renderMode: "iframe" }), "static");
+  assert.equal(selectHtmlFrameKind({ platform: "android", renderMode: "iframe", nativeAvailable: true }), "native");
+  assert.equal(selectHtmlFrameKind({ platform: "android", renderMode: "auto", nativeAvailable: true }), "native");
+  assert.equal(selectHtmlFrameKind({ platform: "android", renderMode: "static", nativeAvailable: true }), "static");
+  assert.equal(selectHtmlFrameKind({ platform: "ios", renderMode: "auto", nativeAvailable: true }), "static");
+  assert.equal(selectHtmlFrameKind({ platform: "web", renderMode: "auto", nativeAvailable: true }), "live");
 });
 
 test("measured heights filter, dedupe, sort, and pick the taller neighbour", () => {

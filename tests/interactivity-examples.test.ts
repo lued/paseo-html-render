@@ -263,7 +263,7 @@ test("examples are useful and reflow without overflow when JavaScript is disable
       if (name === "inspector") {
         assert.notEqual(observed.compareNote, "none", "the static before/after explanation is visible");
         assert.equal(observed.compareControls, "none", "the slider is hidden without JS");
-        assert.match(String(observed.text), /Both versions are shown side by side/);
+        assert.match(String(observed.text), /Both versions are shown\. The draggable comparison is an optional enhancement\./);
         assert.match(String(observed.text), /Before: dense draft/);
         assert.match(String(observed.text), /After: clearer final/);
         assert.deepEqual(observed.labels, [

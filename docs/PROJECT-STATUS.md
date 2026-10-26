@@ -8,8 +8,8 @@ release. No publication before the evidence gates pass.
 **Live acceptance resumed by user request (2026-10-26).** Complete item 2 in
 full using OpenCode Go DeepSeek max subagents; Android is the target. The user
 requires INLINE INTERACTIVITY on Android native, Chrome and PWA, not PNG-only
-or a separate HTML pane. Current forced-static behavior is not an accepted
-endpoint or evidence of impossibility. macOS is not an acceptance gate. npm authentication/publication remains deferred to the
+or a separate HTML pane. The integrated Android inline candidate is now
+deployed; physical native/Chrome/PWA parity is not yet accepted. macOS is not an acceptance gate. npm authentication/publication remains deferred to the
 last step; no push, tag or registry publication in this phase. Password-protected
 daemons are normal and must remain protected. Execution/evidence contract:
 [Android-first acceptance plan](plans/2026-10-26-android-live-acceptance.md).
@@ -30,30 +30,52 @@ daemons are normal and must remain protected. Execution/evidence contract:
   24 server inputs). Private full log: `/tmp/html-render-guard-full-tests.log`.
   This is local code evidence, not live Paseo or final package acceptance.
 
-## Current acceptance workers (2026-10-26)
+## Current acceptance checkpoint (2026-10-26)
 
-- Auth/Android scout completed; reused as the sole test-code writer:
-  `6dc72359-217a-4bec-8f0b-f2578d614da0`. Owns protected-fixture/hosted-client
-  harness and focused tests only; no runtime/product edits or live-daemon changes.
-  Auth implementation returned uncommitted; parent review and genuine protected
-  model/UI run remain pending. No paid fixture model run has happened yet.
-- Live visual/guard agent: `7f2af7be-6c85-475c-989f-580cb77a270f`.
-  Source-flow artifact `56de6280af18b8d2d997e52e753f9940` and actual Pele
-  light/dark graph PNGs inspected; Android/client acceptance remains open.
-  Real concurrent pending-reservation refusal, same-turn unchanged refusal and
-  report-only correction PASS; parent independently verified artifact bytes.
-  Cross-turn unchanged refusal, image-inspection publish and missing-image
-  diagnostics reported successful; parent receipt review remains. The image
-  publication response was lost after a local helper exception, so artifact
-  recovery is evidence, not a claim about unobserved warning text.
-  Now exercising the saved interactive flow in an opaque-frame browser harness.
-  This is not hosted/native Android evidence; native inline remains unmet.
-- Native-inline host/runtime scout: `fd765fb0-8684-405d-8ebf-78c1a9df7ba6`.
-  Read-only evidence on actual native module registry, bundled WebView and
-  supported embedding routes; no impossibility conclusion from SDK types alone.
-- All use OpenCode Go DeepSeek max in main; visual/native scouts are repo read-only,
-  auth worker is sole code writer. No reload during live guard checks. No npm
-  authentication/publication work.
+- Protected-fixture writer `6dc72359-217a-4bec-8f0b-f2578d614da0` returned
+  bounded harness repairs; parent reviewed and tightened the evidence gates.
+  Parent now owns integration; changes are uncommitted. The first real run
+  stopped before browser checks: a long fixture home exceeded the Unix-socket
+  limit. A short private home plus actual socket/adapter readiness fixes this.
+- Parent requested-model run **PASS** at 04:34–04:35 UTC: real DeepSeek max,
+  protected disposable Paseo 0.13.0-beta.2, current source 2.2.0, completed render
+  rows with one matching artifact, exact source hash and authorized owned-store
+  readback. The real hosted app admitted only the intended host; one inline card
+  remained after refresh. Browser auth used normal pasted credential-bearing
+  links, not the password-prompt branch. User auth/config was untouched. Browser,
+  profile, daemon and fixture cleanup were verified. This is hosted desktop-web
+  evidence, not Android or interactive-control acceptance. Receipt:
+  `/tmp/hr-acceptance-20261026/protected-parent-g6-reviewed-HqPqT8/`.
+- Integrated candidate independently verified: **287/287 full serial tests on
+  BOTH Node 26.12.1 and Node 22.18.0**, zero failures/skips/cancellations;
+  typecheck/bundles PASS (17 client / 24 server inputs). Full G1–G6 now
+  **6/6 PASS**, zero blocked/unavailable gates, including a fresh requested-model
+  protected hosted-web case. Exact package install/smokes pass on Paseo 0.12
+  and 0.13; independent repack matches SHA-256 `11453c79da4528c4df65d1cf3dea4e899c3d6d6d55f1c70bb093617017409dfc`.
+- Visual agent `7f2af7be-6c85-475c-989f-580cb77a270f` completed source flow/Pele,
+  guard/update, image diagnostics, flow and inspector cases. The flow centre-hit
+  defect was reproduced and fixed with decorative-chevron pointer-events; exact
+  corrected artifact `47099278b32b0f50e4904bb5a7a6cb69` passes local controls.
+  Inspector `6e6109469a633921d28083b17cbfb2be` passes local controls; its narrow
+  saved static note says side by side; source wording, captures and narrow/wide
+  regressions are corrected. The saved artifact remains unchanged.
+  Filter, remaining showcases and hosted/device controls are still open.
+- Native scout `fd765fb0-8684-405d-8ebf-78c1a9df7ba6` found a plugin-only route
+  using the public RN root namespace and already-registered RNCWebView string.
+  A mandatory host update is not proven. Parent reviewed and hardened the
+  private counter probe; 7/7 local tests and normal isolated SDK installation
+  pass. The counter probe was NEVER installed on the user host. Production
+  conversation-inline implementation is now complete and reviewed: trusted shell,
+  inert report data, opaque inner frame, bounded acknowledged transport and
+  explicit errors/retry. Existing html-render was normally reloaded at 07:53 UTC.
+  Actual host bundle SHA-256 `4f5cc85d2cad38ef33450904d3f7851b97fe93ecb089ac4e30f4df277ef0e692`
+  exactly matches independent installed-host compilation; all 74 packed files
+  match the deployed source. No physical Android/Fabric proof yet.
+- All children retain the requested OpenCode Go DeepSeek max route. No new
+  workspaces, auth/security changes, npm authentication, push/tag or publication.
+  Next user action is ONE integrated native/Chrome/PWA phone pass. Evidence:
+  `/tmp/hr-acceptance-20261026/integrated-parent/`. Historical checkpoint
+  statements below do not supersede this deployed-candidate record.
 
 ## Execution, in order
 
@@ -62,7 +84,7 @@ daemons are normal and must remain protected. Execution/evidence contract:
    fingerprints (including assets/report/frame metadata), and explicit degraded
    attribution/lifecycle warnings. Parent reviewed implementation and full tests.
    Exact comparison is not semantic duplicate prevention; restart clears history.
-2. **npm readiness — locally complete:** package checks/release-neutral docs and
+2. **npm readiness — historically verified; refresh required:** package checks/release-neutral docs and
    exact npm-source smoke mode are complete; live-dogfood capture fix `a477d8d`
    is included. Parent independently ran **259/259 full tests on BOTH Node 22.18
    and Node 26.12** (zero skipped/failed),
@@ -72,6 +94,8 @@ daemons are normal and must remain protected. Execution/evidence contract:
    begins `bd514b08`; old `0112c118` and `5543c437` are superseded and must not
    be published. Parent repack matches the new file in
    `/tmp/hr-release-2.2.0/motion-target/paseo-html-render-2.2.0.tgz`.
+   Packed flow-example changes now supersede that candidate for the current
+   tree: do not publish it. Rebuild/reverify an exact tarball after integration.
    CI and hosted-client browser checks retain the sandbox; remote CI is pending.
 3. **Real Paseo dogfood — resumed, incomplete:** candidate reloaded and running;
    main-workspace agent `afe8aedd-47b4-482b-8eee-a92fca3df601`
@@ -85,10 +109,12 @@ daemons are normal and must remain protected. Execution/evidence contract:
    Full G1–G6 produced 5 pass / 1 fail:
    the hosted client could not connect. Diagnostics progressed past browser
    network permissions to a host password requirement; no password was read.
-   Fresh G1–G5 on the new candidate pass; G6 remains unpassed. Obtain an
-   authenticated visible client, finish D2 and remaining D3–D9 cases.
-   Record each result in docs/verification.md. Tests/fixtures are not live model
-   evidence; physical native/Electron/macOS coverage remains unverified.
+   Fresh G1–G5 on the historical candidate pass. The reviewed protected
+   requested-model/hosted-client fixture and latest integrated full G1–G6
+   wrapper now pass (checkpoint above). Finish D2–D9 beyond that
+   narrow hosted-web case and record each surface separately. Physical native,
+   Android Chrome/PWA and desktop-shell coverage remain unverified; macOS is
+   excluded, not an outstanding gate.
 4. **Publication:** after successful checks/dogfood, publish the exact package to
    npm next, verify an actual npm-source install, then promote and create the
    matching GitHub release/tag. Never overwrite v2.1.0 or an npm version.

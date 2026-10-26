@@ -17,9 +17,9 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { promises as fs } from "node:fs";
+import { promises as fs, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import test, { after, before } from "node:test";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -693,15 +693,15 @@ test("G5 installed plugin registration", { timeout: 120_000 }, async () => {
   );
 });
 
-test("G6 real hosted client timeline and file preview", { timeout: 300_000 }, async () => {
+test("G6 real protected hosted client timeline and file preview", { timeout: 900_000 }, async () => {
   await gate(
-    { id: "G6", title: "hosted web client timeline and file preview", pq: ["PQ-016", "PQ-017", "PQ-024", "PQ-025", "PQ-126", "PQ-132"] },
+    { id: "G6", title: "password-protected hosted web client timeline and file preview", pq: ["PQ-016", "PQ-017", "PQ-024", "PQ-025", "PQ-126", "PQ-132"] },
     async () => {
       if (process.env.PASEO_E2E_CLIENT === "0") {
         return { status: "unavailable" as const, detail: "PASEO_E2E_CLIENT=0: hosted client capture disabled for this run" };
       }
-      // The hosted client needs outbound network. A machine without it is not
-      // evidence either way, so the gate reports `unavailable`, never a pass.
+      // The hosted client and relay need outbound network. A machine without it
+      // is not evidence either way, so the gate reports unavailable, never pass.
       try {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 10_000);
@@ -714,103 +714,204 @@ test("G6 real hosted client timeline and file preview", { timeout: 300_000 }, as
           detail: `hosted client unreachable (${error instanceof Error ? error.message : String(error)}): no real-client evidence this run`,
         };
       }
-      let created: string | null = null;
-      if (!process.env.PASEO_E2E_AGENT) {
-        try {
-          created = await createAcceptanceAgent();
-        } catch (error) {
-          return {
-            status: "unavailable" as const,
-            detail: `could not create the acceptance agent (${error instanceof Error ? error.message.split("\n")[0] : String(error)})`,
-          };
-        }
-        const logs = await runPaseo(["logs", created], 90_000).catch(() => "");
-        const called = /html_render/.test(logs);
-        const rendered = /interactive\.html|[0-9a-f]{32}/.test(logs);
-        const refusal = /not part of an open Paseo workspace|render_failed|invalid_input|denied/i.test(logs);
-        if (!rendered) {
-          await runPaseo(["archive", created]).catch(() => "");
-          if (called && refusal) {
-            assert.fail(`the render tool refused: ${logs.slice(-600)}`);
-          }
-          // No tool call at all: provider/model trouble, not plugin evidence.
-          return {
-            status: "unavailable" as const,
-            detail: `acceptance agent produced no render (provider/model failure): ${logs.slice(-300).replaceAll("\n", " ")}`,
-          };
-        }
+
+      for (const name of ["fixture-result.json", "g6-client.json", "browser-group.json", "browser-child-group.json", "bridge-facts.json", "agent-runtime-facts.json", "agent-tool-facts.json", "artifact-facts.json", "g6-timeline.png", "g6-file-preview.png", "g6-refresh.png"]) {
+        await fs.rm(evidencePath(name), { force: true });
       }
-      const agentId = process.env.PASEO_E2E_AGENT ?? created;
-      assert.ok(agentId, "an acceptance agent id is available");
-      try {
-        const script = join(SOURCE_ROOT, "scripts", "e2e-client.mjs");
-        const output = await run(
-          process.execPath,
-          [script, "--agent", agentId, "--out", EVIDENCE_DIR, "--title", process.env.PASEO_E2E_TITLE ?? "html-render verify e2e"],
-          280_000,
-        );
-        const report = JSON.parse(await fs.readFile(evidencePath("g6-client.json"), "utf8")) as {
-          errors: string[];
-          timeline: { frames: Array<{ sandbox: string | null; allow: string | null; height: string; hasCsp: boolean; hasContent: boolean }> };
-          filePreview: { frames: Array<{ sandbox: string | null; hasCsp: boolean }> };
-        };
-        assert.deepEqual(report.errors, [], "client capture reported no errors");
-        assert.equal(report.timeline.frames.length, 1, `expected exactly one inline card, saw ${report.timeline.frames.length}`);
-        const frame = report.timeline.frames[0]!;
-        assert.equal(frame.sandbox, "allow-scripts");
-        assert.equal(frame.allow, "fullscreen 'none'");
-        assert.equal(frame.hasCsp, true, "frame document carries the CSP");
-        assert.equal(frame.hasContent, true, "frame document carries the rendered page");
-        assert.ok(Number.parseFloat(frame.height) > 0, "frame has a measured height");
-        assert.ok(report.filePreview.frames.length > 1, "file link opened a second sandboxed frame");
-        assert.ok(report.filePreview.frames.some((entry) => entry.hasCsp), "file preview enforces its CSP");
+      const execution = await run(
+        process.execPath,
+        [join(SOURCE_ROOT, "scripts", "fixture-paseo.mjs"), "--out", EVIDENCE_DIR],
+        840_000,
+      );
+      const fixture = JSON.parse(await fs.readFile(evidencePath("fixture-result.json"), "utf8")) as {
+        status: string;
+        stage: string;
+        mode: string;
+        serverId: string | null;
+        pluginVersion: string | null;
+        workspaceId: string | null;
+        agentId: string | null;
+        title: string | null;
+        marker: string | null;
+        artifactId: string | null;
+        interactivePath: string | null;
+        authPreflight: Record<string, string>;
+        bridge: { ready?: boolean; socketPresent?: boolean; socketIsSocket?: boolean; socketPathBytes?: number; socketPathLimit?: number; adapterPresent?: boolean; adapterHashMatches?: boolean; bridgeFailureLogged?: boolean };
+        agentRuntime: { record?: { found?: boolean; readError?: string | null; mcpServersKey?: boolean | null; alwaysLoadObserved?: boolean | null; injectionEvidence?: string } };
+        toolCall: { count?: number; completedCount?: number; failedCount?: number; rowCallIdCount?: number; actualInvocationCount?: null; completedArtifactCount?: number; referenceMatchesCompletedRow?: boolean; markerParsed?: boolean; invocationEvidence?: string; directObserved?: boolean; codemodeObserved?: boolean; alwaysLoadRuntime?: string };
+        artifact: { artifactId?: string; markerParsed?: boolean; titleMatches?: boolean; readAuthorized?: boolean; originalAuthorized?: boolean; storeOwned?: boolean; originalMatchesRequested?: boolean; originalHasMarker?: boolean; originalHasCsp?: boolean; sourceHtmlSha256?: string; originalHtmlSha256?: string; interactiveHtmlSha256?: string | null; adapterSourceSha256?: string | null; expectedAdapterSourceSha256?: string | null; interactivePath?: string };
+        cleanup: { daemonStopped?: boolean; daemonStopEvidence?: string; fixtureRemoved?: boolean; browserState?: string; browserStopped?: boolean | null; browserProfileRemoved?: boolean | null; requiredCleanupPassed?: boolean; retainedByRequest?: boolean };
+        errors: string[];
+      };
+      if (execution.code === 2 || fixture.status === "unavailable") {
         return {
-          detail: `one inline card (${frame.height}) and the HTML file preview verified in the hosted client; ${output.trim().slice(-200)}`,
-          evidence: [evidencePath("g6-client.json"), evidencePath("g6-timeline.png"), evidencePath("g6-file-preview.png")],
+          status: "unavailable" as const,
+          detail: `${fixture.stage}: ${fixture.errors[0]?.split("\n")[0] ?? "protected fixture unavailable"}; no pass`,
         };
-      } finally {
-        if (created) await runPaseo(["archive", created]).catch(() => "");
       }
+      assert.equal(execution.code, 0, `fixture orchestrator exited ${execution.code}: ${fixture.errors[0]?.split("\n")[0] ?? execution.stderr.slice(-500)}`);
+      assert.equal(fixture.status, "pass", `fixture orchestrator did not pass: ${fixture.errors[0]?.split("\n")[0] ?? "no detail"}`);
+      assert.equal(fixture.mode, "acceptance");
+      assert.deepEqual(fixture.errors, []);
+      assert.deepEqual(fixture.authPreflight, {
+        missing: "password_required",
+        wrong: "incorrect_password",
+        positive: "connected",
+      });
+      assert.ok(fixture.serverId, "fixture has a server id");
+      assert.ok(fixture.pluginVersion, "fixture installed a plugin version");
+      assert.ok(fixture.workspaceId, "fixture agent belongs to the owned workspace");
+      assert.ok(fixture.agentId, "fixture has an agent id");
+      assert.match(fixture.artifactId ?? "", /^[0-9a-f]{32}$/);
+      assert.equal(fixture.bridge.socketPresent, true, "fixture bridge socket exists");
+      assert.equal(fixture.bridge.socketIsSocket, true, "fixture bridge path is a Unix socket");
+      assert.equal(fixture.bridge.adapterPresent, true, "fixture adapter exists");
+      assert.equal(fixture.bridge.adapterHashMatches, true, "fixture adapter matches current build");
+      assert.equal(fixture.bridge.bridgeFailureLogged, false, "fixture bridge did not log a startup failure");
+      assert.ok(Number.isInteger(fixture.bridge.socketPathBytes));
+      assert.ok(Number.isInteger(fixture.bridge.socketPathLimit));
+      assert.ok((fixture.bridge.socketPathBytes ?? Infinity) <= (fixture.bridge.socketPathLimit ?? 0));
+      assert.ok(fixture.agentRuntime.record, "owned agent record facts captured");
+      assert.ok(
+        fixture.agentRuntime.record.mcpServersKey === true ||
+        fixture.agentRuntime.record.mcpServersKey === false ||
+        fixture.agentRuntime.record.mcpServersKey === null,
+      );
+      assert.ok((fixture.toolCall.count ?? 0) > 0, "at least one real render tool row observed");
+      assert.ok((fixture.toolCall.completedCount ?? 0) > 0, "a render tool row completed");
+      assert.equal(fixture.toolCall.actualInvocationCount, null, "provider projection rows do not prove an underlying call count");
+      assert.equal(fixture.toolCall.completedArtifactCount, 1);
+      assert.equal(fixture.toolCall.referenceMatchesCompletedRow, true, "artifact marker belongs to a completed render row");
+      assert.equal(fixture.toolCall.alwaysLoadRuntime, "not-observed", "a direct row alone is not alwaysLoad proof");
+      assert.equal(fixture.toolCall.markerParsed, true);
+      assert.equal(fixture.toolCall.invocationEvidence, "tool-row+artifact");
+      assert.equal(fixture.artifact.artifactId, fixture.artifactId, "checked artifact matches parsed marker");
+      assert.equal(fixture.artifact.markerParsed, true);
+      assert.equal(fixture.artifact.titleMatches, true);
+      assert.equal(fixture.artifact.readAuthorized, true);
+      assert.equal(fixture.artifact.originalAuthorized, true);
+      assert.equal(fixture.artifact.storeOwned, true, "authorized readback is inside the exact owned artifact store");
+      assert.equal(fixture.artifact.originalMatchesRequested, true);
+      assert.equal(fixture.artifact.originalHasMarker, true, "authorized original contains the unique marker");
+      assert.equal(fixture.artifact.originalHtmlSha256, fixture.artifact.sourceHtmlSha256);
+      assert.match(fixture.artifact.originalHtmlSha256 ?? "", /^[0-9a-f]{64}$/);
+      assert.match(fixture.artifact.adapterSourceSha256 ?? "", /^[0-9a-f]{64}$/);
+      assert.equal(fixture.artifact.adapterSourceSha256, fixture.artifact.expectedAdapterSourceSha256);
+      assert.equal(fixture.artifact.interactivePath, fixture.interactivePath, "authorized readback path matches");
+      assert.ok(fixture.interactivePath && isAbsolute(fixture.interactivePath), "interactive path is absolute");
+      assert.match(fixture.interactivePath, /interactive\.html$/);
+      assert.equal(fixture.cleanup.daemonStopped, true);
+      assert.equal(fixture.cleanup.daemonStopEvidence, "localDaemon:stopped,pid:null");
+      assert.equal(fixture.cleanup.fixtureRemoved, true);
+      assert.equal(fixture.cleanup.browserState, "launched");
+      assert.equal(fixture.cleanup.browserStopped, true);
+      assert.equal(fixture.cleanup.browserProfileRemoved, true);
+      assert.equal(fixture.cleanup.requiredCleanupPassed, true);
+      assert.equal(fixture.cleanup.retainedByRequest, false);
+
+      const report = JSON.parse(await fs.readFile(evidencePath("g6-client.json"), "utf8")) as {
+        status: string;
+        stage: string;
+        serverId: string;
+        agentId: string;
+        marker: string;
+        artifactId: string;
+        auth: { mode?: string; missing?: string; wrong?: string; positive?: string; missingHosts?: string[]; wrongHosts?: string[] };
+        isolation: { hook: string; hostsBefore: number | null; hostsAfter: string[] | null; localNetworkGranted: boolean; loopbackBlocked: boolean };
+        timeline: { cardCount: number; card: { sandbox: string; allow: string; height: string; hasCsp: boolean; hasMarker: boolean } };
+        filePreview: { testId?: string; sandbox?: string; referrerPolicy?: string; hasCsp?: boolean; hasMarker?: boolean };
+        refresh: { cardCount?: number; hosts?: string[] };
+        cleanup: { browserStopped?: boolean; profileRemoved?: boolean };
+        errors: string[];
+      };
+      assert.equal(report.status, "pass", `hosted client failed: ${report.errors[0]?.split("\n")[0] ?? "no detail"}`);
+      assert.equal(report.serverId, fixture.serverId);
+      assert.equal(report.agentId, fixture.agentId);
+      assert.equal(report.marker, fixture.marker);
+      assert.equal(report.artifactId, fixture.artifactId);
+      assert.ok(report.auth.mode === "password_prompt" || report.auth.mode === "link_credentials", "auth flow mode recorded");
+      assert.equal(report.auth.positive, "connected");
+      if (report.auth.mode === "password_prompt") {
+        assert.equal(report.auth.missing, "password_required");
+        assert.ok(report.auth.wrong === "incorrect_password" || report.auth.wrong === "rejected_no_host");
+      } else {
+        assert.equal(report.auth.missing, "rejected_no_host");
+        assert.ok(report.auth.wrong === "rejected_no_host" || report.auth.wrong === "incorrect_password");
+      }
+      assert.deepEqual(report.auth.missingHosts, []);
+      assert.deepEqual(report.auth.wrongHosts, []);
+      assert.equal(report.isolation.hook, "@paseo:e2e");
+      assert.equal(report.isolation.hostsBefore, 0);
+      assert.equal(report.isolation.loopbackBlocked, true);
+      assert.deepEqual(report.isolation.hostsAfter, [fixture.serverId]);
+      assert.equal(report.timeline.cardCount, 1, "exactly one marker card");
+      assert.equal(report.timeline.card.sandbox, "allow-scripts");
+      assert.equal(report.timeline.card.allow, "fullscreen 'none'");
+      assert.equal(report.timeline.card.hasCsp, true);
+      assert.equal(report.timeline.card.hasMarker, true);
+      assert.ok(Number.parseFloat(report.timeline.card.height) > 0, "card has a measured height");
+      assert.equal(report.filePreview.testId, "file-html-preview");
+      assert.equal(report.filePreview.sandbox, "allow-scripts");
+      assert.equal(report.filePreview.hasCsp, true);
+      assert.equal(report.filePreview.hasMarker, true);
+      assert.equal(report.refresh.cardCount, 1, "one card after refresh");
+      assert.deepEqual(report.refresh.hosts, [fixture.serverId]);
+      assert.deepEqual(report.cleanup, { browserStopped: true, profileRemoved: true });
+      assert.deepEqual(report.errors, []);
+
+      return {
+        detail: `protected fixture ${fixture.serverId}; auth missing/wrong/correct verified; one card ${report.timeline.card.height}; file preview and refresh verified`,
+        evidence: [
+          evidencePath("fixture-result.json"),
+          evidencePath("bridge-facts.json"),
+          evidencePath("agent-runtime-facts.json"),
+          evidencePath("agent-tool-facts.json"),
+          evidencePath("artifact-facts.json"),
+          evidencePath("g6-client.json"),
+          evidencePath("g6-timeline.png"),
+          evidencePath("g6-file-preview.png"),
+          evidencePath("g6-refresh.png"),
+        ],
+      };
     },
   );
 });
 
-const ACCEPTANCE_HTML = "<!doctype html><html><body style='margin:0;font:20px sans-serif;background:#101020;color:#eee'><h1 id='ok'>CLIENT ACCEPTANCE</h1><p>rendered inline by the html-render plugin</p><script>document.title='ran'<\/script></body></html>";
-
-/** Creates a real agent that calls `html_render` through the injected MCP server. */
-async function createAcceptanceAgent(): Promise<string> {
-  const provider = process.env.PASEO_E2E_PROVIDER ?? "pi";
-  const model = process.env.PASEO_E2E_MODEL ?? "ocx/opencode-go/deepseek-v4.1-flash";
-  const thinking = process.env.PASEO_E2E_THINKING ?? "high";
-  const prompt = [
-    "Call the html_render MCP tool exactly once. Arguments:",
-    `title="Client acceptance", height=420, html=${JSON.stringify(ACCEPTANCE_HTML)}.`,
-    "Do not call any other tool. In your final reply, copy the exact Markdown link",
-    "the tool asked for, in the form [Open interactive report](<absolute path from the tool result>),",
-    "on its own line, followed by the artifactId.",
-  ].join(" ");
-  const output = await runPaseo([
-    "run", "--json", "--provider", provider, "--model", model, "--thinking", thinking,
-    "--title", "html-render verify e2e", "--wait-timeout", "3m", prompt,
-  ], 260_000);
-  const parsed = JSON.parse(output.slice(output.indexOf("{"))) as { agentId?: string };
-  assert.ok(parsed.agentId, "paseo run returned an agent id");
-  return parsed.agentId;
-}
-
-function run(command: string, args: string[], timeoutMs: number): Promise<string> {
+function run(command: string, args: string[], timeoutMs: number): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd: SOURCE_ROOT, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(command, args, { cwd: SOURCE_ROOT, stdio: ["ignore", "pipe", "pipe"], detached: true });
     let out = "";
     let err = "";
+    let settled = false;
     child.stdout.setEncoding("utf8").on("data", (chunk: string) => { out += chunk; });
     child.stderr.setEncoding("utf8").on("data", (chunk: string) => { err += chunk; });
-    const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error(`${command} timed out`)); }, timeoutMs);
+    const timer = setTimeout(() => {
+      settled = true;
+      if (child.pid) {
+        try { process.kill(-child.pid, "SIGKILL"); } catch { /* group already gone */ }
+      }
+      for (const name of ["browser-group.json", "browser-child-group.json"]) {
+        try {
+          const state = JSON.parse(readFileSync(evidencePath(name), "utf8")) as { pid?: unknown };
+          if (Number.isInteger(state.pid) && Number(state.pid) > 1 && state.pid !== process.pid) {
+            process.kill(-Number(state.pid), "SIGKILL");
+          }
+        } catch { /* no owned group recorded */ }
+      }
+      reject(new Error(`${command} timed out`));
+    }, timeoutMs);
     timer.unref?.();
-    child.once("exit", (code) => {
+    child.once("error", (error) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
-      if (code === 0) resolve(out);
-      else reject(new Error(`${command} exited ${code}: ${err.slice(0, 600)}`));
+      reject(error);
+    });
+    child.once("exit", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ code: code ?? -1, stdout: out, stderr: err });
     });
   });
 }

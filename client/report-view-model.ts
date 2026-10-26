@@ -41,7 +41,7 @@ export const REPORT_TAB_LABELS: Readonly<Record<ReportTabId, string>> = {
 };
 
 /** The card has four mutually exclusive presentations. */
-export type ReportCardMode = "live" | "loading" | "report" | "image";
+export type ReportCardMode = "live" | "native" | "loading" | "report" | "image";
 
 export interface ReportCardModeInput {
   platform: HtmlFramePlatform;
@@ -51,19 +51,23 @@ export interface ReportCardModeInput {
   /** The frame reported a timeout or load error. */
   /** Whether a structured ReportModelV1 is available. */
   hasReport: boolean;
+  /** True only when the public Android host capability is actually ready. */
+  nativeAvailable?: boolean;
 }
 
 /**
- * Live HTML wins on web/desktop when the shared gate allows it. Otherwise a
- * structured report wins over the PNG. Native never reaches the live branch.
+ * Interactive HTML wins on web/desktop, and on Android only through the
+ * available native adapter. Otherwise a structured report wins over the PNG.
+ * Missing native capability never reaches a raw iframe and is not parity.
  */
 export function reportCardMode(input: ReportCardModeInput): ReportCardMode {
-  const liveGate = selectHtmlFrameKind({
+  const kind = selectHtmlFrameKind({
     platform: input.platform,
     renderMode: input.renderMode,
-  }) === "live";
-  // Live mode never degrades to a static image: the reader asked for HTML.
-  if (liveGate) return input.hasHtml ? "live" : "loading";
+    nativeAvailable: input.nativeAvailable === true,
+  });
+  if (kind === "live") return input.hasHtml ? "live" : "loading";
+  if (kind === "native") return input.hasHtml ? "native" : "loading";
   if (input.hasReport) return "report";
   return "image";
 }

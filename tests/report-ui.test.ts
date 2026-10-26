@@ -97,6 +97,22 @@ test("card mode: live wins only on web; native/report/static fall back in order"
     "image",
   );
   assert.equal(
+    reportCardMode({ platform: "android", renderMode: "iframe", hasHtml: true, hasReport: false, nativeAvailable: true }),
+    "native",
+  );
+  assert.equal(
+    reportCardMode({ platform: "android", renderMode: "auto", hasHtml: false, hasReport: true, nativeAvailable: true }),
+    "loading",
+  );
+  assert.equal(
+    reportCardMode({ platform: "android", renderMode: "static", hasHtml: true, hasReport: true, nativeAvailable: true }),
+    "report",
+  );
+  assert.equal(
+    reportCardMode({ platform: "ios", renderMode: "auto", hasHtml: true, hasReport: true, nativeAvailable: true }),
+    "report",
+  );
+  assert.equal(
     reportCardMode({ platform: "web", renderMode: "static", hasHtml: true, hasReport: true }),
     "report",
   );
@@ -420,9 +436,11 @@ test("mounted card and screen: report, live, fallback and original states", { ti
         [NOGRAPH]: artifact(NOGRAPH, true),
         [BLANK]: artifact(BLANK, false)
       };
+      window.__originalCalls = 0;
       window.__rpc = {
         'html.artifact.read': async (input) => artifacts[input.artifactId],
         'html.artifact.original': async (input) => {
+          window.__originalCalls += 1;
           if (input.artifactId === FAIL) throw new Error('original unavailable');
           return {
             artifactId: input.artifactId,
@@ -482,7 +500,7 @@ test("mounted card and screen: report, live, fallback and original states", { ti
         const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
         const root = createRoot(el);
         root.render(React.createElement(QueryClientProvider, { client }, element));
-        return { el, root };
+        return { el, root, client };
       }
       const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
       async function until(check, ms) {
@@ -505,6 +523,35 @@ test("mounted card and screen: report, live, fallback and original states", { ti
 
       (async () => {
         const results = {};
+
+        const android = mount(React.createElement(ReportCard, props('android', 'auto', GOOD, true)));
+        await until(() => android.el.querySelector('rncwebview') !== null, 5000);
+        const firstNativeTag = android.el.querySelector('rncwebview');
+        const callsAfterMount = window.__originalCalls;
+        results.androidNative = {
+          nativeTags: android.el.querySelectorAll('rncwebview').length,
+          iframes: android.el.querySelectorAll('iframe').length,
+          originalCalls: callsAfterMount,
+          text: text(android.el)
+        };
+        android.root.render(React.createElement(QueryClientProvider, { client: android.client }, React.createElement(ReportCard, {
+          ...props('android', 'auto', GOOD, true),
+          theme: { colors: { ...COLORS, surface0: '#ffffff' } }
+        })));
+        await wait(150);
+        results.androidTheme = {
+          sameTag: firstNativeTag === android.el.querySelector('rncwebview'),
+          originalCalls: window.__originalCalls
+        };
+        android.root.render(React.createElement(QueryClientProvider, { client: android.client }, React.createElement(ReportCard, props('android', 'auto', LEGACY, true))));
+        await wait(250);
+        results.androidIdentity = {
+          differentTag: firstNativeTag !== android.el.querySelector('rncwebview'),
+          originalCalls: window.__originalCalls
+        };
+        android.root.unmount();
+        android.el.remove();
+        window.__originalCalls = 0;
 
         const native = mount(React.createElement(ReportCard, props('ios', 'auto', GOOD, true)));
         await until(() => text(native.el).includes('Coverage'), 5000);
@@ -561,7 +608,7 @@ test("mounted card and screen: report, live, fallback and original states", { ti
         staticReport.root.unmount();
         staticReport.el.remove();
 
-        const legacy = mount(React.createElement(ReportCard, props('android', 'auto', LEGACY, true)));
+        const legacy = mount(React.createElement(ReportCard, props('ios', 'auto', LEGACY, true)));
         await until(() => text(legacy.el).includes('Copy file link'), 5000);
         results.legacy = {
           iframes: legacy.el.querySelectorAll('iframe').length,
@@ -684,8 +731,17 @@ test("mounted card and screen: report, live, fallback and original states", { ti
     string,
     any
   >;
-  assert.equal(result.error, undefined, result.stack);
+  assert.equal(result.error, undefined, `${result.stack}
+${JSON.stringify(result.results)}`);
 
+  assert.equal(result.androidNative.nativeTags, 1, "Android capability mounts the reviewed native host tag");
+  assert.equal(result.androidNative.iframes, 0, "native adapter never mounts an iframe");
+  assert.ok(result.androidNative.originalCalls > 0, "native auto mode requests authorized original HTML");
+  assert.match(result.androidNative.text, /Loading interactive report/);
+  assert.equal(result.androidTheme.sameTag, true, "theme change preserves the native source instance");
+  assert.equal(result.androidTheme.originalCalls, result.androidNative.originalCalls, "theme change does not refetch original HTML");
+  assert.equal(result.androidIdentity.differentTag, true, "document identity change remounts the native adapter");
+  assert.ok(result.androidIdentity.originalCalls > result.androidNative.originalCalls, "new document fetches its own original HTML");
   assert.equal(result.native.iframes, 0, "native never mounts an iframe");
   assert.match(result.native.text, /Success/);
   assert.match(result.native.text, /Parity contracts frozen/, "native card leads with the outcome");

@@ -9,7 +9,7 @@
   "examples": {
     "flow": {
       "source": "examples/interactive/flow.html",
-      "sourceSha256": "4fe25ae32188fe74dde9f1b84bf5111502edeb6e7d23604eb84b7608a3da335a",
+      "sourceSha256": "99409a1e81ccbb75a27870849326ae0bf3fba0c03b126d51e7c40a1e24b963b2",
       "captures": {
         "390": {
           "file": "examples/interactive/captures/flow-390.png",
@@ -25,7 +25,7 @@
     },
     "inspector": {
       "source": "examples/interactive/inspector.html",
-      "sourceSha256": "dd93868cd39fe1616195300df74b3c7155a6f1a5df2239dd82597aac4fd85c94",
+      "sourceSha256": "478f8b2468f1e0a1b406752755ba573020187d5e922f87c7bb306a6789c154fd",
       "captures": {
         "390": {
           "file": "examples/interactive/captures/inspector-390.png",

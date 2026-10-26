@@ -6,12 +6,22 @@ import { dirname, join } from "node:path";
 import { findChromiumExecutable } from "../../server/renderer.ts";
 
 /** Isolated real Chromium harness; never disables the browser sandbox. */
+export interface BrowserInteraction {
+  send(method: string, params?: Record<string, unknown>, sessionId?: string): Promise<any>;
+  sessionId: string;
+  targetId: string;
+}
+
 export interface BrowserOptions {
   /** Absolute path for a PNG of the rendered page, captured before teardown. */
   screenshotPath?: string;
   viewport?: { width: number; height: number };
   /** Emulate the top-level OS media preference before the page navigates. */
   reducedMotion?: "reduce" | "no-preference";
+  /** Test-only interaction after navigation and before window.__result is read. */
+  interact?: (io: BrowserInteraction) => Promise<void>;
+  /** Opt-in local data-document navigation for opaque-origin tests. Default: file. */
+  navigation?: "file" | "data";
 }
 
 export async function browserResult(html: string, options: BrowserOptions = {}): Promise<unknown> {
@@ -89,8 +99,17 @@ export async function browserResult(html: string, options: BrowserOptions = {}):
         mobile: false,
       }, sessionId);
     }
-    await send("Page.navigate", { url: `file://${file}` }, sessionId);
+    if (options.navigation === "data") {
+      // Opt-in local in-memory document. The URL stays about:blank, so the
+      // shell has an opaque origin without file:// access.
+      await send("Page.navigate", { url: "about:blank" }, sessionId);
+      const tree = await send("Page.getFrameTree", {}, sessionId);
+      await send("Page.setDocumentContent", { frameId: tree.frameTree.frame.id, html }, sessionId);
+    } else {
+      await send("Page.navigate", { url: `file://${file}` }, sessionId);
+    }
     await send("Page.bringToFront", {}, sessionId);
+    if (options.interact) await options.interact({ send, sessionId, targetId: target.targetId });
     const until = Date.now() + 30_000;
     while (Date.now() < until) {
       const out = await send("Runtime.evaluate", {expression: "window.__result || null", returnByValue: true}, sessionId);
