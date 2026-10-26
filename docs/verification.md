@@ -1,6 +1,6 @@
 # Verification and release evidence
 
-Date: 2026-10-24. Candidate: **paseo-html-render 2.2.0**, plugin id
+Updated: 2026-10-26. Candidate: **paseo-html-render 2.2.0**, plugin id
 `html-render`. This is a staged release record, not a claim that npm publication
 or live client acceptance has finished. Historical `v2.1.0` stays unchanged.
 
@@ -93,11 +93,11 @@ in the actual hosted client. These cases are the remaining live acceptance work:
 | --- | --- |
 | D1 fresh injection and text-only single-fact selection | PASS: fresh 2.2.0 adapter injected; agent read package.json and replied `2.2.0`; zero HTML calls |
 | D2 chart of real repository/tool data | Counts 14/7/9 independently verified; initial PNG captured intermediate animation. Fixed at `a477d8d`; parent geometry/PNG check and real model post-reload preview PASS. Final hosted acceptance pending |
-| D3 source-based flow and built-in Pele/report graph | Pending |
+| D3 source-based flow and built-in Pele/report graph | PARTIAL (2026-10-26): one real publication, four inspected previews; stored 6-node/6-edge report graph has actual light/dark Pele PNGs. Parent inspected source/PNGs. Native-report transport wording is being corrected; actual client/Android checks remain pending |
 | D4 all three showcase pages published and inspected | Pending: one existing pipeline example was provided in the parent thread on request at pause; this is not completed hosted-client acceptance |
 | D5 flow/inspector/filter controls, keyboard, motion and reflow | Pending |
 | D6 actual web auto/iframe/static/report views and file link | BLOCKED: real hosted client requires host authentication; not passed |
-| D7 same-turn/concurrent/unchanged refusals and next-turn update | Pending |
+| D7 same-turn/concurrent/unchanged refusals and next-turn update | Live concurrent report-only update and same-turn refusal checks in progress; no result claimed yet |
 | D8 image/report/metadata changes, missing-image diagnostics and ownership/readback | Pending |
 | D9 persisted history, refresh and one card per artifact | Pending |
 | D10 exact production tarball / actual published npm-source acquisition | Tarball PASS; npm-source pending |
@@ -125,6 +125,20 @@ adapter 2.1.1, which correctly warns to reconnect to 2.2.0; its publish also
 warned of an unknown counted turn. It is not fresh-adapter or guard acceptance
 evidence. The fresh agent above used 2.2.0. Neither the requested example nor
 the local tests establish that the user actually viewed the hosted UI.
+
+### 2026-10-26 source flow and Pele evidence
+
+Fresh agent `7f2af7be-6c85-475c-989f-580cb77a270f` published artifact
+`56de6280af18b8d2d997e52e753f9940` exactly once. Parent inspected the static
+page and graph PNGs, and checked the manifest: report 4779 bytes; graph
+`publish-flow`, 6 nodes / 6 edges, both preview flags true. Server-baked
+light/dark PNGs are 728×154. Real tool calls returned no staleness or degraded
+guard warning. Receipt: `/tmp/hr-acceptance-20261026/source-flow/receipt.md`.
+This proves tool publication and built-in Pele execution, not physical Android
+or hosted-client display. Parent found one native-report transport sentence
+mislabeling forwarding as stdio: the adapter accepts MCP stdio but forwards to
+the bridge over a Unix socket. A report-only correction is the next meaningful
+update/concurrent-guard case; preserve the original artifact as evidence.
 
 ### Static-chart defect found by actual dogfood
 

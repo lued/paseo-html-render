@@ -28,6 +28,16 @@ daemons are normal and must remain protected. Execution/evidence contract:
   24 server inputs). Private full log: `/tmp/html-render-guard-full-tests.log`.
   This is local code evidence, not live Paseo or final package acceptance.
 
+## Current acceptance workers (2026-10-26)
+
+- Auth/Android read-only scout: `6dc72359-217a-4bec-8f0b-f2578d614da0`.
+- Live visual/guard agent: `7f2af7be-6c85-475c-989f-580cb77a270f`.
+  Source-flow artifact `56de6280af18b8d2d997e52e753f9940` and actual Pele
+  light/dark graph PNGs inspected; Android/client acceptance remains open.
+  Next: report-only correction plus real concurrent/unchanged guard calls.
+- Both use OpenCode Go DeepSeek max in main, read-only repository. No reload
+  during live guard checks. No npm/publication work.
+
 ## Execution, in order
 
 1. **Guard hardening — locally complete:** `e3987a1` adds atomic reservation and
