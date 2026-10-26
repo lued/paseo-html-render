@@ -1,13 +1,16 @@
 # HTML Render: release checklist
 
-Updated: 2026-10-24
+Updated: 2026-10-26
 Target: first npm release, candidate version 2.2.0; preserve existing v2.1.0.
 User direction: build it, dogfood the user-facing cases through Paseo here, then
 release. No publication before the evidence gates pass.
 
-**PAUSED by user request.** Preserve the candidate and evidence. Do not resume
-release execution, push, tag or publish until the user asks to resume. The code
-is locally verified, not production-accepted; remaining work is listed below.
+**Live acceptance resumed by user request (2026-10-26).** Complete item 2 in
+full using OpenCode Go DeepSeek max subagents; Android is the target. macOS is
+not an acceptance gate. npm authentication/publication remains deferred to the
+last step; no push, tag or registry publication in this phase. Password-protected
+daemons are normal and must remain protected. Execution/evidence contract:
+[Android-first acceptance plan](plans/2026-10-26-android-live-acceptance.md).
 
 ## Repository and cleanup
 
@@ -16,10 +19,10 @@ is locally verified, not production-accepted; remaining work is listed below.
   README/showcase and Release integration were archived through Paseo with user
   approval; their owned agents and worktree directories were retired. All source
   commits are preserved in main.
-- No additional workspaces. Both code helpers and the dogfood agent are archived;
-  evidence/history is preserved. No child task is running. After an explicit
-  resume, use at most one dogfood agent in main, sequentially. No feature/research
-  lanes.
+- No additional workspaces. Previous code helpers and dogfood agent are archived;
+  evidence/history is preserved. This phase uses read-only acceptance/scout
+  subagents in main, then at most one code writer. All use the requested OpenCode
+  Go DeepSeek route at max thinking. No feature/research workspaces.
 - Parent independently verified guard commit `e3987a1`: **247/247 tests pass**,
   zero failures/skips/cancellations, typecheck PASS and bundles PASS (15 client /
   24 server inputs). Private full log: `/tmp/html-render-guard-full-tests.log`.
@@ -43,7 +46,7 @@ is locally verified, not production-accepted; remaining work is listed below.
    be published. Parent repack matches the new file in
    `/tmp/hr-release-2.2.0/motion-target/paseo-html-render-2.2.0.tgz`.
    CI and hosted-client browser checks retain the sandbox; remote CI is pending.
-3. **Real Paseo dogfood — paused, incomplete:** candidate reloaded and running;
+3. **Real Paseo dogfood — resumed, incomplete:** candidate reloaded and running;
    main-workspace agent `afe8aedd-47b4-482b-8eee-a92fca3df601`
    (Release dogfood: real Paseo cases) was reused sequentially and archived at
    the pause after its evidence was saved. D1 passed:

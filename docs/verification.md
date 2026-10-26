@@ -4,9 +4,12 @@ Date: 2026-10-24. Candidate: **paseo-html-render 2.2.0**, plugin id
 `html-render`. This is a staged release record, not a claim that npm publication
 or live client acceptance has finished. Historical `v2.1.0` stays unchanged.
 
-**Release paused by the user. Not production-accepted.** The dogfood agent is
-archived after saving evidence; no further release execution is authorized until
-the user resumes. Nothing has been pushed, tagged or published to npm.
+**Live acceptance resumed 2026-10-26; not production-accepted.** The user has
+authorized completing the remaining live cases with OpenCode Go DeepSeek max
+subagents, prioritizing Android. macOS is not a required gate. npm authentication
+and publication remain deferred; nothing has been pushed, tagged or published.
+Previous dogfood history is preserved. See the internal Android-first acceptance
+plan for ownership and evidence requirements.
 
 ## Candidate identity
 
