@@ -35,14 +35,23 @@ daemons are normal and must remain protected. Execution/evidence contract:
 - Auth/Android scout completed; reused as the sole test-code writer:
   `6dc72359-217a-4bec-8f0b-f2578d614da0`. Owns protected-fixture/hosted-client
   harness and focused tests only; no runtime/product edits or live-daemon changes.
+  Auth implementation returned uncommitted; parent review and genuine protected
+  model/UI run remain pending. No paid fixture model run has happened yet.
 - Live visual/guard agent: `7f2af7be-6c85-475c-989f-580cb77a270f`.
   Source-flow artifact `56de6280af18b8d2d997e52e753f9940` and actual Pele
   light/dark graph PNGs inspected; Android/client acceptance remains open.
   Real concurrent pending-reservation refusal, same-turn unchanged refusal and
   report-only correction PASS; parent independently verified artifact bytes.
-  Next: cross-turn unchanged refusal, image-inspection publish and missing-image
-  diagnostics. UI/Android/history still pending.
-- Both use OpenCode Go DeepSeek max in main; visual worker is repo read-only,
+  Cross-turn unchanged refusal, image-inspection publish and missing-image
+  diagnostics reported successful; parent receipt review remains. The image
+  publication response was lost after a local helper exception, so artifact
+  recovery is evidence, not a claim about unobserved warning text.
+  Now exercising the saved interactive flow in an opaque-frame browser harness.
+  This is not hosted/native Android evidence; native inline remains unmet.
+- Native-inline host/runtime scout: `fd765fb0-8684-405d-8ebf-78c1a9df7ba6`.
+  Read-only evidence on actual native module registry, bundled WebView and
+  supported embedding routes; no impossibility conclusion from SDK types alone.
+- All use OpenCode Go DeepSeek max in main; visual/native scouts are repo read-only,
   auth worker is sole code writer. No reload during live guard checks. No npm
   authentication/publication work.
 
