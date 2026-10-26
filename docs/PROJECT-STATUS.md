@@ -30,13 +30,19 @@ daemons are normal and must remain protected. Execution/evidence contract:
 
 ## Current acceptance workers (2026-10-26)
 
-- Auth/Android read-only scout: `6dc72359-217a-4bec-8f0b-f2578d614da0`.
+- Auth/Android scout completed; reused as the sole test-code writer:
+  `6dc72359-217a-4bec-8f0b-f2578d614da0`. Owns protected-fixture/hosted-client
+  harness and focused tests only; no runtime/product edits or live-daemon changes.
 - Live visual/guard agent: `7f2af7be-6c85-475c-989f-580cb77a270f`.
   Source-flow artifact `56de6280af18b8d2d997e52e753f9940` and actual Pele
   light/dark graph PNGs inspected; Android/client acceptance remains open.
-  Next: report-only correction plus real concurrent/unchanged guard calls.
-- Both use OpenCode Go DeepSeek max in main, read-only repository. No reload
-  during live guard checks. No npm/publication work.
+  Real concurrent pending-reservation refusal, same-turn unchanged refusal and
+  report-only correction PASS; parent independently verified artifact bytes.
+  Next: cross-turn unchanged refusal, image-inspection publish and missing-image
+  diagnostics. UI/Android/history still pending.
+- Both use OpenCode Go DeepSeek max in main; visual worker is repo read-only,
+  auth worker is sole code writer. No reload during live guard checks. No npm
+  authentication/publication work.
 
 ## Execution, in order
 
@@ -81,9 +87,10 @@ daemons are normal and must remain protected. Execution/evidence contract:
 ## External prerequisites
 
 - GitHub access for lued/paseo-html-render verified; no push performed yet.
-- Real hosted-client acceptance needs host authentication; the Paseo browser
-  automation host also timed out. Ask the user to authenticate in a visible
-  client, never send or retrieve the password in chat. Do not disable host auth.
+- Protected-host web acceptance is being repaired using an owned disposable
+  daemon and generated test credentials through the real pairing/password UI.
+  It does not need the user's password. Never change the user's daemon auth or
+  relay settings. Physical Android needs target-client information/observations.
 - Latest npm check after `a477d8d`: ENEEDAUTH. A visible Paseo terminal named
   `npm release login` was opened for sign-in; the attempt may need restarting
   after the pause. Authentication stays in a visible terminal, never chat.

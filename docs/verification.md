@@ -93,12 +93,12 @@ in the actual hosted client. These cases are the remaining live acceptance work:
 | --- | --- |
 | D1 fresh injection and text-only single-fact selection | PASS: fresh 2.2.0 adapter injected; agent read package.json and replied `2.2.0`; zero HTML calls |
 | D2 chart of real repository/tool data | Counts 14/7/9 independently verified; initial PNG captured intermediate animation. Fixed at `a477d8d`; parent geometry/PNG check and real model post-reload preview PASS. Final hosted acceptance pending |
-| D3 source-based flow and built-in Pele/report graph | PARTIAL (2026-10-26): one real publication, four inspected previews; stored 6-node/6-edge report graph has actual light/dark Pele PNGs. Parent inspected source/PNGs. Native-report transport wording is being corrected; actual client/Android checks remain pending |
+| D3 source-based flow and built-in Pele/report graph | PARTIAL (2026-10-26): one real publication, four inspected previews; stored 6-node/6-edge report graph has actual light/dark Pele PNGs. Parent inspected source/PNGs. Native-report transport wording corrected in report-only update; actual client/Android checks remain pending |
 | D4 all three showcase pages published and inspected | Pending: one existing pipeline example was provided in the parent thread on request at pause; this is not completed hosted-client acceptance |
 | D5 flow/inspector/filter controls, keyboard, motion and reflow | Pending |
-| D6 actual web auto/iframe/static/report views and file link | BLOCKED: real hosted client requires host authentication; not passed |
-| D7 same-turn/concurrent/unchanged refusals and next-turn update | Live concurrent report-only update and same-turn refusal checks in progress; no result claimed yet |
-| D8 image/report/metadata changes, missing-image diagnostics and ownership/readback | Pending |
+| D6 actual web auto/iframe/static/report views and file link | Pending: test-only protected fixture/auth correction underway; no user password needed. Actual Android/client views remain unverified |
+| D7 same-turn/concurrent/unchanged refusals and next-turn update | Live pending-reservation race PASS (one success), same-turn unchanged PASS, meaningful next-turn report-only update PASS. Cross-turn exact-repeat check in progress; client/history checks pending |
+| D8 image/report/metadata changes, missing-image diagnostics and ownership/readback | Report-only correction PASS; exact HTML/previews/graph bytes preserved. Image, metadata, diagnostics and ownership/legacy checks remain pending |
 | D9 persisted history, refresh and one card per artifact | Pending |
 | D10 exact production tarball / actual published npm-source acquisition | Tarball PASS; npm-source pending |
 
@@ -109,8 +109,12 @@ Chrome 153 initially blocked local/loopback networking. Per-origin permission
 grants in a disposable QA profile removed that block; the actual app then
 reported **Password required**. No password was read, authentication disabled,
 or browser sandbox/CSP weakened. A visible Paseo-browser attempt also timed out;
-its owned pending tab was closed. Host authentication/browser availability needs
-human input before live UI acceptance can proceed.
+its owned pending tab was closed. This was an ambient test-setup failure, not a need to retrieve the user
+password. The 2026-10-26 scout found the harness did not drive the web paste-link
+and password flow and could use localhost auto-bootstrap instead. A protected
+disposable fixture with generated credentials and scoped UI assertions is being
+implemented. Earlier ambient-host runs did not establish the pairing path.
+Actual physical Android observations still require the target phone.
 
 After the capture correction, G1–G5 were rerun at `a477d8d`: **5/5 pass**,
 zero skips/cancellations (`live/motion-e2e/`). G6 was deliberately not selected
@@ -139,6 +143,20 @@ or hosted-client display. Parent found one native-report transport sentence
 mislabeling forwarding as stdio: the adapter accepts MCP stdio but forwards to
 the bridge over a Unix socket. A report-only correction is the next meaningful
 update/concurrent-guard case; preserve the original artifact as evidence.
+
+### 2026-10-26 real concurrency and report-only update
+
+Two different corrected reports were submitted concurrently through the injected
+adapter. Exactly one published (`032922ef886658df97f1a6ed8be86e30`). The other
+returned the pending-reservation per-turn refusal 1496 ms before the winner
+completed, with no invented artifact id. An exact same-turn repeat then returned
+unchanged/duplicate referencing the winner. No stale/degraded warning appeared.
+Parent independently checked the recorded timing/refusal and the artifact
+bytes: original, interactive page, light/dark previews and graph PNGs are
+identical to the base; only report `outcome.detail` and `blocks.2.items.0` changed.
+Receipt and independent `parent-verification.json`:
+`/tmp/hr-acceptance-20261026/guard-report-update/`. Cross-turn exact-repeat and
+actual client/history display are separate unfinished checks.
 
 ### Static-chart defect found by actual dogfood
 
