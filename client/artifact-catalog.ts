@@ -35,31 +35,54 @@ export interface RecordCardResult {
 
 const SOURCE_RANK: Readonly<Record<ReferenceSource, number>> = { path: 0, marker: 1 };
 
-export class ArtifactCatalog {
-  private readonly best = new Map<string, ObservedCard>();
-  private readonly canonical = new Map<string, string>();
+export interface ArtifactCatalog {
+  record(input: ObservedCard): RecordCardResult;
+  noteGap(callId: string, phase?: "streaming" | "complete"): boolean;
+  takeDirty(): boolean;
+  beginGeneration(): void;
+  canonicalCallId(artifactId: string): string | undefined;
+  card(artifactId: string): ObservedCard | undefined;
+  isGap(callId: string): boolean;
+  readonly gapCount: number;
+  readonly currentGeneration: number;
+}
+
+type ArtifactCatalogConstructor = new () => ArtifactCatalog;
+
+/**
+ * Function constructor intentionally, not a class expression.
+ *
+ * The host evaluates the whole client bundle with `eval` in Hermes. Hermes
+ * 0.12 loses class-expression initializers when that eval source is large
+ * (the production bundle reaches this module as undefined). Keeping the
+ * catalog class-free preserves its dedupe policy and lets the bundle initialize.
+ */
+function createArtifactCatalog(this: ArtifactCatalog): void {
+  const best = new Map<string, ObservedCard>();
+  const canonical = new Map<string, string>();
   /** callId -> last phase seen for a render row with no recoverable card. */
-  private readonly gaps = new Map<string, "streaming" | "complete">();
-  private dirty = false;
-  private generation = 0;
+  const gaps = new Map<string, "streaming" | "complete">();
+  let dirty = false;
+  let generation = 0;
+  const catalog = this;
 
   /**
    * Records a recognized card. A marker always beats a path-only recovery; two
    * references of equal quality keep the first as canonical so re-projection is
    * stable. Returns whether this row should render and whether to reproject.
    */
-  record(input: ObservedCard): RecordCardResult {
-    const prior = this.best.get(input.data.artifactId);
+  catalog.record = (input) => {
+    const prior = best.get(input.data.artifactId);
     if (prior && SOURCE_RANK[input.source] <= SOURCE_RANK[prior.source]) {
-      return { show: this.canonical.get(input.data.artifactId) === input.callId, changed: false };
+      return { show: canonical.get(input.data.artifactId) === input.callId, changed: false };
     }
-    const previousCanonical = this.canonical.get(input.data.artifactId);
-    this.best.set(input.data.artifactId, input);
-    this.canonical.set(input.data.artifactId, input.callId);
+    const previousCanonical = canonical.get(input.data.artifactId);
+    best.set(input.data.artifactId, input);
+    canonical.set(input.data.artifactId, input.callId);
     const changed = prior === undefined || previousCanonical !== input.callId;
-    if (changed) this.dirty = true;
+    if (changed) dirty = true;
     return { show: true, changed };
-  }
+  };
 
   /**
    * Records a render row whose reference could not be recovered. A complete
@@ -67,45 +90,35 @@ export class ArtifactCatalog {
    * missing the marker, and re-running the row later is the only way to fill
    * that gap. Repeating the same complete gap does not loop.
    */
-  noteGap(callId: string, phase: "streaming" | "complete" = "complete"): boolean {
+  catalog.noteGap = (callId, phase = "complete") => {
     if (!callId) return false;
-    const prior = this.gaps.get(callId);
+    const prior = gaps.get(callId);
     if (prior === "complete") return false;
-    this.gaps.set(callId, phase);
+    gaps.set(callId, phase);
     if (phase !== "complete") return false;
-    this.dirty = true;
+    dirty = true;
     return true;
-  }
+  };
 
   /** Consumes the pending re-projection signal. */
-  takeDirty(): boolean {
-    const value = this.dirty;
-    this.dirty = false;
+  catalog.takeDirty = () => {
+    const value = dirty;
+    dirty = false;
     return value;
-  }
+  };
 
   /** Called immediately before the transformers are re-registered. */
-  beginGeneration(): void {
-    this.generation += 1;
-  }
+  catalog.beginGeneration = () => {
+    generation += 1;
+  };
 
-  canonicalCallId(artifactId: string): string | undefined {
-    return this.canonical.get(artifactId);
-  }
-
-  card(artifactId: string): ObservedCard | undefined {
-    return this.best.get(artifactId);
-  }
-
-  isGap(callId: string): boolean {
-    return this.gaps.has(callId);
-  }
-
-  get gapCount(): number {
-    return this.gaps.size;
-  }
-
-  get currentGeneration(): number {
-    return this.generation;
-  }
+  catalog.canonicalCallId = (artifactId) => canonical.get(artifactId);
+  catalog.card = (artifactId) => best.get(artifactId);
+  catalog.isGap = (callId) => gaps.has(callId);
+  Object.defineProperties(catalog, {
+    gapCount: { enumerable: false, get: () => gaps.size },
+    currentGeneration: { enumerable: false, get: () => generation },
+  });
 }
+
+export const ArtifactCatalog = createArtifactCatalog as unknown as ArtifactCatalogConstructor;

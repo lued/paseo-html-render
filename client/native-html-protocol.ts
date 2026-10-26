@@ -155,81 +155,89 @@ export function parseNativeErrorUrl(url: string | undefined): string | undefined
 }
 
 /** Reassemble strict, ordered page->native chunks with bounded memory. */
-export class NativeChunkAssembler {
-  private readonly session: string;
-  private messageId = 0;
-  private total = 0;
-  private parts: string[] = [];
-  private encodedChars = 0;
-  private lastCompletedMessageId = 0;
+export interface NativeChunkAssembler {
+  reset(): void;
+  push(input: NativeTransportChunk): { ok: true; duplicate?: boolean } | { ok: false; error: string };
+  readonly complete: boolean;
+  takeEncoded(): string | null;
+  readonly sessionId: string;
+  readonly lastCompleted: number;
+}
 
-  constructor(session: string) {
-    this.session = session;
-  }
+type NativeChunkAssemblerConstructor = new (session: string) => NativeChunkAssembler;
 
-  reset(): void {
-    this.messageId = 0;
-    this.total = 0;
-    this.parts = [];
-    this.encodedChars = 0;
-    this.lastCompletedMessageId = 0;
-  }
+/**
+ * Function constructor intentionally, not a class expression. The host evals
+ * this bundle in Hermes, where large-eval class-expression initializers are
+ * lost; the assembler must be constructible after factory evaluation.
+ */
+function createNativeChunkAssembler(this: NativeChunkAssembler, session: string): void {
+  let messageId = 0;
+  let total = 0;
+  let parts: string[] = [];
+  let encodedChars = 0;
+  let lastCompletedMessageId = 0;
+  const assembler = this;
 
-  push(input: NativeTransportChunk): { ok: true; duplicate?: boolean } | { ok: false; error: string } {
-    if (input.messageId <= this.lastCompletedMessageId) {
+  assembler.reset = () => {
+    messageId = 0;
+    total = 0;
+    parts = [];
+    encodedChars = 0;
+    lastCompletedMessageId = 0;
+  };
+
+  assembler.push = (input) => {
+    if (input.messageId <= lastCompletedMessageId) {
       // A replay or a duplicate final callback from an already-delivered message.
       return { ok: true, duplicate: true };
     }
-    if (this.messageId !== 0 && input.messageId < this.messageId) {
+    if (messageId !== 0 && input.messageId < messageId) {
       return { ok: true, duplicate: true };
     }
-    if (this.messageId === 0) {
-      if (input.messageId !== this.lastCompletedMessageId + 1) {
+    if (messageId === 0) {
+      if (input.messageId !== lastCompletedMessageId + 1) {
         return { ok: false, error: "message id skipped ahead" };
       }
       if (input.total < 1 || input.total > NATIVE_MAX_CHUNKS) return { ok: false, error: "chunk count is out of range" };
       if (input.sequence !== 0) return { ok: false, error: "first chunk is out of order" };
-      this.messageId = input.messageId;
-      this.total = input.total;
+      messageId = input.messageId;
+      total = input.total;
     } else {
-      if (input.messageId !== this.messageId) return { ok: false, error: "message id changed mid-message" };
-      if (this.total !== input.total) return { ok: false, error: "chunk count changed mid-message" };
-      if (input.sequence < this.parts.length) return { ok: true, duplicate: true };
-      if (input.sequence !== this.parts.length) return { ok: false, error: "chunk is out of order" };
+      if (input.messageId !== messageId) return { ok: false, error: "message id changed mid-message" };
+      if (total !== input.total) return { ok: false, error: "chunk count changed mid-message" };
+      if (input.sequence < parts.length) return { ok: true, duplicate: true };
+      if (input.sequence !== parts.length) return { ok: false, error: "chunk is out of order" };
     }
-    this.encodedChars += input.data.length;
-    if (this.encodedChars > NATIVE_MAX_ENCODED_CHARS) {
-      this.reset();
+    encodedChars += input.data.length;
+    if (encodedChars > NATIVE_MAX_ENCODED_CHARS) {
+      assembler.reset();
       return { ok: false, error: "encoded message exceeds the budget" };
     }
-    this.parts.push(input.data);
+    parts.push(input.data);
     return { ok: true };
-  }
-
-  get complete(): boolean {
-    return this.messageId > 0 && this.total > 0 && this.parts.length === this.total;
-  }
+  };
 
   /** Returns and clears the encoded payload once all chunks arrived. */
-  takeEncoded(): string | null {
-    if (!this.complete) return null;
-    const encoded = this.parts.join("");
-    this.lastCompletedMessageId = this.messageId;
-    this.messageId = 0;
-    this.total = 0;
-    this.parts = [];
-    this.encodedChars = 0;
+  assembler.takeEncoded = () => {
+    if (!(messageId > 0 && total > 0 && parts.length === total)) return null;
+    const encoded = parts.join("");
+    lastCompletedMessageId = messageId;
+    messageId = 0;
+    total = 0;
+    parts = [];
+    encodedChars = 0;
     return encoded;
-  }
+  };
 
-  get sessionId(): string {
-    return this.session;
-  }
-
-  get lastCompleted(): number {
-    return this.lastCompletedMessageId;
-  }
+  Object.defineProperties(assembler, {
+    complete: { enumerable: false, get: () => messageId > 0 && total > 0 && parts.length === total },
+    sessionId: { enumerable: false, get: () => session },
+    lastCompleted: { enumerable: false, get: () => lastCompletedMessageId },
+  });
 }
+
+export const NativeChunkAssembler = createNativeChunkAssembler as unknown as NativeChunkAssemblerConstructor;
 
 /** Decode a complete transport payload into a validated JSON value. */
 export function decodeNativeTransportMessage(encoded: string): { ok: true; value: unknown } | { ok: false; error: string } {

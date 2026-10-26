@@ -38,6 +38,16 @@ jobs:
         run: |
           test -n "$PASEO_HTML_RENDER_CHROMIUM"
           node --input-type=module -e 'import { createRenderer } from "./server/renderer.ts"; const renderer = createRenderer(); try { const result = await renderer.render({ html: "<p>CI sandbox probe</p>" }); if (result.png.subarray(1, 4).toString("latin1") !== "PNG") throw new Error("invalid Chromium preview"); } finally { await renderer.close(); }'
+      - name: Require real Hermes entry evaluation
+        run: |
+          set -euo pipefail
+          mkdir -m 700 "$RUNNER_TEMP/hr-hermes"
+          curl --fail --location --proto '=https' --tlsv1.2 --connect-timeout 10 --max-time 120 \
+            https://github.com/facebook/hermes/releases/download/v0.13.0/hermes-cli-linux.tar.gz \
+            -o "$RUNNER_TEMP/hr-hermes/release.tgz"
+          echo "aead6eb0b8f563bb022354352eae32dad96c933330b6c1941b6db17674ca68ae  $RUNNER_TEMP/hr-hermes/release.tgz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/hr-hermes/release.tgz" -C "$RUNNER_TEMP/hr-hermes" ./hermes
+          npm run check:client-eval -- --hermes "$RUNNER_TEMP/hr-hermes/hermes"
       - name: Typecheck
         run: npm run typecheck
       - name: Full serial tests (no skips)

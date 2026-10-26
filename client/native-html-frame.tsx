@@ -20,7 +20,6 @@ import {
   useRef,
   useState,
   type ComponentType,
-  type ErrorInfo,
   type ReactNode,
 } from "react";
 import * as PublicClientUi from "@getpaseo/plugin/client/ui";
@@ -70,7 +69,7 @@ export type NativeHtmlCapability =
   | { readonly available: true; readonly reason: "ready" }
   | {
       readonly available: false;
-      readonly reason: "platform" | "host-document-frame" | "command-apis";
+      readonly reason: "platform" | "host-document-frame" | "command-apis" | "error-boundary";
     };
 
 /**
@@ -88,6 +87,9 @@ export function nativeHtmlCapability(platform: HtmlFramePlatform): NativeHtmlCap
   }
   if (!isUsableDocumentFrame(documentFrame)) {
     return { available: false, reason: "host-document-frame" };
+  }
+  if (typeof Component !== "function") {
+    return { available: false, reason: "error-boundary" };
   }
   const commandUi = UIManager as unknown as { dispatchViewManagerCommand?: unknown };
   if (typeof commandUi?.dispatchViewManagerCommand !== "function" || typeof findNodeHandle !== "function") {
@@ -121,24 +123,76 @@ interface NavigationEvent {
   };
 }
 
-class NativeErrorBoundary extends Component<{
-  children: ReactNode;
+interface NativeBoundaryProps {
+  children?: ReactNode;
   onError: (message: string) => void;
-}, { error: string | null }> {
-  state = { error: null as string | null };
+}
 
-  static getDerivedStateFromError(error: unknown): { error: string } {
-    return { error: plainError(error) };
+interface NativeBoundaryState {
+  error: string | null;
+}
+
+interface NativeBoundaryInstance {
+  props: NativeBoundaryProps;
+  state: NativeBoundaryState;
+  render(): ReactNode;
+  componentDidCatch(): void;
+}
+
+type NativeBoundaryConstructor = {
+  new (props: NativeBoundaryProps): NativeBoundaryInstance;
+  getDerivedStateFromError(error: unknown): NativeBoundaryState;
+};
+
+let cachedNativeBoundary: ComponentType<NativeBoundaryProps> | null | undefined;
+
+/**
+ * Build a React error boundary without class syntax.
+ *
+ * Hermes 0.12 drops class-expression initializers from the large eval source
+ * the host uses for plugin bundles. This legacy function-constructor component
+ * uses only public React.Component behavior (prototype, componentDidCatch and
+ * getDerivedStateFromError) and is created lazily only for the native mount.
+ * If the host has no usable Component, capability stays unavailable rather than
+ * failing plugin import for web or older hosts.
+ */
+function getNativeErrorBoundary(): ComponentType<NativeBoundaryProps> | null {
+  if (cachedNativeBoundary !== undefined) return cachedNativeBoundary;
+  const maybeBase: unknown = Component;
+  if (typeof maybeBase !== "function") {
+    cachedNativeBoundary = null;
+    return null;
   }
-
-  componentDidCatch(_error: unknown, _info: ErrorInfo): void {
-    this.props.onError("The native HTML host could not be mounted on this client");
+  const Base = maybeBase as {
+    call(thisArg: NativeBoundaryInstance, props: NativeBoundaryProps): void;
+    prototype: object;
+  };
+  if (!Base.prototype) {
+    cachedNativeBoundary = null;
+    return null;
   }
-
-  render(): ReactNode {
+  const Boundary = function (this: NativeBoundaryInstance, props: NativeBoundaryProps): void {
+    Base.call(this, props);
+    this.state = { error: null };
+  } as unknown as NativeBoundaryConstructor;
+  Boundary.prototype = Object.create(Base.prototype) as NativeBoundaryInstance;
+  Object.defineProperty(Boundary.prototype, "constructor", {
+    value: Boundary,
+    writable: true,
+    configurable: true,
+  });
+  Boundary.prototype.render = function (this: NativeBoundaryInstance): ReactNode {
     if (this.state.error) return null;
     return this.props.children;
-  }
+  } as unknown as NativeBoundaryInstance["render"];
+  Boundary.prototype.componentDidCatch = function (this: NativeBoundaryInstance): void {
+    this.props.onError("The native HTML host could not be mounted on this client");
+  };
+  Boundary.getDerivedStateFromError = (error: unknown): NativeBoundaryState => ({
+    error: plainError(error),
+  });
+  cachedNativeBoundary = Boundary as unknown as ComponentType<NativeBoundaryProps>;
+  return cachedNativeBoundary;
 }
 
 export interface NativeHtmlFrameProps {
@@ -402,6 +456,15 @@ function NativeHtmlFrameInstance({
     width,
     contentHeight,
   });
+  const ErrorBoundary = getNativeErrorBoundary();
+  if (!ErrorBoundary) {
+    return (
+      <View style={styles.errorBox} accessibilityLabel="Interactive report unavailable">
+        <Text style={styles.errorTitle}>Interactive report unavailable</Text>
+        <Text style={styles.errorText}>The native host does not expose a usable React component base.</Text>
+      </View>
+    );
+  }
 
   return (
     <View
@@ -412,8 +475,8 @@ function NativeHtmlFrameInstance({
       }}
       accessibilityLabel="Interactive HTML report"
     >
-      <NativeErrorBoundary onError={(message) => fail(message)}>
-        {createElement(RNCWebView, {
+      {createElement(ErrorBoundary, { onError: (message) => fail(message) },
+        createElement(RNCWebView, {
           ref: webViewRef,
           newSource: source,
           style: styles.webview,
@@ -425,8 +488,7 @@ function NativeHtmlFrameInstance({
           accessible: true,
           accessibilityLabel: props.title,
           testID: "native-html-frame",
-        })}
-      </NativeErrorBoundary>
+        }))}
       {!ready ? (
         <View style={styles.loadingOverlay} pointerEvents="none">
           <Text style={styles.loadingText}>Loading interactive report…</Text>

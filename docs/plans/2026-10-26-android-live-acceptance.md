@@ -4,7 +4,33 @@ Date: 2026-10-26
 Status: user authorized completing live acceptance (item 2), using OpenCode Go DeepSeek max subagents. npm authentication/publication is deferred to the last step. macOS is not an acceptance target.
 review: none
 
-## Integrated deployment checkpoint — 2026-10-26, 07:55 UTC
+## Corrective deployment — 2026-10-26, 22:29 UTC
+
+The actual phone screenshot rejected the previous candidate: html-render failed
+on initialization with the prototype-of-undefined error. Parent reproduced the
+same error at new ArtifactCatalog in a real Hermes VM with the full immutable
+bundle; React.Component was available. All three class-valued client bindings
+were affected. Sole DeepSeek max writer replaced them with function/closure/
+prototype constructors, preserving catalog, assembler and error-boundary safety.
+Parent reviewed, added strict repeatable Hermes evaluation/CI and an AST guard.
+
+Parent 289/289 full tests on both Node 22/26, typecheck/bundles, exact package/
+repack and Paseo 0.12/0.13 installation smokes PASS. Full latest G1–G6: 6/6 PASS.
+A prior disposable auth UI race failed honestly; bounded harness correction,
+both full suites and the entire wrapper were rerun. Latest G6 observes actual
+password-prompt onboarding, one inline card after refresh and verified cleanup.
+
+New package: 841b7177fbe2eb17e61527382082a792c270a4eda93ff13201134597a8d5b28f.
+Actual delivered bundle: 24ff34f42de25497d735e0fb8bcb43988f0d6a4b65987e6a465264fc8fb50507;
+exact bytes passed Hermes factory/setup and native constructor checks. Existing
+plugin normally reloaded. Private native-load-fix/parent/ evidence records exact
+engine/version and synthetic UI limitations. No post-fix physical pass inferred.
+
+Next: user reopens app and retries the corrected integrated inline candidate,
+not a separate diagnostic screen. No other plugin, auth/relay/security change,
+new host installation, npm authentication/publication, push or tag.
+
+## Superseded deployment checkpoint — 2026-10-26, 07:55 UTC
 
 Production inline adapter implemented, parent reviewed and existing html-render
 installation normally reloaded; NO temporary probe installed. Parent full suites

@@ -15,7 +15,61 @@ candidate is now implemented and deployed as recorded below; actual physical
 Android acceptance remains open. See the internal Android-first acceptance plan
 for ownership and evidence requirements.
 
-## Current integrated candidate — deployed 2026-10-26, 07:53 UTC
+## Corrective candidate — deployed 2026-10-26, 22:29 UTC
+
+The user's physical Android screenshot rejected the previous candidate: the
+plugin failed during setup with Cannot read property 'prototype' of undefined.
+Parent reproduced that exact error in a real Hermes VM using the immutable
+old delivered bundle. The failure was at new ArtifactCatalog(), not missing
+React.Component and not a WebView fallback. All three class-valued bindings
+were undefined in the full evaluated wrapper; small evaluated classes worked.
+Only converting the affected class definitions to function/prototype code made
+the full entry initialize. Catalog dedupe, assembler state/limits and React
+error containment remain covered and unchanged in behavior.
+
+| Corrective gate | Result |
+| --- | --- |
+| Exact delivered bundle in real Hermes | **PASS**, full factory/setup/cleanup and separate catalog/assembler/error-boundary construction checks; Node 22 and 26 drivers |
+| Full serial suites, latest auth-harness repair | **289/289 PASS on BOTH Node 22.18.0 and 26.12.1**, zero fail/skip/cancellation |
+| Latest full G1–G6 | **6/6 PASS**, zero blocked/unavailable; 22:36–22:37 UTC |
+| Typecheck / bundles | PASS; 17 client / 24 server inputs; Pele server-only |
+| Exact install/smoke | PASS, Paseo 0.12 / Node 22 and Paseo 0.13.0-beta.2 / Node 26 |
+| Package / repack / source | Matching tarballs and all 74 packed files equal current source |
+| Package SHA-256 | 841b7177fbe2eb17e61527382082a792c270a4eda93ff13201134597a8d5b28f |
+| Sizes / contents | 1,564,698 packed / 2,066,739 unpacked bytes; 74 entries, 43 required, 40 local links, zero forbidden matches |
+| Actual delivered client SHA-256 | 24ff34f42de25497d735e0fb8bcb43988f0d6a4b65987e6a465264fc8fb50507; 157,636 bytes |
+| Deployed identity | Byte-identical to independent installed-host compilation; same exact bytes passed Hermes |
+| Physical Android after correction | **Not observed yet**; needs retry of the corrected integrated candidate |
+
+Private evidence: /tmp/hr-acceptance-20261026/native-load-fix/parent/.
+The previous 11453c79 candidate and intermediate 3858ba94 package are superseded;
+never publish them. No user-host probe, auth/relay/security change, other-plugin
+change, npm publication, push or tag. Only existing html-render was reloaded.
+
+The repeatable strict check is npm run check:client-eval -- --hermes <VM>, with
+optional --bundle <actual-delivered-bundle.js>. It executes the unmodified entry
+and a separately instrumented constructor/lifecycle check. It uses real React,
+Zod and shared SDK exports with synthetic unmounted RN/UI surfaces. The official
+Hermes release asset tag is v0.13.0; executable identifies Hermes 0.12.0 / HBC96,
+with -Xes6-class -enable-eval. This is a real VM, not hermesc/parser/Node, but NOT
+asserted to be the exact phone build or Fabric/WebView evidence. CI pins the
+official download SHA and requires this gate; remote CI remains unrun. An AST
+class guard also checks the complete client bundle without rejecting HTML
+class attributes or strings. No new production dependency was added.
+
+The first corrective G1–G6 run failed in disposable hosted authentication before
+any card: the current pairing UI could preserve a wrong password override while
+a same-host link was submitted, and the harness raced busy/readonly controls.
+That failure and verified cleanup remain under e2e/. The bounded harness repair
+waits for enabled/editable controls, checks filled values only as a boolean, and
+completes an already-present password prompt instead of resubmitting a stale
+wrong override. BOTH full suites and full G1–G6 were rerun afterward. Latest
+hosted run actually used password_prompt: missing-password negative, fresh wrong
+rejection/no admitted host, correct admission, one inline card after refresh,
+authorized exact source readback and positive browser/profile/daemon/root cleanup.
+This now proves the prompt branch, not merely credential-link onboarding.
+
+## Rejected native candidate — historical 07:53 UTC deployment
 
 The existing user installation of html-render was normally reloaded; no probe
 plugin was installed and no auth, relay or security settings were changed.

@@ -356,6 +356,12 @@ async function waitForTestId(browser, testId, timeoutMs, label) {
 
 async function clickTestId(browser, testId, timeoutMs, label) {
   await waitForTestId(browser, testId, timeoutMs, label);
+  const selector = `[data-testid=${JSON.stringify(testId)}]`;
+  await browser.waitFor(`(() => {
+    const element = document.querySelector(${JSON.stringify(selector)});
+    return Boolean(element && !element.disabled && element.getAttribute('aria-disabled') !== 'true'
+      && getComputedStyle(element).pointerEvents !== 'none');
+  })()`, timeoutMs, `${label} enabled`);
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const point = await testIdRect(browser, testId);
     if (point) {
@@ -381,6 +387,11 @@ async function findClickableRect(browser, expression) {
 
 async function fillTestId(browser, testId, value) {
   const selector = `[data-testid=${JSON.stringify(testId)}]`;
+  await browser.waitFor(`(() => {
+    const element = document.querySelector(${JSON.stringify(selector)});
+    return Boolean(element && !element.disabled && !element.readOnly
+      && element.getAttribute('aria-disabled') !== 'true' && element.getAttribute('aria-readonly') !== 'true');
+  })()`, 20_000, `${testId} editable`);
   const focused = await browser.evaluate(`(() => {
     const element = document.querySelector(${JSON.stringify(selector)});
     if (!element) return false;
@@ -390,11 +401,12 @@ async function fillTestId(browser, testId, value) {
   })()`);
   if (!focused) throw new Error(`could not focus ${testId}`);
   await browser.send("Input.insertText", { text: value }, browser.sessionId);
-  const length = await browser.evaluate(`(() => {
+  const matches = await browser.evaluate(`(() => {
     const element = document.querySelector(${JSON.stringify(selector)});
-    return element && typeof element.value === "string" ? element.value.length : -1;
+    return Boolean(element && element.value === ${JSON.stringify(value)});
   })()`);
-  if (!Number.isInteger(length) || length <= 0) throw new Error(`could not fill ${testId}`);
+  // Return only a boolean; never expose credential values in diagnostics.
+  if (matches !== true) throw new Error(`could not fill ${testId}`);
 }
 
 async function markerFrames(browser, marker) {
@@ -642,14 +654,25 @@ async function main() {
     result.auth.wrongHosts = [];
 
     result.stage = "positive_auth";
-    await submitLink(links.correct);
-    const positiveNext = await waitForAnyTestId(browser, ["host-confirmation", "pair-link-password-input"], 10_000);
-    if (positiveNext === "host-confirmation") {
-      await clickTestId(browser, "host-confirmation-connect", 20_000, "host confirmation connect");
-    }
-    if (positiveNext === "pair-link-password-input" || await passwordFieldPresent(3_000)) {
+    // A link rejection can expose the password prompt. A same-host URL change
+    // preserves that password override, so do not submit a new link while the
+    // old wrong override is still present, then race the in-flight request.
+    if (await passwordFieldPresent(250)) {
+      result.auth.positiveMethod = "password_prompt_after_link";
       await fillTestId(browser, "pair-link-password-input", password);
       await clickTestId(browser, "pair-link-submit", 20_000, "correct password submit");
+    } else {
+      result.auth.positiveMethod = "credential_link";
+      await submitLink(links.correct);
+      const positiveNext = await waitForAnyTestId(browser, ["host-confirmation", "pair-link-password-input"], 10_000);
+      if (positiveNext === "host-confirmation") {
+        await clickTestId(browser, "host-confirmation-connect", 20_000, "host confirmation connect");
+      }
+      if (positiveNext === "pair-link-password-input" || await passwordFieldPresent(3_000)) {
+        result.auth.positiveMethod = "password_prompt_after_link";
+        await fillTestId(browser, "pair-link-password-input", password);
+        await clickTestId(browser, "pair-link-submit", 20_000, "correct password submit");
+      }
     }
   }
 

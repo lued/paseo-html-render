@@ -30,7 +30,36 @@ daemons are normal and must remain protected. Execution/evidence contract:
   24 server inputs). Private full log: `/tmp/html-render-guard-full-tests.log`.
   This is local code evidence, not live Paseo or final package acceptance.
 
-## Current acceptance checkpoint (2026-10-26)
+## Current corrective deployment (2026-10-26, 22:29 UTC)
+
+- User's real Android screenshot **FAILED** the prior candidate at plugin
+  initialization. Parent reproduced the exact prototype error in real Hermes:
+  class-valued catalog/assembler/boundary bindings became undefined across the
+  full evaluated bundle. The previous phone-ready result is withdrawn.
+- All three constructors now use class-free function/closure/prototype code.
+  Dedupe, transport, safety, error boundary and retry behavior are retained.
+  AST prevention and a repeatable real-Hermes full-entry/constructor gate are
+  checked in; CI requires a pinned official VM. No new production dependency.
+- Parent full serial suites: **289/289 on BOTH Node 22.18.0 and 26.12.1**,
+  zero fail/skip/cancellation. Typecheck/bundles PASS. Latest full G1–G6:
+  **6/6 PASS**, now including real password-prompt onboarding. A preceding
+  isolated auth-harness race failure is retained; both full suites and the
+  entire wrapper were rerun after the bounded test-only correction.
+- Exact package smokes pass on Paseo 0.12/0.13. Independent repack and all 74
+  packed-source files match. New package SHA-256:
+  841b7177fbe2eb17e61527382082a792c270a4eda93ff13201134597a8d5b28f.
+- Existing html-render normally reloaded. Actual delivered client SHA-256:
+  24ff34f42de25497d735e0fb8bcb43988f0d6a4b65987e6a465264fc8fb50507,
+  157,636 bytes; byte-identical to independent host compilation and passed
+  real Hermes factory/setup/constructor checks through both Node drivers.
+- **Physical Android after this correction is not observed.** User may retry
+  the integrated app after reopening; no new probe/install/password change.
+  Chrome/PWA and remaining case-ledger acceptance remain separate gates.
+- No changes to the other plugins in the screenshot, user auth/relay/security,
+  npm publication, push or tag. Remote CI unrun. Evidence:
+  /tmp/hr-acceptance-20261026/native-load-fix/parent/.
+
+## Earlier acceptance checkpoint — superseded by corrective deployment
 
 - Protected-fixture writer `6dc72359-217a-4bec-8f0b-f2578d614da0` returned
   bounded harness repairs; parent reviewed and tightened the evidence gates.
