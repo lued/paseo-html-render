@@ -64,9 +64,25 @@ EINVAL bridge socket failure. Both full suites were rerun after the doc-check
 correction; complete smokes passed using owned short roots. The failed smoke
 was cleaned up. No paid model was used for the install smokes.
 
-Hosted E2E, next remote CI and deployment remain pending. Physical retry must
-use the existing saved test card 00eb0c1c96efa968a8a8ab327202a027 after a verified
-normal reload; no new report or diagnostic plugin is needed.
+Fix commit **4b9e77a** is pushed to authorized GitHub origin/main. Remote CI
+**40456903239 PASS**, including the complete Node22/Chromium/Hermes/package job
+and both isolated Paseo0.12/0.13 install jobs. Full protected hosted G1–G6:
+**6/6 PASS** with requested DeepSeek max, actual password-prompt onboarding,
+fresh missing/wrong/correct auth outcomes, exactly one card after refresh,
+authorized exact source readback and positively verified owned cleanup.
+Projection rows do not establish underlying invocation counts or runtime
+alwaysLoad exposure. Captures were inspected.
+
+Existing html-render was normally reloaded at **2026-10-27 05:46 UTC**. Actual
+raw delivered client equals the expected e009e9e9… bytes (162,969 bytes), and
+those same raw bytes pass the full Hermes host/constructor/negative matrices
+through BOTH Node drivers. All74 packed files still equal source; independent
+repack matches. No user auth/security/relay/other-plugin/probe change and no
+Forgejo push, npm login/publication, release tag or GitHub release.
+
+**Physical post-fix readiness is unverified.** Retry the existing saved test
+card 00eb0c1c96efa968a8a8ab327202a027 after reopening the app, keeping it visible
+past the previous timeout. No new report or diagnostic plugin is needed.
 Private evidence:/tmp/hr-acceptance-20261027/native-ready-fix/parent/.
 
 ## Earlier native-selection correction — deployed 2026-10-27, 04:35 UTC
@@ -310,12 +326,12 @@ in the actual hosted client. These cases are the remaining live acceptance work:
 | D2 chart of real repository/tool data | Counts 14/7/9 independently verified; initial PNG captured intermediate animation. Fixed at `a477d8d`; parent geometry/PNG check and real model post-reload preview PASS. Final hosted acceptance pending |
 | D3 source-based flow and built-in Pele/report graph | PARTIAL (2026-10-26): one real publication, four inspected previews; stored 6-node/6-edge report graph has actual light/dark Pele PNGs. Parent inspected source/PNGs. Native-report transport wording corrected in report-only update; actual client/Android checks remain pending |
 | D4 all three showcase pages published and inspected | PARTIAL: pipeline and image-inspection artifacts available; image preparation/static defaults checked. Incident timeline and complete hosted/Android showcase checks pending |
-| D5 flow/inspector/filter controls, keyboard, motion and reflow | PARTIAL: flow centre-hit defect fixed; corrected saved artifact and inspector controls pass in opaque local frames. Inspector source static wording and captures repaired; filter pending; hosted/physical Android controls unverified |
-| D6 actual web auto/iframe/static/report views and file link | PARTIAL: reviewed protected requested-model run PASS for hosted desktop-web auto inline card and file preview. Other modes, real controls and native/Android surfaces remain pending; file preview is not native parity |
+| D5 flow/inspector/filter controls, keyboard, motion and reflow | PARTIAL: flow centre-hit defect fixed; corrected saved artifact and inspector controls pass in opaque local frames. Inspector source static wording and captures repaired; filter pending; simple current-chat controls user-confirmed on the phone before a delayed ready failure; sustained post-fix controls unverified |
+| D6 actual web auto/iframe/static/report views and file link | PARTIAL: reviewed protected requested-model run PASS for hosted desktop-web auto inline card and file preview. Other modes and full native/Android surfaces remain pending; simple local phone interaction worked before a ready timeout, with recovery deployed but not device-verified; file preview is not native parity |
 | D7 same-turn/concurrent/unchanged refusals and next-turn update | Live pending-reservation race PASS (one success), same-turn unchanged PASS, cross-turn exact-repeat PASS (16 ms), meaningful report-only update PASS. Real client/device presentation beyond the protected fixture remains pending |
 | D8 image/report/metadata changes, missing-image diagnostics and ownership/readback | Report-only correction PASS with HTML/previews/graph bytes preserved; image inlining/static checks and preview-only missing-image diagnostic PASS. Metadata, cross-owner/authority and legacy cases remain pending |
 | D9 persisted history, refresh and one card per artifact | PARTIAL: one protected hosted-web artifact survives refresh with exactly one inline card despite outer/direct render rows. Android and remaining artifact/control cases pending |
-| D10 exact production tarball / actual published npm-source acquisition | Historical tarball PASS; current packed changes require a new verified candidate. Registry/npm-source work remains deliberately deferred |
+| D10 exact production tarball / actual published npm-source acquisition | Current5b32291d… package/repack/source74, both exact-install smokes and raw deployed-byte equality PASS; full Hermes matrices PASS. Registry/npm-source publication remains deliberately deferred |
 
 Historical pre-repair evidence (superseded for the narrow protected fixture by
 the checkpoint below): the full live `npm run verify:e2e` run produced **5 pass / 1 fail**: G1–G5

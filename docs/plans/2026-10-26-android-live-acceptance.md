@@ -52,9 +52,25 @@ EINVAL bridge socket failure. Both full suites were rerun after the doc-check
 correction; complete smokes passed using owned short roots. The failed smoke
 was cleaned up. No paid model was used for the install smokes.
 
-Hosted E2E, next remote CI and deployment remain pending. Physical retry must
-use the existing saved test card 00eb0c1c96efa968a8a8ab327202a027 after a verified
-normal reload; no new report or diagnostic plugin is needed.
+Fix commit **4b9e77a** is pushed to authorized GitHub origin/main. Remote CI
+**40456903239 PASS**, including the complete Node22/Chromium/Hermes/package job
+and both isolated Paseo0.12/0.13 install jobs. Full protected hosted G1–G6:
+**6/6 PASS** with requested DeepSeek max, actual password-prompt onboarding,
+fresh missing/wrong/correct auth outcomes, exactly one card after refresh,
+authorized exact source readback and positively verified owned cleanup.
+Projection rows do not establish underlying invocation counts or runtime
+alwaysLoad exposure. Captures were inspected.
+
+Existing html-render was normally reloaded at **2026-10-27 05:46 UTC**. Actual
+raw delivered client equals the expected e009e9e9… bytes (162,969 bytes), and
+those same raw bytes pass the full Hermes host/constructor/negative matrices
+through BOTH Node drivers. All74 packed files still equal source; independent
+repack matches. No user auth/security/relay/other-plugin/probe change and no
+Forgejo push, npm login/publication, release tag or GitHub release.
+
+**Physical post-fix readiness is unverified.** Retry the existing saved test
+card 00eb0c1c96efa968a8a8ab327202a027 after reopening the app, keeping it visible
+past the previous timeout. No new report or diagnostic plugin is needed.
 Private evidence:/tmp/hr-acceptance-20261027/native-ready-fix/parent/.
 
 ## Earlier native selection correction — 2026-10-27, 04:35 UTC
