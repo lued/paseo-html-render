@@ -10,6 +10,13 @@
  * If the public host surface, command APIs, registration, shell handshake, or
  * transport fails, the component shows an explicit error/retry state. It never
  * falls back to rendering report HTML outside the sandbox.
+ *
+ * Page -> native data arrives on the RNCWebView `onMessage` bridge first and on
+ * the historical fragment callbacks second; both feed one ordered assembler, so
+ * a chunk seen on both channels is applied once. A control-channel failure
+ * (ready deadline, ack rejection, theme ack) no longer tears the frame down: a
+ * report that already renders stays mounted behind a non-destructive banner and
+ * Retry remounts explicitly.
  */
 import {
   Component,
@@ -52,10 +59,13 @@ import {
 } from "../shared/html-document.ts";
 import {
   NATIVE_THEME_ACK_TIMEOUT_MS,
+  NATIVE_TRANSPORT_COUNTERS,
   NATIVE_WEBVIEW_SECURITY_PROPS,
   NativeChunkAssembler,
   buildNativeShellDocument,
   decodeNativeTransportMessage,
+  nativeReadyTimeoutMessage,
+  parseNativeBridgeMessage,
   parseNativeErrorUrl,
   parseNativeTransportUrl,
   nativeMountErrorMessage,
@@ -64,6 +74,8 @@ import {
   nativeDocumentKey,
   readNativeThemeAck,
   type NativeHtmlCapability,
+  type NativeTransportChunk,
+  type NativeTransportCounters,
 } from "./native-html-protocol.ts";
 
 const RNCWebView = "RNCWebView" as unknown as ComponentType<Record<string, unknown>>;
@@ -119,6 +131,30 @@ interface NavigationEvent {
     description?: string;
     didCrash?: boolean;
   };
+}
+
+/**
+ * The real RNCWebView `onMessage` event shape. Android delivers the string the
+ * page passed to `window.ReactNativeWebView.postMessage` as `nativeEvent.data`;
+ * some hosts also attach `nativeEvent.url`. Nothing in it is trusted.
+ */
+interface NativeMessageEvent {
+  nativeEvent?: {
+    data?: unknown;
+    url?: unknown;
+  };
+}
+
+/** Writable copy of the safe transport counters kept for one mounted frame. */
+type MutableTransportCounters = { -readonly [K in keyof NativeTransportCounters]: number };
+
+/**
+ * A non-destructive control-channel failure. `ready-timeout` is cleared by a
+ * late genuine ready; the others need an explicit Retry remount.
+ */
+interface NativeControlNotice {
+  readonly kind: "ready-timeout" | "control" | "theme";
+  readonly message: string;
 }
 
 interface NativeBoundaryProps {
@@ -271,9 +307,10 @@ function NativeHtmlFrameInstance({
   const [width, setWidth] = useState(728);
   const [contentHeight, setContentHeight] = useState<number | undefined>(undefined);
   const [ready, setReady] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [themeAckError, setThemeAckError] = useState<string | null>(null);
+  const [fatal, setFatal] = useState<string | null>(null);
+  const [notice, setNotice] = useState<NativeControlNotice | null>(null);
   const assemblerRef = useRef(new NativeChunkAssembler(session));
+  const countersRef = useRef<MutableTransportCounters>({ ...NATIVE_TRANSPORT_COUNTERS });
   const pendingThemeRef = useRef<number | null>(null);
   const themeSeqRef = useRef(0);
   const lastThemeRef = useRef(`${initialTheme.appearance}:${JSON.stringify(initialTheme.variables)}`);
@@ -282,12 +319,28 @@ function NativeHtmlFrameInstance({
   const readyProbeSentRef = useRef(false);
   const readyReceivedRef = useRef(false);
 
-  const fail = useCallback((message: string) => {
-    setError(message);
+  /**
+   * Hard failure: the frame cannot show a report at all (build, mount, load or
+   * render-process death), so replacing it with the error box is not
+   * destructive. Control-channel failures must use `failControl` instead.
+   */
+  const failFatal = useCallback((message: string) => {
+    setFatal((current) => current ?? message);
     if (readyTimerRef.current) clearTimeout(readyTimerRef.current);
     if (themeTimerRef.current) clearTimeout(themeTimerRef.current);
     readyTimerRef.current = null;
     themeTimerRef.current = null;
+  }, []);
+
+  /**
+   * Control-channel failure: the WebView keeps rendering whatever it already
+   * has and a non-destructive banner offers an explicit Retry remount. The first
+   * failure wins so a later cascade cannot overwrite the diagnostic.
+   */
+  const failControl = useCallback((kind: NativeControlNotice["kind"], message: string) => {
+    setNotice((current) => current ?? { kind, message });
+    if (readyTimerRef.current) clearTimeout(readyTimerRef.current);
+    readyTimerRef.current = null;
   }, []);
 
   const dispatchCommand = useCallback((command: string, args: unknown[]) => {
@@ -303,78 +356,130 @@ function NativeHtmlFrameInstance({
     try {
       dispatchCommand("postMessage", [JSON.stringify({ type: "paseo-ack", session: sessionId, mid: messageId, seq: sequence })]);
     } catch (commandError) {
-      fail(`Native HTML transport could not acknowledge data: ${plainError(commandError)}`);
+      countersRef.current.rejected += 1;
+      failControl("control", `Native HTML transport could not acknowledge data: ${plainError(commandError)}`);
     }
-  }, [dispatchCommand, fail]);
+  }, [dispatchCommand, failControl]);
 
-  const handleChunk = useCallback((url: string | undefined) => {
-    const parsed = parseNativeTransportUrl(url, session);
-    if (!parsed) return false;
-    if (!parsed.ok || !parsed.chunk) {
-      if (parsed.stale) return true;
-      fail(`Native HTML transport rejected data: ${parsed.error ?? "malformed chunk"}`);
-      return true;
-    }
-    const result = assemblerRef.current.push(parsed.chunk);
-    if (!result.ok) {
-      fail(`Native HTML transport rejected data: ${result.error}`);
-      return true;
-    }
-    acknowledgeChunk(session, parsed.chunk.messageId, parsed.chunk.sequence);
-    if (result.duplicate || !assemblerRef.current.complete) return true;
-    const encoded = assemblerRef.current.takeEncoded();
-    if (encoded === null) return true;
-    const decoded = decodeNativeTransportMessage(encoded);
-    if (!decoded.ok) {
-      fail(`Native HTML transport rejected a message: ${decoded.error}`);
-      return true;
-    }
-    const value = decoded.value;
+  const handleComplete = useCallback((value: unknown) => {
+    const counters = countersRef.current;
     const themeAck = readNativeThemeAck(value, session);
     if (themeAck !== null) {
       if (pendingThemeRef.current === themeAck) {
         pendingThemeRef.current = null;
         if (themeTimerRef.current) clearTimeout(themeTimerRef.current);
         themeTimerRef.current = null;
-        setThemeAckError(null);
       }
-      return true;
+      return;
     }
     if (readReadyMessage(value)) {
       readyReceivedRef.current = true;
       setReady(true);
+      // A late genuine ready disproves the timeout. Recovery is non-destructive:
+      // the frame was never unmounted, so only the banner is removed.
+      setNotice((current) => (current?.kind === "ready-timeout" ? null : current));
       if (readyTimerRef.current) clearTimeout(readyTimerRef.current);
       readyTimerRef.current = null;
-      return true;
+      return;
     }
     const height = readSizeChangedMessage(value);
     if (height !== undefined) {
       setContentHeight(height);
-      return true;
+      return;
     }
     const link = readOpenLinkRequest(value);
     if (link) {
       latest.current.onOpenLink?.(link.url, { metaKey: link.metaKey, ctrlKey: link.ctrlKey });
-      return true;
+      return;
     }
     const image = readOpenImageRequest(value);
     if (image) {
       latest.current.onOpenImage?.(image);
+      return;
+    }
+    counters.rejected += 1;
+    failControl("control", "Native HTML transport received an unsupported complete message");
+  }, [failControl, session]);
+
+  /**
+   * One assembler for both channels. A chunk delivered on the bridge and again
+   * as a fragment fallback is acknowledged twice and applied once.
+   */
+  const acceptChunk = useCallback((chunk: NativeTransportChunk) => {
+    const counters = countersRef.current;
+    counters.chunks += 1;
+    counters.messagesSinceProbe += 1;
+    const result = assemblerRef.current.push(chunk);
+    if (!result.ok) {
+      counters.rejected += 1;
+      failControl("control", `Native HTML transport rejected data: ${result.error}`);
+      return;
+    }
+    acknowledgeChunk(session, chunk.messageId, chunk.sequence);
+    if (result.duplicate || !assemblerRef.current.complete) return;
+    const encoded = assemblerRef.current.takeEncoded();
+    if (encoded === null) return;
+    const decoded = decodeNativeTransportMessage(encoded);
+    if (!decoded.ok) {
+      counters.rejected += 1;
+      failControl("control", `Native HTML transport rejected a message: ${decoded.error}`);
+      return;
+    }
+    counters.messages += 1;
+    handleComplete(decoded.value);
+  }, [acknowledgeChunk, failControl, handleComplete, session]);
+
+  /** Fragment fallback receiver: the pre-0.14 page->native channel. */
+  const handleChunkUrl = useCallback((url: string | undefined) => {
+    const parsed = parseNativeTransportUrl(url, session);
+    if (!parsed) return false;
+    if (!parsed.ok || !parsed.chunk) {
+      if (parsed.stale) return true;
+      countersRef.current.rejected += 1;
+      failControl("control", `Native HTML transport rejected data: ${parsed.error ?? "malformed chunk"}`);
       return true;
     }
-    fail("Native HTML transport received an unsupported complete message");
+    countersRef.current.fragments += 1;
+    acceptChunk(parsed.chunk);
     return true;
-  }, [acknowledgeChunk, fail, session]);
+  }, [acceptChunk, failControl, session]);
+
+  /** Primary receiver: the real RNCWebView `onMessage` event. */
+  const handleBridgeMessage = useCallback((event: NativeMessageEvent) => {
+    const parsed = parseNativeBridgeMessage(event?.nativeEvent?.data, session);
+    // Not our envelope: a foreign bridge writer must not break the transport.
+    if (!parsed) return;
+    if (!parsed.ok || !parsed.chunk) {
+      if (parsed.stale) return;
+      countersRef.current.rejected += 1;
+      failControl("control", `Native HTML transport rejected data: ${parsed.error ?? "malformed chunk"}`);
+      return;
+    }
+    countersRef.current.pageMessages += 1;
+    acceptChunk(parsed.chunk);
+  }, [acceptChunk, failControl, session]);
 
   const onNavigationEvent = useCallback((event: NavigationEvent) => {
     const url = event.nativeEvent?.url;
     // Early progress events may have no URL. Only an actual transport URL can
     // contribute data; ordinary loading/progress is never readiness.
     if (typeof url !== "string") return;
-    if (handleChunk(url)) return;
+    if (handleChunkUrl(url)) return;
     const transportError = parseNativeErrorUrl(url);
-    if (transportError) fail(`Native HTML transport failed: ${transportError}`);
-  }, [fail, handleChunk]);
+    if (transportError) failControl("control", `Native HTML transport failed: ${transportError}`);
+  }, [failControl, handleChunkUrl]);
+
+  const requestReadyProbe = useCallback(() => {
+    const counters = countersRef.current;
+    counters.probes += 1;
+    counters.messagesSinceProbe = 0;
+    try {
+      dispatchCommand("postMessage", [JSON.stringify({ type: "paseo-ready-probe", session })]);
+    } catch (commandError) {
+      counters.rejected += 1;
+      failControl("control", `Native HTML ready probe failed: ${plainError(commandError)}`);
+    }
+  }, [dispatchCommand, failControl, session]);
 
   const onLoadingFinish = useCallback((event: NavigationEvent) => {
     // RNWV's public finish/progress events also carry a URL. Reuse the strict
@@ -384,41 +489,37 @@ function NativeHtmlFrameInstance({
     // retaining the original deadline and requiring a complete real message.
     if (readyReceivedRef.current || readyProbeSentRef.current) return;
     readyProbeSentRef.current = true;
-    try {
-      dispatchCommand("postMessage", [JSON.stringify({ type: "paseo-ready-probe", session })]);
-    } catch (commandError) {
-      fail(`Native HTML ready probe failed: ${plainError(commandError)}`);
-    }
-  }, [dispatchCommand, fail, onNavigationEvent, session]);
+    requestReadyProbe();
+  }, [onNavigationEvent, requestReadyProbe]);
 
   const onLoadingError = useCallback(() => {
-    fail("Native WebView load failed");
-  }, [fail]);
+    failFatal("Native WebView load failed");
+  }, [failFatal]);
 
   const onRenderProcessGone = useCallback(() => {
-    fail("Native WebView render process exited");
-  }, [fail]);
+    failFatal("Native WebView render process exited");
+  }, [failFatal]);
 
   useEffect(() => {
-    if (build.error || ready || error) return;
+    if (build.error || ready || fatal || notice) return;
     const timer = setTimeout(() => {
-      fail("The native HTML frame did not complete its ready handshake in time");
+      failControl("ready-timeout", nativeReadyTimeoutMessage(countersRef.current));
     }, Math.max(HTML_FRAME_READY_TIMEOUT_MS, 8_000));
     readyTimerRef.current = timer;
     return () => {
       clearTimeout(timer);
       if (readyTimerRef.current === timer) readyTimerRef.current = null;
     };
-  }, [build.error, error, fail, ready]);
+  }, [build.error, failControl, fatal, notice, ready]);
 
   useEffect(() => {
-    if (build.error || !ready || error || themeAckError) return;
+    if (build.error || !ready || fatal || notice) return;
     const signature = `${liveTheme.appearance}:${JSON.stringify(liveTheme.variables)}`;
     if (signature === lastThemeRef.current) return;
     lastThemeRef.current = signature;
     const sequence = themeSeqRef.current + 1;
     if (!Number.isSafeInteger(sequence) || sequence > 1_000_000_000) {
-      setThemeAckError("Native HTML theme sequence is exhausted");
+      failControl("theme", "Native HTML theme sequence is exhausted");
       return;
     }
     themeSeqRef.current = sequence;
@@ -431,16 +532,16 @@ function NativeHtmlFrameInstance({
         message: hostContextChangedMessage(liveTheme),
       })]);
     } catch (commandError) {
-      fail(`Native HTML theme update failed: ${plainError(commandError)}`);
+      failControl("control", `Native HTML theme update failed: ${plainError(commandError)}`);
       return;
     }
     if (themeTimerRef.current) clearTimeout(themeTimerRef.current);
     themeTimerRef.current = setTimeout(() => {
       if (pendingThemeRef.current !== sequence) return;
       pendingThemeRef.current = null;
-      setThemeAckError(`Native HTML theme update ${sequence} was not acknowledged`);
+      failControl("theme", `Native HTML theme update ${sequence} was not acknowledged`);
     }, NATIVE_THEME_ACK_TIMEOUT_MS);
-  }, [build.error, dispatchCommand, error, fail, liveTheme, ready, session, themeAckError]);
+  }, [build.error, dispatchCommand, failControl, fatal, liveTheme, notice, ready, session]);
 
   useEffect(() => () => {
     if (readyTimerRef.current) clearTimeout(readyTimerRef.current);
@@ -448,11 +549,11 @@ function NativeHtmlFrameInstance({
     assemblerRef.current.reset();
   }, []);
 
-  if (build.error || error || themeAckError) {
+  if (build.error || fatal) {
     return (
       <View style={styles.errorBox} accessibilityLabel="Interactive report unavailable">
         <Text style={styles.errorTitle}>Interactive report unavailable</Text>
-        <Text style={styles.errorText}>{build.error ?? error ?? themeAckError}</Text>
+        <Text style={styles.errorText}>{build.error ?? fatal}</Text>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Retry interactive report"
@@ -482,39 +583,80 @@ function NativeHtmlFrameInstance({
   }
 
   return (
-    <View
-      style={{ width: "100%", height, overflow: "hidden", backgroundColor: props.theme.colors.surface0 }}
-      onLayout={(event) => {
-        const next = Math.round(event.nativeEvent.layout.width);
-        if (next > 0 && next !== width) setWidth(next);
-      }}
-      accessibilityLabel="Interactive HTML report"
-    >
-      {createElement(ErrorBoundary, { onError: (message) => fail(message) },
-        createElement(RNCWebView, {
-          ref: webViewRef,
-          newSource: source,
-          style: styles.webview,
-          ...NATIVE_WEBVIEW_SECURITY_PROPS,
-          onLoadingStart: onNavigationEvent,
-          onLoadingProgress: onNavigationEvent,
-          onLoadingFinish,
-          onLoadingError,
-          onRenderProcessGone,
-          accessible: true,
-          accessibilityLabel: props.title,
-          testID: "native-html-frame",
-        }))}
-      {!ready ? (
-        <View style={styles.loadingOverlay} pointerEvents="none">
-          <Text style={styles.loadingText}>Loading interactive report…</Text>
+    <View style={styles.frame} accessibilityLabel="Interactive HTML report">
+      {notice ? (
+        // Non-destructive: the rendered report stays mounted below this banner
+        // and keeps its local state. Retry is the only path to a remount.
+        <View style={styles.notice} accessibilityLabel="Interactive report notice">
+          <Text style={styles.noticeTitle}>
+            {notice.kind === "theme" ? "Report theme is out of sync" : "Report connection interrupted"}
+          </Text>
+          <Text style={styles.noticeText}>{notice.message}</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Retry interactive report"
+            onPress={onRetry}
+            style={styles.noticeRetry}
+          >
+            <Text style={styles.noticeRetryText}>Retry</Text>
+          </Pressable>
         </View>
       ) : null}
+      <View
+        style={{ width: "100%", height, overflow: "hidden", backgroundColor: props.theme.colors.surface0 }}
+        onLayout={(event) => {
+          const next = Math.round(event.nativeEvent.layout.width);
+          if (next > 0 && next !== width) setWidth(next);
+        }}
+      >
+        {createElement(ErrorBoundary, { onError: failFatal },
+          createElement(RNCWebView, {
+            ref: webViewRef,
+            newSource: source,
+            style: styles.webview,
+            ...NATIVE_WEBVIEW_SECURITY_PROPS,
+            onLoadingStart: onNavigationEvent,
+            onLoadingProgress: onNavigationEvent,
+            onLoadingFinish,
+            onLoadingError,
+            onRenderProcessGone,
+            onMessage: handleBridgeMessage,
+            accessible: true,
+            accessibilityLabel: props.title,
+            testID: "native-html-frame",
+          }))}
+        {!ready && !notice ? (
+          <View style={styles.loadingOverlay} pointerEvents="none">
+            <Text style={styles.loadingText}>Loading interactive report…</Text>
+          </View>
+        ) : null}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  frame: { width: "100%" },
+  notice: {
+    width: "100%",
+    padding: 10,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: "#5b4a24",
+    borderRadius: 8,
+    backgroundColor: "#1f1a10",
+  },
+  noticeTitle: { color: "#ffd9a0", fontSize: 13, fontWeight: "700" },
+  noticeText: { color: "#e8dcc2", fontSize: 12, lineHeight: 18 },
+  noticeRetry: {
+    alignSelf: "flex-start",
+    marginTop: 2,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: "#3a2f1c",
+  },
+  noticeRetryText: { color: "#ffe9c7", fontSize: 13, fontWeight: "600" },
   webview: { flex: 1, backgroundColor: "transparent" },
   loadingOverlay: {
     position: "absolute",

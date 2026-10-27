@@ -5,10 +5,18 @@
  * data in a non-executable script element until the shell assigns it to the
  * sandboxed inner iframe. No report markup is ever parsed as outer HTML.
  *
- * Page -> native messages use bounded, acknowledged URL-fragment chunks. The
- * native side revalidates every complete message with the existing shared
- * readers; the shell also source-filters and requires fresh focus/user
- * activation before forwarding link/image requests.
+ * Page -> native messages use bounded, acknowledged chunks over two channels:
+ * the RNCWebView `onMessage` bridge (primary, `messagingEnabled` on the trusted
+ * shell) and the historical URL-fragment callbacks (fallback). Both channels
+ * feed one ordered assembler, so a chunk delivered twice is acknowledged
+ * twice and applied once. The native side revalidates every complete message
+ * with the existing shared readers; the shell also source-filters and requires
+ * fresh focus/user activation before forwarding link/image requests.
+ *
+ * The bridge object is injected into the shell document, never into the
+ * report: the report stays in an opaque `allow-scripts` iframe that cannot
+ * reach `window.ReactNativeWebView` and does not know the per-mount session id
+ * every accepted chunk must carry.
  *
  * This module has no React, React Native, Node or DOM imports.
  */
@@ -33,10 +41,18 @@ export const NATIVE_SESSION_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** Security props for the raw RNCWebView component. No cache/cookie clearing. */
+/**
+ * Security props for the raw RNCWebView component. No cache/cookie clearing.
+ *
+ * `messagingEnabled` is on because `onMessage` is the primary page->native
+ * channel and only the constant trusted shell is loaded as the outer document;
+ * it injects `window.ReactNativeWebView` into the shell frame. Report markup is
+ * never outer HTML and stays in an opaque `allow-scripts` iframe, so it cannot
+ * reach that bridge. Keep every other prop hardening unchanged.
+ */
 export const NATIVE_WEBVIEW_SECURITY_PROPS = Object.freeze({
   javaScriptEnabled: true,
-  messagingEnabled: false,
+  messagingEnabled: true,
   setSupportMultipleWindows: false,
   javaScriptCanOpenWindowsAutomatically: false,
   domStorageEnabled: false,
@@ -216,6 +232,12 @@ function canonicalInteger(raw: string): number | null {
   return Number.isSafeInteger(value) ? value : null;
 }
 
+/** Fragment fields are canonical strings; bridge fields are JSON numbers. */
+function integerField(value: unknown): number | null {
+  if (typeof value === "number") return Number.isSafeInteger(value) ? value : null;
+  return typeof value === "string" ? canonicalInteger(value) : null;
+}
+
 function hashOf(url: string | undefined): string | undefined {
   if (typeof url !== "string" || url.length > NATIVE_MAX_URL_CHARS) return undefined;
   const at = url.indexOf("#");
@@ -236,20 +258,158 @@ export function parseNativeTransportUrl(url: string | undefined, session: string
   const fields = payload.split(",");
   if (fields.length !== 5) return { ok: false, error: "transport chunk must have five fields" };
   const [rawSession, rawMessage, rawSeq, rawTotal, rawData] = fields as [string, string, string, string, string];
-  if (rawSession !== session) return { ok: false, error: "transport session does not match", stale: true };
-  // A bounded ready retry may resend the same message id with a distinct
-  // fragment. The suffix only makes the URL change; it is not message data.
+  // A bounded retry may resend the same message id with a distinct fragment.
+  // The suffix only makes the URL change; it is not message data.
   const data = rawData.replace(/;r=[1-9][0-9]{0,3}$/, "");
-  const messageId = canonicalInteger(rawMessage);
-  const sequence = canonicalInteger(rawSeq);
-  const total = canonicalInteger(rawTotal);
+  return readChunkFields({ session: rawSession, messageId: rawMessage, sequence: rawSeq, total: rawTotal, data }, session);
+}
+
+/**
+ * Strict shared validation for one page->native chunk from either channel.
+ * Neither channel may widen the bounds or the accepted character set.
+ */
+function readChunkFields(input: {
+  readonly session: unknown;
+  readonly messageId: unknown;
+  readonly sequence: unknown;
+  readonly total: unknown;
+  readonly data: unknown;
+}, session: string): NativeTransportParse {
+  if (input.session !== session) return { ok: false, error: "transport session does not match", stale: true };
+  if (typeof input.data !== "string") return { ok: false, error: "transport chunk data is missing" };
+  const messageId = integerField(input.messageId);
+  const sequence = integerField(input.sequence);
+  const total = integerField(input.total);
   if (messageId === null || sequence === null || total === null) return { ok: false, error: "transport sequence is malformed" };
   if (messageId < 1) return { ok: false, error: "transport message id is out of range" };
   if (total < 1 || total > NATIVE_MAX_CHUNKS) return { ok: false, error: "transport chunk count is out of range" };
   if (sequence < 0 || sequence >= total) return { ok: false, error: "transport sequence is out of range" };
+  const data = input.data;
   if (data.length > NATIVE_MAX_CHUNK_CHARS) return { ok: false, error: "transport chunk data is too long" };
   if (!/^[A-Za-z0-9%._!~*'()-]*$/.test(data)) return { ok: false, error: "transport chunk contains unsupported characters" };
   return { ok: true, chunk: { messageId, sequence, total, data } };
+}
+
+/** Envelope type of one RNCWebView `onMessage` page->native chunk. */
+export const NATIVE_BRIDGE_TYPE = "paseo-p2n";
+/**
+ * Exact opening of the shell's bridge envelope. `JSON.stringify` keeps the
+ * literal's key order, so this cheaply separates an oversized message that
+ * claims to be ours from unrelated or hostile bridge traffic.
+ */
+const NATIVE_BRIDGE_PREFIX = `{"type":"${NATIVE_BRIDGE_TYPE}",`;
+/** One bridge payload cannot exceed one chunk envelope plus fixed headroom. */
+export const NATIVE_MAX_BRIDGE_CHARS = NATIVE_MAX_CHUNK_CHARS + 1_024;
+
+/**
+ * Parse one RNCWebView `onMessage` payload (`nativeEvent.data`).
+ *
+ * Returns `undefined` for anything that is not our envelope, so foreign bridge
+ * traffic is ignored instead of failing the control channel. Chunks that claim
+ * the envelope but violate the shared bounds are rejected exactly like a
+ * malformed fragment.
+ */
+export function parseNativeBridgeMessage(raw: unknown, session: string): NativeTransportParse | undefined {
+  if (typeof raw !== "string" || raw.length === 0) return undefined;
+  if (raw.length > NATIVE_MAX_BRIDGE_CHARS) {
+    return raw.startsWith(NATIVE_BRIDGE_PREFIX) ? { ok: false, error: "bridge message is too long" } : undefined;
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(raw) as unknown;
+  } catch {
+    return undefined;
+  }
+  if (!isObject(value) || value.type !== NATIVE_BRIDGE_TYPE) return undefined;
+  return readChunkFields({
+    session: value.session,
+    messageId: value.mid,
+    sequence: value.seq,
+    total: value.total,
+    data: value.data,
+  }, session);
+}
+
+/** Safe transport counters. Numbers only: never URLs, payloads or theme data. */
+export interface NativeTransportCounters {
+  /** Bridge envelopes accepted by the shared chunk validator. */
+  readonly pageMessages: number;
+  /** Fragment callback URLs accepted by the same validator. */
+  readonly fragments: number;
+  /** Chunks accepted by the assembler, including acknowledged duplicates. */
+  readonly chunks: number;
+  /** Complete messages decoded into a protocol value. */
+  readonly messages: number;
+  /** Ready probes dispatched to the page. */
+  readonly probes: number;
+  /** Accepted chunks since the most recent probe. */
+  readonly messagesSinceProbe: number;
+  /** Rejected chunks, envelopes and complete messages. */
+  readonly rejected: number;
+}
+
+export const NATIVE_TRANSPORT_COUNTERS: NativeTransportCounters = Object.freeze({
+  pageMessages: 0,
+  fragments: 0,
+  chunks: 0,
+  messages: 0,
+  probes: 0,
+  messagesSinceProbe: 0,
+  rejected: 0,
+});
+
+/** Which hop of the page->native control channel produced no ready message. */
+export type NativeTransportStage =
+  | "no-page-messages"
+  | "chunks-without-ready"
+  | "probe-unanswered"
+  | "no-ready-handshake";
+
+/**
+ * Name the failed stage from accepted-traffic counters.
+ *
+ * Order matters and follows the diagnostic questions from the device bug:
+ * nothing arrived at all (both channels dead) before data arrived without a
+ * ready, before a probe that produced nothing, before partial/incomplete data.
+ */
+export function nativeTransportStage(counters: NativeTransportCounters): NativeTransportStage {
+  if (counters.pageMessages + counters.fragments === 0) return "no-page-messages";
+  if (counters.messages > 0) return "chunks-without-ready";
+  if (counters.probes > 0 && counters.messagesSinceProbe === 0) return "probe-unanswered";
+  return "no-ready-handshake";
+}
+
+export function nativeTransportStageLabel(stage: NativeTransportStage): string {
+  switch (stage) {
+    case "no-page-messages":
+      return "no page messages";
+    case "chunks-without-ready":
+      return "chunks without ready";
+    case "probe-unanswered":
+      return "probe unanswered";
+    default:
+      return "no ready handshake";
+  }
+}
+
+/**
+ * Failure text for an expired ready deadline. It keeps the historical first
+ * sentence and adds the stage plus safe counters, so a device report can name
+ * the hop without shipping payloads or URLs off the device.
+ */
+export function nativeReadyTimeoutMessage(counters: NativeTransportCounters): string {
+  const stage = nativeTransportStage(counters);
+  return [
+    "The native HTML frame did not complete its ready handshake in time.",
+    `Stage: ${nativeTransportStageLabel(stage)}.`,
+    "Counters:",
+    `onMessage ${counters.pageMessages},`,
+    `fragment ${counters.fragments},`,
+    `chunks ${counters.chunks},`,
+    `messages ${counters.messages},`,
+    `probes ${counters.probes},`,
+    `rejected ${counters.rejected}.`,
+  ].join(" ");
 }
 
 /** Parse the shell's ordered theme acknowledgement carried through the transport. */
@@ -376,16 +536,39 @@ var INNER=JSON.parse(p.textContent);
 var SESSION=__SESSION__,CHUNK=__CHUNK__,MAXCHUNKS=__MAXCHUNKS__,MAXENC=__MAXENC__,MAXQUEUE=__MAXQUEUE__,ACKMS=__ACKMS__,TRANSFERMS=__TRANSFERMS__;
 var queue=[],queueChars=0,sending=null,ackTimer=0,themeSeq=0,nextMessageId=1,failed=false;
 var readyMessage=null,readyAcked=false,readyProbeAttempts=0,readyRetryTimer=0,readyRetryCount=0;
+var bridge=null,bridgePreferred=true;
+try{var rn=window.ReactNativeWebView;if(rn&&typeof rn.postMessage==="function")bridge=rn;}catch(_){bridge=null;}
 function fail(code){if(failed)return;failed=true;if(ackTimer){clearTimeout(ackTimer);ackTimer=0;}if(readyRetryTimer){clearTimeout(readyRetryTimer);readyRetryTimer=0;}queue=[];queueChars=0;sending=null;location.replace("${NATIVE_ERROR_PREFIX}"+code);}
-function arm(){if(ackTimer)clearTimeout(ackTimer);ackTimer=setTimeout(function(){fail("ack-timeout");},ACKMS);}
+function arm(){if(ackTimer)clearTimeout(ackTimer);ackTimer=setTimeout(function(){
+  ackTimer=0;
+  if(failed||!sending)return;
+  // One bounded cross-channel fallback per chunk, then fail. A bridge send that
+  // was never acknowledged is retried once as a fragment URL, and the fragment
+  // channel is preferred from then on; the reverse never happens.
+  if(sending.channels.fragment===0){bridgePreferred=false;if(deliver("fragment")){arm();return;}}
+  fail("ack-timeout");
+},ACKMS);}
 function clearReadyRetry(){if(readyRetryTimer){clearTimeout(readyRetryTimer);readyRetryTimer=0;}}
+function deliver(kind){
+  if(!sending)return false;
+  var data=sending.encoded.slice(sending.sequence*CHUNK,sending.sequence*CHUNK+CHUNK);
+  if(kind==="bridge"){
+    if(!bridgePreferred||!bridge)return false;
+    try{bridge.postMessage(JSON.stringify({type:"${NATIVE_BRIDGE_TYPE}",session:SESSION,mid:sending.id,seq:sending.sequence,total:sending.total,data:data}));}
+    catch(_){bridgePreferred=false;return false;}
+    sending.channels.bridge+=1;
+    return true;
+  }
+  sending.channels.fragment+=1;
+  // A repeated fragment for the same chunk needs a distinct URL to be delivered.
+  var retry=sending.channels.fragment>1?";r="+(sending.channels.fragment-1):"";
+  location.replace("${NATIVE_P2N_PREFIX}"+SESSION+","+sending.id+","+sending.sequence+","+sending.total+","+data+retry);
+  return true;
+}
 function sendChunk(){
   if(!sending)return;
   if(Date.now()-sending.started>TRANSFERMS)return fail("transfer-timeout");
-  var start=sending.sequence*CHUNK;
-  var data=sending.encoded.slice(start,start+CHUNK);
-  var retry=sending.retry>0?";r="+sending.retry:"";
-  location.replace("${NATIVE_P2N_PREFIX}"+SESSION+","+sending.id+","+sending.sequence+","+sending.total+","+data+retry);
+  if(!deliver("bridge"))deliver("fragment");
   // Retries keep the original per-chunk deadline, rather than extending it.
   if(!ackTimer)arm();
 }
@@ -395,7 +578,7 @@ function scheduleReadyRetry(){
   readyRetryTimer=setTimeout(function(){
     readyRetryTimer=0;
     if(failed||readyAcked)return;
-    if(sending&&sending.ready){sending.retry=(sending.retry||0)+1;sendChunk();}
+    if(sending&&sending.ready){sendChunk();}
     else if(!readyMessage&&readyProbeAttempts<3){
       readyProbeAttempts+=1;
       try{f.contentWindow.postMessage({type:"paseo-ready-probe"},"*");}catch(_){return fail("ready-probe");}
@@ -406,7 +589,6 @@ function scheduleReadyRetry(){
 function requestReady(){
   if(failed||readyAcked)return;
   if(sending&&sending.ready){
-    sending.retry=(sending.retry||0)+1;
     sendChunk();
     return;
   }
@@ -446,7 +628,7 @@ function sendNext(){
   var total=Math.ceil(encoded.length/CHUNK);
   if(total<1||total>MAXCHUNKS)return fail("too-many-chunks");
   if(nextMessageId>1000000000)return fail("message-exhausted");
-  sending={id:nextMessageId++,encoded:encoded,total:total,sequence:0,started:Date.now(),retry:0};
+  sending={id:nextMessageId++,encoded:encoded,total:total,sequence:0,started:Date.now(),channels:{bridge:0,fragment:0}};
   if(item.data&&item.data.method==="ui/notifications/ready"){
     readyMessage=item.data;
     sending.ready=true;

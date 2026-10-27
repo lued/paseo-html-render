@@ -7,12 +7,18 @@ import {
   NATIVE_MAX_CHUNK_CHARS,
   NATIVE_MAX_CHUNKS,
   NATIVE_MAX_ENCODED_CHARS,
+  NATIVE_MAX_BRIDGE_CHARS,
   NATIVE_P2N_PREFIX,
   NATIVE_SHELL_CSP,
+  NATIVE_TRANSPORT_COUNTERS,
   NATIVE_WEBVIEW_SECURITY_PROPS,
   NativeChunkAssembler,
   buildNativeShellDocument,
   decodeNativeTransportMessage,
+  nativeReadyTimeoutMessage,
+  nativeTransportStage,
+  nativeTransportStageLabel,
+  parseNativeBridgeMessage,
   parseNativeErrorUrl,
   isUsableDocumentFrame,
   nativeDocumentKey,
@@ -24,12 +30,20 @@ import {
   nativeMountErrorMessage,
 } from "../client/native-html-protocol.ts";
 import { MAX_INTERACTIVE_HTML_BYTES } from "../shared/limits.ts";
+import {
+  DEFAULT_HTML_DOCUMENT_COLORS,
+  buildDocumentTheme,
+  buildLiveDocument,
+  readReadyMessage,
+} from "../shared/html-document.ts";
 
 const SESSION = "0123456789abcdef";
 const URL_BASE = "about:blank";
 
 test("raw WebView security invariants reject bridge/cache/cookie clearing", () => {
-  assert.equal(NATIVE_WEBVIEW_SECURITY_PROPS.messagingEnabled, false);
+  // onMessage is the primary page->native channel, so the bridge must be on for
+  // the constant trusted shell, and nothing else may be loosened.
+  assert.equal(NATIVE_WEBVIEW_SECURITY_PROPS.messagingEnabled, true);
   assert.equal(NATIVE_WEBVIEW_SECURITY_PROPS.javaScriptEnabled, true);
   for (const forbidden of [
     "incognito",
@@ -44,9 +58,12 @@ test("raw WebView security invariants reject bridge/cache/cookie clearing", () =
     assert.equal(forbidden in NATIVE_WEBVIEW_SECURITY_PROPS, false, `${forbidden} must not be set on the WebView`);
   }
   const source = readFileSync(join(process.cwd(), "client", "native-html-frame.tsx"), "utf8");
-  for (const forbidden of ["incognito", "cacheEnabled", "clearCache", "clearHistory", "CookieManager", "removeAllCookies", "onMessage:", "onShouldStartLoadWithRequest"]) {
+  for (const forbidden of ["incognito", "cacheEnabled", "clearCache", "clearHistory", "CookieManager", "removeAllCookies", "onShouldStartLoadWithRequest"]) {
     assert.equal(source.includes(forbidden), false, `${forbidden} must not appear in the native frame`);
   }
+  // The bridge is wired exactly once, to the strict receiver, for the trusted shell.
+  assert.equal(source.match(/onMessage:/g)?.length, 1, "the frame wires one onMessage handler");
+  assert.match(source, /onMessage: handleBridgeMessage/);
   assert.equal(isUsableDocumentFrame(null), false);
   assert.equal(isUsableDocumentFrame({}), false);
   assert.equal(isUsableDocumentFrame(() => null), true);
@@ -292,4 +309,141 @@ test("complete fragment URL stays below the 65,536-char cap", () => {
   assert.equal(chunks[0]!.length, NATIVE_MAX_CHUNK_CHARS);
   const url = chunkUrl(0, chunks.length, chunks[0]!, SESSION, 1);
   assert.ok(url.length <= 65_536, `fragment URL is ${url.length} chars`);
+});
+
+function bridgePayload(input: {
+  mid?: unknown;
+  seq?: unknown;
+  total?: unknown;
+  data?: unknown;
+  session?: unknown;
+  type?: unknown;
+} = {}): string {
+  return JSON.stringify({
+    type: "paseo-p2n",
+    session: SESSION,
+    mid: 1,
+    seq: 0,
+    total: 1,
+    data: encodeURIComponent(JSON.stringify({ jsonrpc: "2.0", method: "ui/notifications/ready", params: { version: 1 } })),
+    ...input,
+  });
+}
+
+test("onMessage bridge payloads parse with the same strict bounds as fragments", () => {
+  const ok = parseNativeBridgeMessage(bridgePayload(), SESSION);
+  assert.equal(ok?.ok, true);
+  const data = encodeURIComponent(JSON.stringify({ value: 1 }));
+  const parsed = parseNativeBridgeMessage(bridgePayload({ data }), SESSION);
+  assert.deepEqual(parsed?.chunk, { messageId: 1, sequence: 0, total: 1, data }, "bridge and fragment share one chunk shape");
+
+  // Non-envelopes are ignored, never treated as transport failures.
+  assert.equal(parseNativeBridgeMessage(undefined, SESSION), undefined);
+  assert.equal(parseNativeBridgeMessage({ type: "paseo-p2n" }, SESSION), undefined);
+  assert.equal(parseNativeBridgeMessage("", SESSION), undefined);
+  assert.equal(parseNativeBridgeMessage("not json", SESSION), undefined);
+  assert.equal(parseNativeBridgeMessage("null", SESSION), undefined);
+  assert.equal(parseNativeBridgeMessage("[]", SESSION), undefined);
+  assert.equal(parseNativeBridgeMessage(JSON.stringify({ type: "other" }), SESSION), undefined);
+  assert.equal(parseNativeBridgeMessage(bridgePayload({ type: "paseo-ack" }), SESSION), undefined);
+  // Another mount's session is stale, not a failure.
+  const stale = parseNativeBridgeMessage(bridgePayload({ session: "other" }), SESSION);
+  assert.equal(stale?.ok, false);
+  assert.equal(stale?.stale, true);
+
+  // Envelopes that claim the type but violate bounds are rejected.
+  assert.equal(parseNativeBridgeMessage(bridgePayload({ mid: 0 }), SESSION)?.ok, false);
+  assert.equal(parseNativeBridgeMessage(bridgePayload({ mid: "1" }), SESSION)?.ok, true, "numeric strings stay canonical");
+  assert.equal(parseNativeBridgeMessage(bridgePayload({ mid: "01" }), SESSION)?.ok, false);
+  assert.equal(parseNativeBridgeMessage(bridgePayload({ mid: 1.5 }), SESSION)?.ok, false);
+  assert.equal(parseNativeBridgeMessage(bridgePayload({ total: 0 }), SESSION)?.ok, false);
+  assert.equal(parseNativeBridgeMessage(bridgePayload({ total: NATIVE_MAX_CHUNKS + 1 }), SESSION)?.ok, false);
+  assert.equal(parseNativeBridgeMessage(bridgePayload({ seq: 1 }), SESSION)?.ok, false);
+  assert.equal(parseNativeBridgeMessage(bridgePayload({ seq: "0" }), SESSION)?.ok, true);
+  assert.equal(parseNativeBridgeMessage(bridgePayload({ data: undefined }), SESSION)?.ok, false);
+  assert.equal(parseNativeBridgeMessage(bridgePayload({ data: "x".repeat(NATIVE_MAX_CHUNK_CHARS + 1) }), SESSION)?.ok, false);
+  assert.equal(parseNativeBridgeMessage(bridgePayload({ data: "<bad>" }), SESSION)?.ok, false);
+  assert.equal(parseNativeBridgeMessage(bridgePayload({ data: "a%2Fb%2Bc%3D" }), SESSION)?.ok, true, "encoded base64 padding stays valid");
+});
+
+test("oversized bridge look-alikes are rejected and foreign junk is ignored", () => {
+  const oversized = bridgePayload({ data: "A".repeat(NATIVE_MAX_BRIDGE_CHARS) });
+  assert.ok(oversized.length > NATIVE_MAX_BRIDGE_CHARS);
+  const rejected = parseNativeBridgeMessage(oversized, SESSION);
+  assert.equal(rejected?.ok, false);
+  assert.match(String(rejected?.error), /too long/);
+  const foreign = "x".repeat(NATIVE_MAX_BRIDGE_CHARS + 10);
+  assert.equal(parseNativeBridgeMessage(foreign, SESSION), undefined);
+});
+
+test("a bridge chunk and its fragment fallback complete exactly one message", () => {
+  const message = { jsonrpc: "2.0", method: "ui/notifications/ready", params: { version: 1 } };
+  const encoded = encodeURIComponent(JSON.stringify(message));
+  const bridge = parseNativeBridgeMessage(bridgePayload({ data: encoded }), SESSION);
+  const fragment = parseNativeTransportUrl(chunkUrl(0, 1, encoded), SESSION);
+  assert.ok(bridge?.chunk && fragment?.chunk);
+  assert.deepEqual(bridge.chunk, fragment.chunk, "both channels carry the same chunk identity");
+
+  const assembler = new NativeChunkAssembler(SESSION);
+  assert.equal(assembler.push(bridge.chunk).ok, true);
+  const duplicate = assembler.push(fragment.chunk);
+  assert.equal(duplicate.ok && duplicate.duplicate === true, true, "cross-channel duplicate is acked, not reapplied");
+  assert.equal(assembler.complete, true);
+  const decoded = decodeNativeTransportMessage(assembler.takeEncoded()!);
+  assert.equal(decoded.ok, true);
+  assert.equal(readReadyMessage(decoded.value), true);
+});
+
+test("ready timeout diagnostics name the failed stage with safe counters only", () => {
+  const zero = NATIVE_TRANSPORT_COUNTERS;
+  assert.equal(nativeTransportStage(zero), "no-page-messages");
+  assert.equal(nativeTransportStageLabel("no-page-messages"), "no page messages");
+  const noMessages = nativeReadyTimeoutMessage(zero);
+  assert.match(noMessages, /did not complete its ready handshake in time/);
+  assert.match(noMessages, /Stage: no page messages/);
+  assert.match(noMessages, /onMessage 0, fragment 0, chunks 0, messages 0, probes 0, rejected 0/);
+
+  assert.equal(
+    nativeTransportStage({ ...zero, fragments: 4, chunks: 4, messages: 3, probes: 1 }),
+    "chunks-without-ready",
+    "decoded messages that never included ready point at the ready path",
+  );
+  assert.equal(
+    nativeTransportStage({ ...zero, pageMessages: 2, chunks: 2, probes: 1, messagesSinceProbe: 0 }),
+    "probe-unanswered",
+    "traffic that stopped answering the probe points at page->native delivery",
+  );
+  assert.equal(
+    nativeTransportStage({ ...zero, pageMessages: 3, chunks: 3, messagesSinceProbe: 2, probes: 1 }),
+    "no-ready-handshake",
+    "partial chunks with no completed message stay generic",
+  );
+  const labelled = nativeReadyTimeoutMessage({
+    ...zero,
+    pageMessages: 9,
+    fragments: 2,
+    chunks: 11,
+    messages: 4,
+    probes: 1,
+    messagesSinceProbe: 0,
+    rejected: 1,
+  });
+  assert.match(labelled, /Stage: chunks without ready/);
+  assert.match(labelled, /onMessage 9, fragment 2, chunks 11, messages 4, probes 1, rejected 1/);
+  assert.equal(/https?:|data:|#paseo|session/i.test(labelled), false, "diagnostics never echo URLs, payloads or sessions");
+});
+
+test("the trusted shell prefers the onMessage bridge and keeps the fragment fallback", () => {
+  const shell = buildNativeShellDocument(buildLiveDocument({
+    html: "<p>bridge</p>",
+    title: "Bridge",
+    theme: buildDocumentTheme(DEFAULT_HTML_DOCUMENT_COLORS.dark, "dark"),
+  }), SESSION);
+  assert.match(shell, /window\.ReactNativeWebView/);
+  assert.match(shell, /type:"paseo-p2n"/);
+  assert.match(shell, /bridge\.postMessage/);
+  assert.match(shell, /location\.replace\("#paseo-p2n="/, "the fragment channel is still built");
+  assert.match(shell, /if\(!deliver\("bridge"\)\)deliver\("fragment"\)/, "bridge first, fragment fallback");
+  assert.match(shell, /bridgePreferred=false/, "an unacknowledged bridge send switches to the fragment path");
+  assert.doesNotMatch(shell, /allow-same-origin/);
 });
