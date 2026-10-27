@@ -104,14 +104,9 @@ async function writeAdapterSource(path: string, source: string): Promise<void> {
 }
 
 /**
- * Reads the rotation token or creates it exactly once. `wx` makes concurrent
- * callers agree on a single credential; a malformed existing file is replaced
- * rather than leaving every adapter permanently locked out.
- *
- * 3.0 does not call this on the normal path: the token is minted in memory and
- * delivered through `agent.session_open`, which Paseo never persists. This stays
- * as the helper for a deliberate rotation (write the new token, then reload) and
- * for tests that exercise the adapter's file fallback.
+ * Reads the shared token or creates it exactly once. `wx` makes concurrent
+ * plugin starts agree on a single credential; a malformed existing file is
+ * replaced rather than leaving every adapter permanently locked out.
  */
 export async function loadOrCreateBridgeToken(path: string): Promise<string> {
   const existing = await readBridgeToken(path);
@@ -139,16 +134,12 @@ export async function loadOrCreateBridgeToken(path: string): Promise<string> {
  * Authority comes from the adapter's cwd, which `agent.session_open` sets from
  * the session it is opening; a request can never name its own workspace.
  *
- * The token is minted per plugin process, not persisted. Paseo 0.14 contributes
- * MCP servers at session open — a launch-only channel — so the daemon hands this
- * credential to the agents this instance opens and never writes it into an agent
- * record. A plugin reload mints a new token; the reopened session carries it, and
- * an adapter spawned by the previous process fails closed with `Invalid bridge
- * token` instead of being silently trusted.
+ * The token remains in an owner-only file inside the private data root, so an
+ * adapter in a busy session can continue across plugin reloads. Session-open
+ * injection is launch-only: the credential never enters saved agent config.
  *
- * An explicit token is still accepted for tests and deliberate rotation, and is
- * written to the reserved rotation file so an adapter started without an injected
- * token can read it.
+ * An explicit token is accepted for tests and deliberate rotation. The effective
+ * token is always written to the shared file, which adapters reread per call.
  */
 export async function startBridge(options: BridgeOptions, token?: string): Promise<Bridge> {
   const identity = options.identity ?? SELECTED_IDENTITY;
@@ -158,24 +149,16 @@ export async function startBridge(options: BridgeOptions, token?: string): Promi
   const adapterPath = join(options.dataRoot, identity.adapterFileName);
   const legacyAdapterPath = join(options.dataRoot, identity.legacyAdapterFileName);
   const tokenPath = join(options.dataRoot, BRIDGE_TOKEN_FILE);
-  const bridgeToken = token ?? randomBytes(32).toString("hex");
-  if (token !== undefined) {
-    await writeBridgeToken(tokenPath, bridgeToken);
-    await fs.chmod(tokenPath, 0o600).catch(() => {});
-  }
+  const bridgeToken = token ?? await loadOrCreateBridgeToken(tokenPath);
+  if (token !== undefined) await writeBridgeToken(tokenPath, bridgeToken);
+  await fs.chmod(tokenPath, 0o600).catch(() => {});
   await fs.rm(socketPath, { force: true });
   const adapterSource = buildAdapterSource(identity);
   const adapterHash = createHash("sha256").update(adapterSource).digest("hex");
   await writeAdapterSource(adapterPath, adapterSource);
   // The retired 2.x adapter is replaced by a tombstone: a legacy agent record that
   // still points at it must never reach this bridge with the old protocol.
-  await writeAdapterSource(legacyAdapterPath, buildLegacyAdapterTombstone(identity)).catch(
-    (error: unknown) => {
-      options.onLog?.(
-        `could not write the legacy adapter tombstone: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    },
-  );
+  await writeAdapterSource(legacyAdapterPath, buildLegacyAdapterTombstone(identity));
 
   const sockets = new Set<Socket>();
   const staleAdaptersLogged = new Set<string>();

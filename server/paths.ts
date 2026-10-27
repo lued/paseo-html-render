@@ -13,14 +13,12 @@ import { SELECTED_IDENTITY } from "../shared/selected-identity.ts";
  *     mcp-adapter-v3.mjs         generated stdio adapter for this build
  *     mcp-adapter-v1.mjs         tombstone replacing the retired 2.x adapter
  *     bridge-v3.sock             private unix socket for the adapter
- *     bridge-v3.token            written only for an explicit token rotation
+ *     bridge-v3.token            shared owner-only bridge credential
  *
- * The token is not a durable credential any more: Paseo 0.14 injects the MCP
- * server from `agent.session_open`, which is launch-only, so each process mints
- * its own token and hands it to the agents it opens. A reload therefore mints a
- * new token and the next session reopen carries it; nothing is written to disk
- * on the normal path. `bridge-v3.token` stays a reserved name for deliberate
- * rotation. PASEO_HTML_RENDER_DATA_DIR overrides the root for isolated tests.
+ * The token stays in the private data root so active adapters survive reloads.
+ * Paseo 0.14 injects MCP configuration from `agent.session_open` (launch-only),
+ * never persisting the token in saved agent records. PASEO_HTML_RENDER_DATA_DIR
+ * overrides the root for isolated tests.
  *
  * The QA canary uses the same function with its own identity, so it resolves to
  * `$PASEO_HOME/plugin-data/html-render-v2-qa` and ignores the production

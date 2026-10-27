@@ -66,14 +66,10 @@ export interface PluginIdentity {
 }
 
 /**
- * Optional bridge credential file inside the private data root.
- *
- * Unlike 2.x, the token is not written on normal startup: `agent.session_open`
- * injects it into the launch environment, and Paseo never persists launch
- * environment, so the credential no longer leaks into an agent record or into
- * `$PASEO_HOME`. The file is written only when a caller deliberately rotates the
- * token, and the adapter reads it only when no token was injected. 0600 file in
- * a 0700 directory.
+ * Shared bridge credential file inside the private data root (0600 in a 0700
+ * directory). Adapters reread it per call to survive plugin reload/rotation.
+ * Session-open injection is launch-only, so unlike 2.x the credential is never
+ * persisted in saved agent configuration.
  */
 export const BRIDGE_TOKEN_FILE = "bridge-v3.token";
 

@@ -51,21 +51,19 @@ const bridgeToken = process.env[BRIDGE_ENV.token] || "";
 const callerCwd = process.env[BRIDGE_ENV.cwd] || "";
 const bridgeTokenFile = bridgePath ? join(dirname(bridgePath), BRIDGE_TOKEN_FILE) : "";
 
-// The injected token is the source of truth: session-open injection is
-// launch-only, so the value the host starts this process with is the credential
-// the running bridge minted. The rotation file is a fallback only, for an
-// adapter that was started without an injected token.
+// The private token file is the source of truth so reload/rotation does not
+// strand an adapter in a busy session. Launch-only injection never saves this
+// credential in agent config; the environment is a fallback for isolated tests.
 function currentBridgeToken() {
-  if (bridgeToken) return bridgeToken;
   if (bridgeTokenFile) {
     try {
       const shared = readFileSync(bridgeTokenFile, "utf8").trim();
       if (shared) return shared;
     } catch {
-      // No rotation file: the injected token is the only credential.
+      // Fall through to the injected token.
     }
   }
-  return "";
+  return bridgeToken;
 }
 
 const HTML_DESCRIPTION = __PASEO_HTML_DESCRIPTION__;
