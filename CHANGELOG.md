@@ -4,13 +4,19 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.2.0] - 2026-10-24
+## [Unreleased] — 2.2.0 candidate
 
-First npm-release candidate. The turn guard is an in-memory nudge, not a
+Not published to npm or tagged as 2.2.0. The turn guard is an in-memory nudge, not a
 permanent duplicate database or a semantic HTML diff.
 
 ### Added
 
+- Contained Android inline HTML candidate: constant trusted native shell, opaque
+  `allow-scripts` inner frame, bounded acknowledged transport and explicit
+  failures/retry. iOS and unavailable hosts retain the static/native fallback.
+  Physical readiness and lifecycle acceptance are not complete.
+- Repeatable full-entry evaluation in a pinned real Hermes VM, including public
+  Paseo 0.12/0.13 host shapes. This is not physical Android WebView evidence.
 - Turn guard: a second `html_render` in one counted agent turn is refused with
   the `duplicate` error code. The limit comes from
   `PASEO_HTML_RENDER_MAX_CARDS_PER_TURN` (integer, default `1`; `0` disables it);
@@ -58,6 +64,14 @@ permanent duplicate database or a semantic HTML diff.
 
 ### Fixed
 
+- Hermes full-bundle initialization: class-free catalog, chunk assembler and
+  public React boundary avoid the reproduced undefined constructor bindings.
+- Native selection no longer requires the DocumentFrame export absent from the
+  supported 0.12 UI surface. Public native-manager queries do not register views
+  or prove mounting; explicit negatives still fail closed.
+- Lost initial ready callbacks have bounded same-identity retries; public
+  progress/finish URLs reuse the strict receiver. Shell load is never readiness,
+  and the original ready, chunk and transfer deadlines remain in force.
 - Static captures and measurements request reduced motion before loading the
   document, avoiding intermediate chart geometry when the page honors that
   preference. JavaScript remains disabled; live-frame motion is unchanged.
@@ -87,8 +101,11 @@ permanent duplicate database or a semantic HTML diff.
   card; the next turn should reuse the reported card rather than republish.
 - The per-turn guard is an in-memory nudge. A restart, a changed cosmetic byte,
   missing attribution or an unknown turn lifecycle can allow another card.
+- A user confirmed local inline interaction on Android, then reported a native
+  ready timeout. The recovery changes still require a fresh device check; durable
+  native/Chrome/PWA parity is not accepted. A compact viewport is not device proof.
 - Native-device and provider behavior depend on the host client/provider and are
-  not guaranteed by this package. A compact web viewport is not native evidence.
+  not guaranteed by this package.
 
 ### Verified
 

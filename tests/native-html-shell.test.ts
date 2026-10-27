@@ -273,12 +273,111 @@ test("native shell exposes a missing acknowledgement as a visible transport fail
     viewport: { width: 800, height: 600 },
     navigation: "data",
     interact: async (io) => {
+      await waitFor(async () => String(await evaluate(io, "location.hash")).startsWith("#paseo-p2n="), 3_000);
+      // A late retry request must not re-arm the original five-second chunk
+      // deadline. The old retry implementation failed this bounded wait.
+      await new Promise((resolve) => setTimeout(resolve, 3_000));
+      await evaluate(io, `document.dispatchEvent(new MessageEvent("message",{data:${JSON.stringify(JSON.stringify({
+        type: "paseo-ready-probe", session: SESSION,
+      }))}}))`);
       const hash = await waitFor(async () => {
         const value = String(await evaluate(io, "location.hash"));
         return value.startsWith("#paseo-error=") ? value : null;
-      }, 8_000);
+      }, 3_000);
       await evaluate(io, `window.__result=${JSON.stringify({ hash })}`);
     },
   }) as Record<string, unknown>;
   assert.equal(result.hash, "#paseo-error=ack-timeout");
+});
+
+test("native shell resends genuine ready after a lost initial native fragment", { timeout: 30_000 }, async () => {
+  const inner = buildLiveDocument({ html: "<p>ready retry</p>", title: "Ready retry", theme: theme("dark") });
+  const shell = buildNativeShellDocument(inner, SESSION);
+  const result = await browserResult(shell, {
+    viewport: { width: 800, height: 600 },
+    navigation: "data",
+    interact: async (io) => {
+      const first = await waitFor(async () => {
+        const hash = String(await evaluate(io, "location.hash"));
+        return hash.startsWith("#paseo-p2n=") ? hash : null;
+      }, 8_000);
+      const firstParsed = parseNativeTransportUrl(`about:blank${first}`, SESSION);
+      await evaluate(io, `document.dispatchEvent(new MessageEvent("message",{data:${JSON.stringify(JSON.stringify({
+        type: "paseo-ready-probe",
+        session: SESSION,
+      }))}}))`);
+      const second = await waitFor(async () => {
+        const hash = String(await evaluate(io, "location.hash"));
+        return hash !== first && hash.startsWith("#paseo-p2n=") ? hash : null;
+      }, 3_000);
+      const secondParsed = parseNativeTransportUrl(`about:blank${second}`, SESSION);
+      const assembler = new NativeChunkAssembler(SESSION);
+      if (!secondParsed?.ok || !secondParsed.chunk) throw new Error("retry chunk did not parse");
+      const pushed = assembler.push(secondParsed.chunk);
+      if (!pushed.ok) throw new Error(pushed.error);
+      const encoded = assembler.takeEncoded();
+      const decoded = encoded === null ? { ok: false as const, error: "not complete" } : decodeNativeTransportMessage(encoded);
+      if (!decoded.ok) throw new Error(decoded.error);
+      await evaluate(io, `document.dispatchEvent(new MessageEvent("message",{data:${JSON.stringify(JSON.stringify({
+        type: "paseo-ack",
+        session: SESSION,
+        mid: secondParsed.chunk.messageId,
+        seq: secondParsed.chunk.sequence,
+      }))}}))`);
+      await evaluate(io, `window.__result=${JSON.stringify({
+        first,
+        second,
+        firstOk: firstParsed?.ok === true,
+        secondOk: secondParsed.ok === true,
+        sameMessageId: firstParsed?.chunk?.messageId === secondParsed.chunk.messageId,
+        sameData: firstParsed?.chunk?.data === secondParsed.chunk.data,
+        ready: readReadyMessage(decoded.value),
+        retrySuffix: /;r=\d+$/.test(second),
+      })}`);
+    },
+  }) as Record<string, unknown>;
+  assert.equal(result.firstOk, true);
+  assert.equal(result.secondOk, true);
+  assert.equal(result.sameMessageId, true, "retry keeps the original message id");
+  assert.equal(result.sameData, true, "retry carries the same ready payload");
+  assert.equal(result.ready, true, "a genuine ready handshake is still required");
+  assert.equal(result.retrySuffix, true, "retry changes the fragment so the native event is deliverable");
+});
+
+test("an early probe cannot cancel automatic retries of the genuine inner ready", { timeout: 30_000 }, async () => {
+  const inner = buildLiveDocument({ html: "<p>early probe</p>", title: "Early probe", theme: theme("dark") });
+  const original = buildNativeShellDocument(inner, SESSION);
+  // Test-only scheduling hook: receive the native command before assigning
+  // srcdoc, so a probe-response timer is pending when the real ready arrives.
+  const shell = original.replace("f.srcdoc=INNER;", `document.dispatchEvent(new MessageEvent("message",{data:${JSON.stringify(JSON.stringify({
+    type: "paseo-ready-probe", session: SESSION,
+  }))}}));setTimeout(function(){f.srcdoc=INNER;},100);`);
+  assert.notEqual(shell, original);
+  const result = await browserResult(shell, {
+    navigation: "data",
+    interact: async (io) => {
+      const first = await waitFor(async () => {
+        const hash = String(await evaluate(io, "location.hash"));
+        return hash.startsWith("#paseo-p2n=") ? hash : null;
+      }, 3_000);
+      // No new native probe or ack: only the bounded automatic retry may
+      // change the fragment while preserving the original message identity.
+      const retry = await waitFor(async () => {
+        const hash = String(await evaluate(io, "location.hash"));
+        return hash !== first && hash.startsWith("#paseo-p2n=") ? hash : null;
+      }, 3_000);
+      const a = parseNativeTransportUrl(first, SESSION);
+      const b = parseNativeTransportUrl(retry, SESSION);
+      if (!a?.ok || !b?.ok || !a.chunk || !b.chunk) throw new Error("ready retry failed to parse");
+      const decoded = decodeNativeTransportMessage(b.chunk.data);
+      await evaluate(io, `window.__result=${JSON.stringify({
+        same: JSON.stringify(a.chunk) === JSON.stringify(b.chunk),
+        ready: decoded.ok && readReadyMessage(decoded.value),
+        suffix: /;r=\d+$/.test(retry),
+      })}`);
+    },
+  }) as Record<string, unknown>;
+  assert.equal(result.same, true);
+  assert.equal(result.ready, true);
+  assert.equal(result.suffix, true);
 });

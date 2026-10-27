@@ -63,7 +63,11 @@ clients use a public native-manager query instead. A query does not prove JS
 view registration or a working handshake, and no component is re-registered.
 iOS, hosts without the public capability, and explicit `static` mode continue
 to use the static PNG or native report. Browser/shim tests are not physical
-Android evidence.
+Android evidence. A user has confirmed local inline interaction followed by a
+native ready timeout; the recovery changes still need a fresh device check.
+The adapter retries genuine ready messages within the existing deadlines and
+reads transport URLs from public start/progress/finish events. Shell load or a
+page's local LIVE badge does not complete the native handshake.
 
 ## Static first
 

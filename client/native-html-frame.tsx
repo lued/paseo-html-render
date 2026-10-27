@@ -1,10 +1,10 @@
 /**
  * Native Android inline HTML frame.
  *
- * The public Paseo 0.13 client exports DocumentFrame, which evaluates the
- * host's react-native-webview module and registers the native component. This
+ * Public native-manager discovery permits a contained mount attempt; it does
+ * not prove JavaScript view registration or successful event delivery. This
  * adapter does not import private modules or re-register RNCWebView. It mounts
- * the already-registered component with a constant trusted shell; the report is
+ * the host component with a constant trusted shell; the report is
  * inert JSON until assigned to an opaque allow-scripts iframe.
  *
  * If the public host surface, command APIs, registration, shell handshake, or
@@ -279,6 +279,8 @@ function NativeHtmlFrameInstance({
   const lastThemeRef = useRef(`${initialTheme.appearance}:${JSON.stringify(initialTheme.variables)}`);
   const readyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const themeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const readyProbeSentRef = useRef(false);
+  const readyReceivedRef = useRef(false);
 
   const fail = useCallback((message: string) => {
     setError(message);
@@ -339,6 +341,7 @@ function NativeHtmlFrameInstance({
       return true;
     }
     if (readReadyMessage(value)) {
+      readyReceivedRef.current = true;
       setReady(true);
       if (readyTimerRef.current) clearTimeout(readyTimerRef.current);
       readyTimerRef.current = null;
@@ -363,16 +366,30 @@ function NativeHtmlFrameInstance({
     return true;
   }, [acknowledgeChunk, fail, session]);
 
-  const onLoadingStart = useCallback((event: NavigationEvent) => {
+  const onNavigationEvent = useCallback((event: NavigationEvent) => {
     const url = event.nativeEvent?.url;
+    // Early progress events may have no URL. Only an actual transport URL can
+    // contribute data; ordinary loading/progress is never readiness.
+    if (typeof url !== "string") return;
     if (handleChunk(url)) return;
     const transportError = parseNativeErrorUrl(url);
     if (transportError) fail(`Native HTML transport failed: ${transportError}`);
-  }, [fail, handleChunk, session]);
+  }, [fail, handleChunk]);
 
-  const onLoadingFinish = useCallback(() => {
-    // Readiness is the inner document's message, not a successful shell load.
-  }, []);
+  const onLoadingFinish = useCallback((event: NavigationEvent) => {
+    // RNWV's public finish/progress events also carry a URL. Reuse the strict
+    // receiver in case the corresponding history/start callback was missed.
+    onNavigationEvent(event);
+    // Shell load itself is not readiness. Request a fresh inner ready once,
+    // retaining the original deadline and requiring a complete real message.
+    if (readyReceivedRef.current || readyProbeSentRef.current) return;
+    readyProbeSentRef.current = true;
+    try {
+      dispatchCommand("postMessage", [JSON.stringify({ type: "paseo-ready-probe", session })]);
+    } catch (commandError) {
+      fail(`Native HTML ready probe failed: ${plainError(commandError)}`);
+    }
+  }, [dispatchCommand, fail, onNavigationEvent, session]);
 
   const onLoadingError = useCallback(() => {
     fail("Native WebView load failed");
@@ -479,7 +496,8 @@ function NativeHtmlFrameInstance({
           newSource: source,
           style: styles.webview,
           ...NATIVE_WEBVIEW_SECURITY_PROPS,
-          onLoadingStart,
+          onLoadingStart: onNavigationEvent,
+          onLoadingProgress: onNavigationEvent,
           onLoadingFinish,
           onLoadingError,
           onRenderProcessGone,

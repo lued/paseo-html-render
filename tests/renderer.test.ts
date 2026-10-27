@@ -182,9 +182,9 @@ test("a page taller than the capture bound is clipped", async (t) => {
 });
 
 test("executable discovery is explicit and testable", () => {
-  // App roots are pinned to a directory that cannot exist, so a developer's own
-  // /Applications browser never decides this test.
-  const noApps = { appRoots: ["/nonexistent/Applications"] };
+  // Pin every machine-wide discovery source, including Linux system paths.
+  // CI may have /usr/bin/chromium even when the synthetic home has no browser.
+  const noApps = { appRoots: ["/nonexistent/Applications"], systemCandidates: [] };
   assert.equal(
     findChromiumExecutable({ PASEO_HTML_RENDER_CHROMIUM: "/nope/chrome" }, "/nonexistent", noApps),
     null,
@@ -201,7 +201,7 @@ test("an installed Chromium app bundle is discovered without a cache or plugin r
     const executable = join(root, "Helium.app", "Contents", "MacOS", "Helium");
     await fs.mkdir(dirname(executable), { recursive: true });
     await fs.writeFile(executable, "", { mode: 0o700 });
-    assert.equal(findChromiumExecutable({}, home, { appRoots: [root] }), executable);
+    assert.equal(findChromiumExecutable({}, home, { appRoots: [root], systemCandidates: [] }), executable);
   } finally {
     await fs.rm(home, { recursive: true, force: true });
   }
@@ -217,7 +217,7 @@ test("the explicit override wins over an installed app bundle", async () => {
     const override = join(home, "override-chrome");
     await fs.writeFile(override, "", { mode: 0o700 });
     assert.equal(
-      findChromiumExecutable({ PASEO_HTML_RENDER_CHROMIUM: override }, home, { appRoots: [root] }),
+      findChromiumExecutable({ PASEO_HTML_RENDER_CHROMIUM: override }, home, { appRoots: [root], systemCandidates: [] }),
       override,
     );
   } finally {
@@ -232,7 +232,7 @@ test("shared-browser's bundled Chromium is a discovery fallback", async () => {
     await fs.mkdir(runtime, { recursive: true });
     const chrome = join(runtime, "chrome");
     await fs.writeFile(chrome, "", { mode: 0o700 });
-    assert.equal(findChromiumExecutable({}, home, { appRoots: [] }), chrome);
+    assert.equal(findChromiumExecutable({}, home, { appRoots: [], systemCandidates: [] }), chrome);
   } finally {
     await fs.rm(home, { recursive: true, force: true });
   }

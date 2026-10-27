@@ -279,6 +279,8 @@ function macAppCandidates(appRoots: readonly string[]): string[] {
 export interface DiscoveryOptions {
   /** Application directories to scan for Chromium-family app bundles. */
   appRoots?: readonly string[];
+  /** Override fixed system paths for isolated discovery tests. Defaults unchanged. */
+  systemCandidates?: readonly string[];
 }
 
 /**
@@ -297,7 +299,7 @@ export function chromiumCandidates(
     ...(override ? [override] : []),
     ...browserCacheCandidates(home),
     ...sharedBrowserCandidates(home),
-    ...SYSTEM_CANDIDATES,
+    ...(options.systemCandidates ?? SYSTEM_CANDIDATES),
     ...macAppCandidates(appRoots),
   ];
 }

@@ -231,6 +231,18 @@ test("message ids distinguish identical messages and suppress replay/duplicate c
   assert.equal(duplicateFinal.ok && duplicateFinal.duplicate === true, true, "duplicate final callback is not delivered again");
 });
 
+test("ready retry changes the URL without changing chunk identity or data", () => {
+  const message = { jsonrpc: "2.0", method: "ui/notifications/ready", params: { version: 1 } };
+  const chunks = encodedChunks(message);
+  const first = parseNativeTransportUrl(chunkUrl(0, chunks.length, chunks[0]!), SESSION);
+  const retry = parseNativeTransportUrl(chunkUrl(0, chunks.length, chunks[0]!) + ";r=2", SESSION);
+  assert.equal(first?.ok, true);
+  assert.equal(retry?.ok, true);
+  assert.deepEqual(retry?.chunk, first?.chunk);
+  assert.ok((chunkUrl(0, chunks.length, chunks[0]!) + ";r=2").length <= 65_536);
+  assert.equal(parseNativeTransportUrl(chunkUrl(0, chunks.length, chunks[0]!) + ";r=0", SESSION)?.ok, false);
+});
+
 test("maximum supported image payload round-trips through the chunk assembly", () => {
   const src = `data:image/png;base64,${"A".repeat(MAX_INTERACTIVE_HTML_BYTES - 100)}`;
   const message = { jsonrpc: "2.0", method: "ui/open-image", params: { src, name: "maximum" } };

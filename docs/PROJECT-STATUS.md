@@ -1,6 +1,6 @@
 # HTML Render: release checklist
 
-Updated: 2026-10-26
+Updated: 2026-10-27
 Target: first npm release, candidate version 2.2.0; preserve existing v2.1.0.
 User direction: build it, dogfood the user-facing cases through Paseo here, then
 release. No publication before the evidence gates pass.
@@ -10,7 +10,8 @@ full using OpenCode Go DeepSeek max subagents; Android is the target. The user
 requires INLINE INTERACTIVITY on Android native, Chrome and PWA, not PNG-only
 or a separate HTML pane. The integrated Android inline candidate is now
 deployed; physical native/Chrome/PWA parity is not yet accepted. macOS is not an acceptance gate. npm authentication/publication remains deferred to the
-last step; no push, tag or registry publication in this phase. Password-protected
+last step. GitHub origin/main checkpoint pushes are authorized; tags and
+registry publication remain deferred. Password-protected
 daemons are normal and must remain protected. Execution/evidence contract:
 [Android-first acceptance plan](plans/2026-10-26-android-live-acceptance.md).
 
@@ -30,7 +31,60 @@ daemons are normal and must remain protected. Execution/evidence contract:
   24 server inputs). Private full log: `/tmp/html-render-guard-full-tests.log`.
   This is local code evidence, not live Paseo or final package acceptance.
 
-## Current native-selection correction (2026-10-27, 04:35 UTC)
+## Native ready recovery and repository checkpoint — 2026-10-27
+
+The user confirmed that the new current-conversation inline test worked on the
+phone, then reported: “The native HTML frame did not complete its ready
+handshake in time.” Local report interaction is established by that report;
+sustained native-host readiness is not. The estimated 30 seconds is not a
+measured timer value. The actual ready deadline remains eight seconds.
+
+The initial ready fragment was previously one-shot. Recovery now requests a
+genuine inner ready after shell finish, retries the same message identity
+boundedly, and reads protocol URLs from public start/progress/finish events.
+Shell load and a local LIVE badge do not grant readiness. The exact missed
+callback/race on the phone is not established without device evidence. Parent
+review also preserved the original five-second chunk-ack deadline on retries,
+fixed an early-probe timer race, and deduplicated ready responses.
+
+The GitHub checkpoint e5ac410 is pushed to origin/main with user authorization;
+no Forgejo push, tag, npm publication or release occurred. The first remote CI
+run 40453413792 failed three tests: two discovery fixtures assumed no installed
+system Chromium, and one theme observer raced the authored script setup. Both
+isolated install-smoke jobs passed. The fixes pin system discovery in fixtures
+and use explicit authored-observer/state acknowledgements, not longer sleeps,
+weaker assertions or sandbox bypasses. A new CI result is required.
+
+The bounded history audit found no known-pattern credential matches in the
+37-commit checkpoint (193 text blobs scanned; 19 binaries not scanned). This
+is not a full secret/entropy/image audit. No tracked runtime/auth/log/tarball
+material was identified; useful tests, examples, captures and history remain.
+Ignore rules now prevent common local credentials/runtime/output accidents.
+The push-time moderate advisory was withdrawn and GitHub marks it fixed; local
+npm audit found zero vulnerabilities. No speculative dependency bump was made.
+
+Parent local verification: full **295/295 on BOTH Node22.18.0 and26.12.1**,
+zero failures/skips/cancellations; typecheck/bundles PASS (17 client/24 server).
+Real Hermes full-entry, native constructors, both public host profiles and
+negative gates PASS through both drivers. Exact expected host bundle also PASS.
+Package/repack/source74 equality and both Paseo0.12/0.13 exact install-smokes
+PASS, including missing-browser and bad-override negatives. Package SHA256:
+5b32291d86fcfda5800e46ccc6e0ada214e3977a57e986cd5a0e53db8146ac5b.
+Expected host client SHA256:e009e9e9275ffdb6f9231bdb50177d519c893181caa0beb207dda839335e4952,
+162,969 bytes. These are not physical Android/Fabric/WebView evidence.
+
+Retained failures include the initial stale documentation-test/pack-check
+expectations and one smoke run whose long evidence-root runtime caused an
+EINVAL bridge socket failure. Both full suites were rerun after the doc-check
+correction; complete smokes passed using owned short roots. The failed smoke
+was cleaned up. No paid model was used for the install smokes.
+
+Hosted E2E, next remote CI and deployment remain pending. Physical retry must
+use the existing saved test card 00eb0c1c96efa968a8a8ab327202a027 after a verified
+normal reload; no new report or diagnostic plugin is needed.
+Private evidence:/tmp/hr-acceptance-20261027/native-ready-fix/parent/.
+
+## Earlier native-selection correction (2026-10-27, 04:35 UTC)
 
 The user's second physical attempt loaded the plugin but **failed inline
 interactivity**, selecting the PNG with the generic fallback. Parent reproduced
@@ -51,7 +105,8 @@ missing commands/boundary reject, and failure text is reason-specific.
   actual delivered clientebd409563517782a19df03408e71ea983d77d7b5ef813e647b4687cfd61b4362,
   159,934 bytes; exact independent host-compiler equality. Existing plugin
   normally reloaded. No auth/security/other-plugin/probe/npm/push/tag change.
-- **Corrected physical inline rendering is still unobserved.** A positive
+- **At this checkpoint, corrected physical rendering was unobserved.** The
+  subsequent partial phone success/timeout is recorded above. A positive
   native manager query is not proof of JS view registration or handshake.
   Retry same saved card, no republish. Remaining device/Chrome/PWA/image/
   lifecycle and ledger checks stay open. Remote CI unrun.

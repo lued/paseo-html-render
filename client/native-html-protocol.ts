@@ -235,8 +235,11 @@ export function parseNativeTransportUrl(url: string | undefined, session: string
   }
   const fields = payload.split(",");
   if (fields.length !== 5) return { ok: false, error: "transport chunk must have five fields" };
-  const [rawSession, rawMessage, rawSeq, rawTotal, data] = fields as [string, string, string, string, string];
+  const [rawSession, rawMessage, rawSeq, rawTotal, rawData] = fields as [string, string, string, string, string];
   if (rawSession !== session) return { ok: false, error: "transport session does not match", stale: true };
+  // A bounded ready retry may resend the same message id with a distinct
+  // fragment. The suffix only makes the URL change; it is not message data.
+  const data = rawData.replace(/;r=[1-9][0-9]{0,3}$/, "");
   const messageId = canonicalInteger(rawMessage);
   const sequence = canonicalInteger(rawSeq);
   const total = canonicalInteger(rawTotal);
@@ -372,15 +375,49 @@ var f=document.getElementById("f"),p=document.getElementById("p");
 var INNER=JSON.parse(p.textContent);
 var SESSION=__SESSION__,CHUNK=__CHUNK__,MAXCHUNKS=__MAXCHUNKS__,MAXENC=__MAXENC__,MAXQUEUE=__MAXQUEUE__,ACKMS=__ACKMS__,TRANSFERMS=__TRANSFERMS__;
 var queue=[],queueChars=0,sending=null,ackTimer=0,themeSeq=0,nextMessageId=1,failed=false;
-function fail(code){if(failed)return;failed=true;if(ackTimer){clearTimeout(ackTimer);ackTimer=0;}queue=[];queueChars=0;sending=null;location.replace("${NATIVE_ERROR_PREFIX}"+code);}
+var readyMessage=null,readyAcked=false,readyProbeAttempts=0,readyRetryTimer=0,readyRetryCount=0;
+function fail(code){if(failed)return;failed=true;if(ackTimer){clearTimeout(ackTimer);ackTimer=0;}if(readyRetryTimer){clearTimeout(readyRetryTimer);readyRetryTimer=0;}queue=[];queueChars=0;sending=null;location.replace("${NATIVE_ERROR_PREFIX}"+code);}
 function arm(){if(ackTimer)clearTimeout(ackTimer);ackTimer=setTimeout(function(){fail("ack-timeout");},ACKMS);}
+function clearReadyRetry(){if(readyRetryTimer){clearTimeout(readyRetryTimer);readyRetryTimer=0;}}
 function sendChunk(){
   if(!sending)return;
   if(Date.now()-sending.started>TRANSFERMS)return fail("transfer-timeout");
   var start=sending.sequence*CHUNK;
   var data=sending.encoded.slice(start,start+CHUNK);
-  location.replace("${NATIVE_P2N_PREFIX}"+SESSION+","+sending.id+","+sending.sequence+","+sending.total+","+data);
-  arm();
+  var retry=sending.retry>0?";r="+sending.retry:"";
+  location.replace("${NATIVE_P2N_PREFIX}"+SESSION+","+sending.id+","+sending.sequence+","+sending.total+","+data+retry);
+  // Retries keep the original per-chunk deadline, rather than extending it.
+  if(!ackTimer)arm();
+}
+function scheduleReadyRetry(){
+  if(failed||readyAcked||readyRetryCount>=2||readyRetryTimer)return;
+  readyRetryCount+=1;
+  readyRetryTimer=setTimeout(function(){
+    readyRetryTimer=0;
+    if(failed||readyAcked)return;
+    if(sending&&sending.ready){sending.retry=(sending.retry||0)+1;sendChunk();}
+    else if(!readyMessage&&readyProbeAttempts<3){
+      readyProbeAttempts+=1;
+      try{f.contentWindow.postMessage({type:"paseo-ready-probe"},"*");}catch(_){return fail("ready-probe");}
+    }
+    scheduleReadyRetry();
+  },1200);
+}
+function requestReady(){
+  if(failed||readyAcked)return;
+  if(sending&&sending.ready){
+    sending.retry=(sending.retry||0)+1;
+    sendChunk();
+    return;
+  }
+  if(readyMessage)return;
+  if(readyProbeAttempts>=3)return;
+  readyProbeAttempts+=1;
+  try{f.contentWindow.postMessage({type:"paseo-ready-probe"},"*");}catch(_){return fail("ready-probe");}
+  if(!readyRetryTimer)readyRetryTimer=setTimeout(function(){
+    readyRetryTimer=0;
+    if(!readyMessage&&!readyAcked)requestReady();
+  },250);
 }
 function enqueue(data,kind){
   var size=0;
@@ -409,16 +446,30 @@ function sendNext(){
   var total=Math.ceil(encoded.length/CHUNK);
   if(total<1||total>MAXCHUNKS)return fail("too-many-chunks");
   if(nextMessageId>1000000000)return fail("message-exhausted");
-  sending={id:nextMessageId++,encoded:encoded,total:total,sequence:0,started:Date.now()};
+  sending={id:nextMessageId++,encoded:encoded,total:total,sequence:0,started:Date.now(),retry:0};
+  if(item.data&&item.data.method==="ui/notifications/ready"){
+    readyMessage=item.data;
+    sending.ready=true;
+    readyAcked=false;
+    readyRetryCount=0;
+    // An early inner probe may still have its own timer pending. Do not let
+    // that timer prevent scheduling retries for the now-real ready payload.
+    clearReadyRetry();
+    scheduleReadyRetry();
+  }
   sendChunk();
 }
 document.addEventListener("message",function(e){
   if(failed||typeof e.data!=="string")return;
   var m;try{m=JSON.parse(e.data);}catch(_){return;}
+  if(m&&m.type==="paseo-ready-probe"&&m.session===SESSION){requestReady();return;}
   if(m&&m.type==="paseo-ack"&&m.session===SESSION&&Number.isInteger(m.mid)&&m.mid===sending?.id&&Number.isInteger(m.seq)&&m.seq===sending.sequence){
     if(ackTimer){clearTimeout(ackTimer);ackTimer=0;}
     sending.sequence++;
-    if(sending.sequence<sending.total)sendChunk();else{sending=null;sendNext();}
+    if(sending.sequence<sending.total)sendChunk();else{
+      if(sending.ready){readyAcked=true;clearReadyRetry();}
+      sending=null;sendNext();
+    }
     return;
   }
   if(m&&m.type==="paseo-theme"&&m.session===SESSION&&Number.isInteger(m.seq)&&m.seq>themeSeq&&m.message&&typeof m.message==="object"){
@@ -433,6 +484,12 @@ window.addEventListener("message",function(e){
   if(!d||d.jsonrpc!=="2.0"||typeof d.method!=="string")return;
   var method=d.method;
   if(method!=="ui/notifications/ready"&&method!=="ui/notifications/size-changed"&&method!=="ui/open-link"&&method!=="ui/open-image")return;
+  if(method==="ui/notifications/ready"){
+    // One ready transfer per session. Probe responses must not queue new
+    // message ids behind an unacknowledged ready or restart its deadlines.
+    if(readyMessage)return;
+    readyMessage=d;
+  }
   if(method==="ui/open-link"||method==="ui/open-image"){
     var active=navigator.userActivation&&navigator.userActivation.isActive===true;
     if(document.activeElement!==f||!active)return;

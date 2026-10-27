@@ -4,7 +4,60 @@ Date: 2026-10-26
 Status: user authorized completing live acceptance (item 2), using OpenCode Go DeepSeek max subagents. npm authentication/publication is deferred to the last step. macOS is not an acceptance target.
 review: none
 
-## Native selection correction — 2026-10-27, 04:35 UTC
+## Native ready recovery and repository checkpoint — 2026-10-27
+
+The user confirmed that the new current-conversation inline test worked on the
+phone, then reported: “The native HTML frame did not complete its ready
+handshake in time.” Local report interaction is established by that report;
+sustained native-host readiness is not. The estimated 30 seconds is not a
+measured timer value. The actual ready deadline remains eight seconds.
+
+The initial ready fragment was previously one-shot. Recovery now requests a
+genuine inner ready after shell finish, retries the same message identity
+boundedly, and reads protocol URLs from public start/progress/finish events.
+Shell load and a local LIVE badge do not grant readiness. The exact missed
+callback/race on the phone is not established without device evidence. Parent
+review also preserved the original five-second chunk-ack deadline on retries,
+fixed an early-probe timer race, and deduplicated ready responses.
+
+The GitHub checkpoint e5ac410 is pushed to origin/main with user authorization;
+no Forgejo push, tag, npm publication or release occurred. The first remote CI
+run 40453413792 failed three tests: two discovery fixtures assumed no installed
+system Chromium, and one theme observer raced the authored script setup. Both
+isolated install-smoke jobs passed. The fixes pin system discovery in fixtures
+and use explicit authored-observer/state acknowledgements, not longer sleeps,
+weaker assertions or sandbox bypasses. A new CI result is required.
+
+The bounded history audit found no known-pattern credential matches in the
+37-commit checkpoint (193 text blobs scanned; 19 binaries not scanned). This
+is not a full secret/entropy/image audit. No tracked runtime/auth/log/tarball
+material was identified; useful tests, examples, captures and history remain.
+Ignore rules now prevent common local credentials/runtime/output accidents.
+The push-time moderate advisory was withdrawn and GitHub marks it fixed; local
+npm audit found zero vulnerabilities. No speculative dependency bump was made.
+
+Parent local verification: full **295/295 on BOTH Node22.18.0 and26.12.1**,
+zero failures/skips/cancellations; typecheck/bundles PASS (17 client/24 server).
+Real Hermes full-entry, native constructors, both public host profiles and
+negative gates PASS through both drivers. Exact expected host bundle also PASS.
+Package/repack/source74 equality and both Paseo0.12/0.13 exact install-smokes
+PASS, including missing-browser and bad-override negatives. Package SHA256:
+5b32291d86fcfda5800e46ccc6e0ada214e3977a57e986cd5a0e53db8146ac5b.
+Expected host client SHA256:e009e9e9275ffdb6f9231bdb50177d519c893181caa0beb207dda839335e4952,
+162,969 bytes. These are not physical Android/Fabric/WebView evidence.
+
+Retained failures include the initial stale documentation-test/pack-check
+expectations and one smoke run whose long evidence-root runtime caused an
+EINVAL bridge socket failure. Both full suites were rerun after the doc-check
+correction; complete smokes passed using owned short roots. The failed smoke
+was cleaned up. No paid model was used for the install smokes.
+
+Hosted E2E, next remote CI and deployment remain pending. Physical retry must
+use the existing saved test card 00eb0c1c96efa968a8a8ab327202a027 after a verified
+normal reload; no new report or diagnostic plugin is needed.
+Private evidence:/tmp/hr-acceptance-20261027/native-ready-fix/parent/.
+
+## Earlier native selection correction — 2026-10-27, 04:35 UTC
 
 Second actual phone attempt **FAILED native parity**: plugin loaded but selected
 PNG fallback before mounting. Root source-backed mismatch: required public
@@ -82,7 +135,8 @@ Use current code/package identity until a needed runtime fix supersedes it. Save
 ## Boundaries
 
 - Existing main workspace only; no new worktrees or feature/research lanes.
-- No npm login, npm publication, push, tag or GitHub release in this phase.
+- GitHub origin/main checkpoint pushes are authorized. No Forgejo push, npm
+  login/publication, tag or GitHub release in this phase.
 - Do not inspect user credentials, copy auth stores, log tokens/pairing material, disable daemon authentication or change the user's daemon/security settings.
 - Prefer an explicitly disposable password-protected fixture with a generated test-only password for automated hosted-client checks. If feasible, prove this with an actual model-published card. Fixture evidence supplements, never replaces, the actual Android phone/current-client checks.
 - Keep opaque allow-scripts frames, current CSP, script-disabled static captures, and the browser OS sandbox. No allow-same-origin, remote/CDN loading, sandbox bypass or root/sudo.

@@ -59,6 +59,11 @@ the turn slot consumed. Do not describe this as permanent or semantic deduplicat
 
 ## Display parity
 
+**Android device status:** local inline interaction has been user-confirmed,
+followed by a native ready timeout. Bounded recovery and additional public event
+receivers do not yet establish sustained native readiness or lifecycle parity.
+Browser, shim and Hermes checks are separate evidence layers.
+
 | Capability | Plugin implementation / difference |
 | --- | --- |
 | Live inline HTML | Web/desktop raw `srcDoc` iframe. Android uses a constant trusted native WebView shell plus an opaque `allow-scripts` inner frame only when the public native-manager/command capability permits a contained mount attempt. iOS and hosts without that capability keep the static PNG/report. |

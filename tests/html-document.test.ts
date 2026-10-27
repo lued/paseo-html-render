@@ -667,6 +667,7 @@ test(
               function(){ check("file", "blocked"); }
             );
             try { document.getElementById("form").submit(); } catch (error) {}
+            check("authorReady", true);
           })();
         </script>`;
 
@@ -680,6 +681,7 @@ test(
 <script>
 (function(){
   var results = {};
+  var runtimeReady = false, sentLight = false;
   var report = ${serialized};
   var frame = document.createElement("iframe");
   frame.setAttribute("sandbox", "allow-scripts");
@@ -688,21 +690,32 @@ test(
   frame.style.width = "600px";
   frame.style.height = "500px";
   frame.style.border = "0";
+  function sendLight(){
+    // Runtime ready is emitted from the injected head, not a guarantee that
+    // the authored body script has installed its observer. Wait for both.
+    if (!runtimeReady || !results.authorReady || sentLight) return;
+    sentLight = true;
+    frame.contentWindow.postMessage({ jsonrpc: "2.0", method: "ui/notifications/host-context-changed", params: { theme: "light", styles: { variables: { "--background": "#ffffff", "--foreground": "#111111" } } } }, "*");
+  }
   window.addEventListener("message", function(event){
     if (event.source !== frame.contentWindow) return;
     var data = event.data || {};
     if (data.method === "ui/notifications/ready") {
+      runtimeReady = true;
       event.source.postMessage({ jsonrpc: "2.0", method: "ui/notifications/ready-ack", params: { version: 1 } }, "*");
-      setTimeout(function(){
-        event.source.postMessage({ jsonrpc: "2.0", method: "ui/notifications/host-context-changed", params: { theme: "light", styles: { variables: { "--background": "#ffffff", "--foreground": "#111111" } } } }, "*");
-      }, 0);
-      setTimeout(function(){
-        event.source.postMessage({ jsonrpc: "2.0", method: "ui/notifications/host-context-changed", params: { theme: "dark", styles: { variables: { "--background": "#101010", "--foreground": "#eeeeee" } } } }, "*");
-      }, 80);
+      sendLight();
     }
     if (data.method === "ui/notifications/size-changed") results.contentHeight = data.params.height;
-    if (data.type === "check") results[data.name] = data.value;
+    if (data.type === "check") {
+      results[data.name] = data.value;
+      sendLight();
+    }
     if (data.type === "state") {
+      if (data.count === 1) {
+        results.firstAppearance = data.appearance;
+        results.firstBackground = data.background;
+        event.source.postMessage({ jsonrpc: "2.0", method: "ui/notifications/host-context-changed", params: { theme: "dark", styles: { variables: { "--background": "#101010", "--foreground": "#eeeeee" } } } }, "*");
+      }
       results.count = data.count;
       results.background = data.background;
       results.appearance = data.appearance;
@@ -736,6 +749,8 @@ test(
       assert.equal(results.parentAccess, "denied", "the frame cannot read the parent DOM");
       assert.equal(results.network, "blocked", "connect-src 'none' blocks http(s)");
       assert.equal(results.file, "blocked", "file: is blocked");
+      assert.equal(results.firstAppearance, "light");
+      assert.equal(results.firstBackground, "#ffffff");
       assert.equal(results.count, 2, "two theme messages arrived without a reload");
       assert.equal(results.background, "#101010", "the last theme tokens were applied");
       assert.equal(results.appearance, "dark");

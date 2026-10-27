@@ -20,20 +20,7 @@ New agents get two injected MCP tools: `html_preview` checks the page as a PNG, 
 
 ## Install
 
-The tested package version is **2.2.0**. Check the registry for that exact version first:
-
-```sh
-npm view paseo-html-render@2.2.0 version dist.integrity
-```
-
-If it is available, install it:
-
-```sh
-paseo plugin install npm:paseo-html-render@2.2.0
-paseo plugin ls
-```
-
-Otherwise, use the tested checkout:
+**2.2.0 is an unreleased candidate**, not a published npm release. To test it, install the checkout:
 
 ```sh
 git clone https://github.com/lued/paseo-html-render.git
@@ -49,7 +36,7 @@ Create a new agent after installing or upgrading so it receives the tools. Requi
 
 1. **Ask naturally.** A comparison, an explanation, a review of an image you already have, or a chart of tool output.
 2. **The agent composes one self-contained page** and can check it with `html_preview`. That preview is a PNG with page scripts disabled, so clipping and contrast show up before publishing.
-3. **`html_render` publishes it above the reply.** On web and desktop it is a live sandboxed frame; phones get a static PNG or a structured native report. The reply keeps an `Open interactive report` link to the full HTML file.
+3. **`html_render` publishes it above the reply.** Web and desktop use a live sandboxed frame. Android attempts contained inline HTML, but durable native readiness is still under verification; iOS and unavailable Android hosts keep the PNG or native report. The reply keeps an `Open interactive report` link to the full HTML file.
 
 Cards are a choice, not a default: one per turn when attribution is available, otherwise the agent replies in text. Artifacts are owner-only files on the daemon host, and every plugin read is checked against the requesting agent's workspace.
 
@@ -57,7 +44,7 @@ Live pages can use local controls, CSS transitions and inline SVG. Screenshots a
 
 ## Limits
 
-- The live web/desktop frame cannot control Paseo agents, workspaces or files. Its controls are local; it can ask the host to open an `http(s)` link or a data-URI image.
+- The live frame cannot control Paseo agents, workspaces or files. Its controls are local; it can ask the host to open an `http(s)` link or a data-URI image.
 - A live page can still navigate itself; CSP and click interception do not fully contain `location.assign` or a meta refresh.
 - The turn guard compares exact prepared inputs and is not a permanent duplicate database: cosmetic changes count as new, a daemon restart clears state, and missing attribution or unknown turn lifecycle degrades with a warning. A late file-path failure after a durable save can return an error while still using the turn slot.
 - Agents created before install do not get the tools; start a new agent. After an upgrade, a running adapter may report itself stale, so reconnect the agent.

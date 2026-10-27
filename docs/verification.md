@@ -1,13 +1,14 @@
 # Verification and release evidence
 
-Updated: 2026-10-26. Candidate: **paseo-html-render 2.2.0**, plugin id
+Updated: 2026-10-27. Candidate: **paseo-html-render 2.2.0**, plugin id
 `html-render`. This is a staged release record, not a claim that npm publication
 or live client acceptance has finished. Historical `v2.1.0` stays unchanged.
 
 **Live acceptance resumed 2026-10-26; not production-accepted.** The user has
 authorized completing the remaining live cases with OpenCode Go DeepSeek max
 subagents, prioritizing Android. macOS is not a required gate. npm authentication
-and publication remain deferred; nothing has been pushed, tagged or published.
+and publication remain deferred. The authorized GitHub checkpoint is pushed;
+no release tag or npm publication has occurred.
 Previous dogfood history is preserved. The user requires inline interactive
 cards on Android native, Chrome and PWA. PNG/report-only display or opening an
 HTML side pane does not satisfy Android parity. The production Android inline
@@ -15,7 +16,60 @@ candidate is now implemented and deployed as recorded below; actual physical
 Android acceptance remains open. See the internal Android-first acceptance plan
 for ownership and evidence requirements.
 
-## Native-selection correction — deployed 2026-10-27, 04:35 UTC
+## Native ready recovery and repository checkpoint — 2026-10-27
+
+The user confirmed that the new current-conversation inline test worked on the
+phone, then reported: “The native HTML frame did not complete its ready
+handshake in time.” Local report interaction is established by that report;
+sustained native-host readiness is not. The estimated 30 seconds is not a
+measured timer value. The actual ready deadline remains eight seconds.
+
+The initial ready fragment was previously one-shot. Recovery now requests a
+genuine inner ready after shell finish, retries the same message identity
+boundedly, and reads protocol URLs from public start/progress/finish events.
+Shell load and a local LIVE badge do not grant readiness. The exact missed
+callback/race on the phone is not established without device evidence. Parent
+review also preserved the original five-second chunk-ack deadline on retries,
+fixed an early-probe timer race, and deduplicated ready responses.
+
+The GitHub checkpoint e5ac410 is pushed to origin/main with user authorization;
+no Forgejo push, tag, npm publication or release occurred. The first remote CI
+run 40453413792 failed three tests: two discovery fixtures assumed no installed
+system Chromium, and one theme observer raced the authored script setup. Both
+isolated install-smoke jobs passed. The fixes pin system discovery in fixtures
+and use explicit authored-observer/state acknowledgements, not longer sleeps,
+weaker assertions or sandbox bypasses. A new CI result is required.
+
+The bounded history audit found no known-pattern credential matches in the
+37-commit checkpoint (193 text blobs scanned; 19 binaries not scanned). This
+is not a full secret/entropy/image audit. No tracked runtime/auth/log/tarball
+material was identified; useful tests, examples, captures and history remain.
+Ignore rules now prevent common local credentials/runtime/output accidents.
+The push-time moderate advisory was withdrawn and GitHub marks it fixed; local
+npm audit found zero vulnerabilities. No speculative dependency bump was made.
+
+Parent local verification: full **295/295 on BOTH Node22.18.0 and26.12.1**,
+zero failures/skips/cancellations; typecheck/bundles PASS (17 client/24 server).
+Real Hermes full-entry, native constructors, both public host profiles and
+negative gates PASS through both drivers. Exact expected host bundle also PASS.
+Package/repack/source74 equality and both Paseo0.12/0.13 exact install-smokes
+PASS, including missing-browser and bad-override negatives. Package SHA256:
+5b32291d86fcfda5800e46ccc6e0ada214e3977a57e986cd5a0e53db8146ac5b.
+Expected host client SHA256:e009e9e9275ffdb6f9231bdb50177d519c893181caa0beb207dda839335e4952,
+162,969 bytes. These are not physical Android/Fabric/WebView evidence.
+
+Retained failures include the initial stale documentation-test/pack-check
+expectations and one smoke run whose long evidence-root runtime caused an
+EINVAL bridge socket failure. Both full suites were rerun after the doc-check
+correction; complete smokes passed using owned short roots. The failed smoke
+was cleaned up. No paid model was used for the install smokes.
+
+Hosted E2E, next remote CI and deployment remain pending. Physical retry must
+use the existing saved test card 00eb0c1c96efa968a8a8ab327202a027 after a verified
+normal reload; no new report or diagnostic plugin is needed.
+Private evidence:/tmp/hr-acceptance-20261027/native-ready-fix/parent/.
+
+## Earlier native-selection correction — deployed 2026-10-27, 04:35 UTC
 
 The user's next physical Android attempt **FAILED interactivity**: the plugin
 loaded but displayed the PNG with the generic amber static-fallback message.
@@ -62,7 +116,8 @@ an available host. Parent fixed the fixture default, retained explicit false
 negative cases, and reran BOTH entire suites. Other review corrections reject
 primitive/array configs, avoid guessing registration failures from any error
 containing RNCWebView, and remove a swallowed timeout in the new mounted test.
-Physical Android native controls after this correction are **not yet observed**.
+At that checkpoint, physical controls were **not yet observed**. The subsequent
+user-confirmed local interaction and delayed ready failure are recorded above.
 Retry the same saved card; no republish needed. Chrome/PWA, images/lifecycle and
 remaining acceptance ledger stay open. Neither preceding candidate nor the
 worker's intermediate728e6e6f package is the verified current package.

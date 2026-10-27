@@ -157,15 +157,20 @@ try {
   await assertNoDirectClientImports(serverFiles, async (path) => fs.readFile(join(packageRoot, path), "utf8"));
 
   const readme = await fs.readFile(join(packageRoot, "README.md"), "utf8");
-  if (!readme.includes(`paseo plugin install npm:paseo-html-render@${packedPackage.version}`)) {
-    fail("README does not show the conditional exact-version npm install command");
+  const changelog = await fs.readFile(join(packageRoot, "CHANGELOG.md"), "utf8");
+  const npmInstall = `paseo plugin install npm:paseo-html-render@${packedPackage.version}`;
+  const unreleased = changelog.includes(`## [Unreleased] — ${packedPackage.version} candidate`);
+  if (unreleased) {
+    if (!readme.includes(`${packedPackage.version} is an unreleased candidate`) ||
+        !readme.includes("paseo plugin install .") || readme.includes(npmInstall)) {
+      fail("unreleased candidate README must label its status and use a checkout install");
+    }
+  } else {
+    if (!changelog.includes(`## [${packedPackage.version}]`)) fail("CHANGELOG has no section for the package version");
+    if (!readme.includes(npmInstall)) fail("README does not show the conditional exact-version npm install command");
   }
   if (!readme.includes("git clone https://github.com/lued/paseo-html-render.git")) {
-    fail("README lost the checkout fallback");
-  }
-  const changelog = await fs.readFile(join(packageRoot, "CHANGELOG.md"), "utf8");
-  if (!changelog.includes(`## [${packedPackage.version}]`)) {
-    fail("CHANGELOG has no section for the package version");
+    fail("README lost the checkout install");
   }
 
   const sha256 = createHash("sha256").update(await fs.readFile(tarball)).digest("hex");

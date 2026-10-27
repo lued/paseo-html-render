@@ -50,13 +50,12 @@ test("the packed allowlist is public and excludes private working material", asy
   assert.equal(dependencies["@getpaseo/client"], undefined, "host SDK type must not become a runtime dependency");
 });
 
-test("README keeps a conditional npm path and a checkout fallback", async () => {
+test("README labels the unreleased candidate and provides a checkout install", async () => {
   const readme = await read("README.md");
-  assert.match(readme, /npm view paseo-html-render@2\.2\.0 version dist\.integrity/);
-  assert.doesNotMatch(readme, /not published yet/i);
-  assert.match(readme, /If it is available/);
-  assert.match(readme, /Otherwise, use the tested checkout/);
-  assert.match(readme, /paseo plugin install npm:paseo-html-render@2\.2\.0/);
+  assert.match(readme, /2\.2\.0 is an unreleased candidate/);
+  assert.match(readme, /not a published npm release/);
+  assert.match(readme, /paseo plugin install \./);
+  assert.doesNotMatch(readme, /paseo plugin install npm:paseo-html-render@2\.2\.0/);
   assert.match(readme, /git clone https:\/\/github\.com\/lued\/paseo-html-render\.git/);
   assert.match(readme, />=0\.12\.0 <0\.14\.0/);
   assert.match(readme, /0\.12\.0 and 0\.13\.0-beta\.2/);
@@ -69,7 +68,8 @@ test("README keeps a conditional npm path and a checkout fallback", async () => 
 test("the guard documentation is exact rather than overclaiming normalization or cwd fallback", async () => {
   const changelog = await read("CHANGELOG.md");
   const compatibility = await read("docs/compatibility.md");
-  assert.match(changelog, /## \[2\.2\.0\]/);
+  assert.match(changelog, /## \[Unreleased\] — 2\.2\.0 candidate/);
+  assert.match(changelog, /Not published to npm or tagged as 2\.2\.0/);
   assert.match(changelog, /exact fingerprint/);
   assert.match(changelog, /not semantic duplicate detection/);
   assert.match(changelog, /50 publishes per agent/);
