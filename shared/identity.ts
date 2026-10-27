@@ -1,10 +1,18 @@
 /**
  * Plugin identity contract shared by the client and the daemon.
  *
- * These values are frozen contracts: the manifest id `html-render`, the MCP
- * server name, the `paseo-html-render:v1:` marker and the
+ * Frozen contracts: the manifest id `html-render`, the `paseo-html-render:v1:`
+ * marker, the `paseo-html-card` renderer kind and the
  * `~/.paseo/plugin-data/html-render` storage root must never change here.
  * Changing the marker would orphan every persisted render row.
+ *
+ * Versioned contracts: the MCP server key and the transport file names are
+ * suffixed so a 2.x agent cannot bind them by accident. Paseo 0.14 requires the
+ * daemon to reject `PluginSessionOpenRequest.mcpServers` that collide with an
+ * agent's saved server map, and the plugin cannot read or rewrite that saved map,
+ * so a legacy `html-render` entry would fail every open of a 2.x agent. The new
+ * key coexists with it; the old adapter at `mcp-adapter-v1.mjs` is replaced by a
+ * tombstone that refuses to connect to the 3.x bridge.
  *
  * This module is client-safe: no node builtins, no absolute paths, no tokens.
  */
@@ -25,7 +33,7 @@ export interface PluginIdentity {
   readonly pluginName: string;
   /** Log tag, rendered as `[<logTag>]`. */
   readonly logTag: string;
-  /** MCP server key injected into agent configs. */
+  /** MCP server key contributed at `agent.session_open`. */
   readonly mcpServerName: string;
   /** Persisted tool-result marker. */
   readonly markerPrefix: string;
@@ -49,6 +57,8 @@ export interface PluginIdentity {
   readonly bridgeEnv: BridgeEnvironmentNames;
   /** File name of the generated stdio adapter inside the private data root. */
   readonly adapterFileName: string;
+  /** File name of the retired 2.x adapter, rewritten as a tombstone. */
+  readonly legacyAdapterFileName: string;
   /** Version the generated adapter reports and sends with every bridge call. */
   readonly adapterVersion: string;
   /** File name of the private unix socket inside the private data root. */
@@ -56,18 +66,22 @@ export interface PluginIdentity {
 }
 
 /**
- * Persisted bridge credential inside the private data root. Every plugin process
- * for one identity shares this file, so a reload does not invalidate MCP
- * adapters that were injected into existing agents. The file is 0600 and the
- * containing directory is 0700.
+ * Optional bridge credential file inside the private data root.
+ *
+ * Unlike 2.x, the token is not written on normal startup: `agent.session_open`
+ * injects it into the launch environment, and Paseo never persists launch
+ * environment, so the credential no longer leaks into an agent record or into
+ * `$PASEO_HOME`. The file is written only when a caller deliberately rotates the
+ * token, and the adapter reads it only when no token was injected. 0600 file in
+ * a 0700 directory.
  */
-export const BRIDGE_TOKEN_FILE = "bridge.token";
+export const BRIDGE_TOKEN_FILE = "bridge-v3.token";
 
 export const PRODUCTION_IDENTITY: PluginIdentity = Object.freeze({
   pluginId: "html-render",
   pluginName: "HTML Render",
   logTag: "html-render",
-  mcpServerName: "html-render",
+  mcpServerName: "html-render-v3",
   markerPrefix: "paseo-html-render:v1:",
   rendererKind: "html-report-card",
   reportVersion: 1,
@@ -82,7 +96,8 @@ export const PRODUCTION_IDENTITY: PluginIdentity = Object.freeze({
     token: "PASEO_HTML_RENDER_TOKEN",
     cwd: "PASEO_HTML_RENDER_CWD",
   }),
-  adapterFileName: "mcp-adapter-v1.mjs",
-  adapterVersion: "2.2.0",
-  socketFileName: "bridge.sock",
+  adapterFileName: "mcp-adapter-v3.mjs",
+  legacyAdapterFileName: "mcp-adapter-v1.mjs",
+  adapterVersion: "3.0.0",
+  socketFileName: "bridge-v3.sock",
 });
