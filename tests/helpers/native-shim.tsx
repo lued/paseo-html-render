@@ -14,6 +14,7 @@ interface ShimGlobal {
   __opened?: string[];
   __toasts?: string[];
   __rpc?: Record<string, (input: unknown) => Promise<unknown>>;
+  __nativeViewRegistered?: boolean;
 }
 
 const globals = globalThis as unknown as ShimGlobal;
@@ -260,6 +261,8 @@ export const Platform = { OS: "android" as const };
 export const StyleSheet = { create: <T,>(value: T): T => value };
 export const UIManager = {
   dispatchViewManagerCommand: (_tag: number, _command: string, _args: unknown[]): void => undefined,
+  hasViewManagerConfig: (name: string): boolean =>
+    name === "RNCWebView" && globals.__nativeViewRegistered !== false,
 };
 export const findNodeHandle = (_value: unknown): number => 1;
 export function DocumentFrame() {

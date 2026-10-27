@@ -17,7 +17,11 @@ import {
   isUsableDocumentFrame,
   nativeDocumentKey,
   parseNativeTransportUrl,
+  probeRegisteredViewManager,
   readNativeThemeAck,
+  selectNativeHtmlCapability,
+  nativeFallbackMessage,
+  nativeMountErrorMessage,
 } from "../client/native-html-protocol.ts";
 import { MAX_INTERACTIVE_HTML_BYTES } from "../shared/limits.ts";
 
@@ -66,6 +70,74 @@ function encodedChunks(message: unknown): string[] {
 function chunkUrl(sequence: number, total: number, data: string, session = SESSION, messageId = 1): string {
   return `${URL_BASE}${NATIVE_P2N_PREFIX}${session},${messageId},${sequence},${total},${data}`;
 }
+
+test("Android capability accepts an already-registered old-host WebView without double registration", () => {
+  const base = {
+    platform: "android" as const,
+    documentFrame: undefined,
+    component: () => null,
+    dispatchViewManagerCommand: () => undefined,
+    findNodeHandle: () => 1,
+    registeredViewManager: true,
+  };
+  assert.deepEqual(selectNativeHtmlCapability(base), { available: true, reason: "ready" });
+  assert.deepEqual(
+    selectNativeHtmlCapability({ ...base, registeredViewManager: false }),
+    { available: false, reason: "host-native-view" },
+  );
+  assert.deepEqual(
+    selectNativeHtmlCapability({ ...base, registeredViewManager: null }),
+    { available: false, reason: "host-native-view" },
+  );
+  assert.deepEqual(
+    selectNativeHtmlCapability({ ...base, documentFrame: () => null, registeredViewManager: null }),
+    { available: true, reason: "ready" },
+    "the 0.13 public DocumentFrame path remains available when no query exists",
+  );
+  assert.deepEqual(
+    selectNativeHtmlCapability({ ...base, documentFrame: () => null, registeredViewManager: false }),
+    { available: false, reason: "host-native-view" },
+    "a public component export cannot override a negative native-manager query",
+  );
+  assert.deepEqual(
+    selectNativeHtmlCapability({ ...base, documentFrame: {}, registeredViewManager: true }),
+    { available: true, reason: "ready" },
+    "an object export may be a registration signal, but is never called",
+  );
+  assert.deepEqual(
+    selectNativeHtmlCapability({ ...base, component: undefined }),
+    { available: false, reason: "error-boundary" },
+  );
+  assert.deepEqual(
+    selectNativeHtmlCapability({ ...base, dispatchViewManagerCommand: undefined }),
+    { available: false, reason: "command-apis" },
+  );
+  assert.deepEqual(
+    selectNativeHtmlCapability({ ...base, platform: "web" }),
+    { available: false, reason: "platform" },
+  );
+
+  assert.equal(probeRegisteredViewManager({ hasViewManagerConfig: (name: string) => name === "RNCWebView" }), true);
+  assert.equal(probeRegisteredViewManager({ hasViewManagerConfig: () => false }), false);
+  assert.equal(probeRegisteredViewManager({ hasViewManagerConfig: () => { throw new Error("bad"); } }), false);
+  assert.equal(probeRegisteredViewManager({ getViewManagerConfig: () => ({ Commands: {} }) }), true);
+  assert.equal(probeRegisteredViewManager({ getViewManagerConfig: () => null }), false);
+  for (const malformed of [false, true, 0, 1, "RNCWebView", []]) {
+    assert.equal(probeRegisteredViewManager({ getViewManagerConfig: () => malformed }), false);
+  }
+  assert.equal(probeRegisteredViewManager({ getViewManagerConfig: () => { throw new Error("bad"); } }), null);
+  assert.equal(probeRegisteredViewManager({}), null);
+  assert.match(nativeMountErrorMessage(new Error("View config not found for component RNCWebView")), /not registered/);
+  assert.match(nativeMountErrorMessage(new Error("boom")), /could not be mounted/);
+  assert.match(nativeMountErrorMessage("View config getter callback for component `RNCWebView` must be a function (received undefined)"), /not registered/);
+  assert.match(nativeMountErrorMessage("RNCWebView failed to load https://secret.example/data"), /could not be mounted/);
+  assert.doesNotMatch(nativeMountErrorMessage(new Error("https://secret.example/data")), /secret/);
+
+  assert.match(nativeFallbackMessage("host-native-view"), /registered native WebView manager/);
+  assert.match(nativeFallbackMessage("command-apis"), /native WebView commands/);
+  assert.match(nativeFallbackMessage("error-boundary"), /error boundary/);
+  assert.notEqual(nativeFallbackMessage("host-native-view"), nativeFallbackMessage("command-apis"));
+});
 
 test("native shell keeps report markup inert and preserves the sandbox/CSP boundary", () => {
   const malicious = '</script><script>parent.postMessage({bad:true},"*")</script><!--<textarea>--><script>alert(1)</script>';

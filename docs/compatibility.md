@@ -61,7 +61,7 @@ the turn slot consumed. Do not describe this as permanent or semantic deduplicat
 
 | Capability | Plugin implementation / difference |
 | --- | --- |
-| Live inline HTML | Web/desktop raw `srcDoc` iframe. Android uses a constant trusted native WebView shell plus an opaque `allow-scripts` inner frame only when the public DocumentFrame/WebView host capability is ready. iOS and hosts without that capability keep the static PNG/report. |
+| Live inline HTML | Web/desktop raw `srcDoc` iframe. Android uses a constant trusted native WebView shell plus an opaque `allow-scripts` inner frame only when the public native-manager/command capability permits a contained mount attempt. iOS and hosts without that capability keep the static PNG/report. |
 | Theme | T3-like token names mapped to Paseo palette; initial theme plus live messages without reload. Exported file follows OS color preference |
 | Height | T3-style nearest-width fitting and requested cap semantics; measurements at 320/375/430/520/640/728/860/1000/1144 CSS px |
 | Layout width | Live iframe is 100% of the host thread column (roughly 600–1100 CSS px); 728 is only the default capture width. No plugin-side max-width, and no expand/fullscreen surface |
@@ -72,6 +72,12 @@ the turn slot consumed. Do not describe this as permanent or semantic deduplicat
 | Accounting | Usage quantities explicitly measured, estimated or unavailable; no inferred cost/model attribution |
 | History | Marker-driven, bounded/cycle-safe nested codemode recognition; first valid reference per row, legacy v1 readable |
 | Deletion | Workspace-owned artifacts retained by default, opt-in workspace archive cleanup; not T3's thread-owned deletion |
+
+Android selection does not require the `DocumentFrame` export added in Paseo
+0.13: supported 0.12 clients can use public `UIManager` native-manager discovery.
+No component is re-registered. A positive query does not prove JavaScript view
+registration, mounting or the ready handshake; those failures remain contained
+and explicit. A negative query wins even if `DocumentFrame` exists.
 
 T3's theme variables include host concepts Paseo does not expose separately.
 The plugin maps `--primary` to Paseo accent where no distinct primary exists;

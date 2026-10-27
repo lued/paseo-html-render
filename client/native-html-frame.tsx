@@ -58,24 +58,24 @@ import {
   decodeNativeTransportMessage,
   parseNativeErrorUrl,
   parseNativeTransportUrl,
-  isUsableDocumentFrame,
+  nativeMountErrorMessage,
+  probeRegisteredViewManager,
+  selectNativeHtmlCapability,
   nativeDocumentKey,
   readNativeThemeAck,
+  type NativeHtmlCapability,
 } from "./native-html-protocol.ts";
 
 const RNCWebView = "RNCWebView" as unknown as ComponentType<Record<string, unknown>>;
 
-export type NativeHtmlCapability =
-  | { readonly available: true; readonly reason: "ready" }
-  | {
-      readonly available: false;
-      readonly reason: "platform" | "host-document-frame" | "command-apis" | "error-boundary";
-    };
+export type { NativeHtmlCapability } from "./native-html-protocol.ts";
 
 /**
  * Capability is a runtime check of public host surfaces, not a server version
- * or a TypeScript declaration. Accessing DocumentFrame is deliberate: the host's
- * public re-export evaluates its WebView module and registers RNCWebView.
+ * or a TypeScript declaration. DocumentFrame is optional (absent on 0.12).
+ * Prefer the nonmutating public native-manager query; neither it nor a public
+ * component export proves JS view registration or a successful mount. Actual
+ * mount/handshake errors remain contained. Never register a second view.
  */
 export function nativeHtmlCapability(platform: HtmlFramePlatform): NativeHtmlCapability {
   if (platform !== "android") return { available: false, reason: "platform" };
@@ -83,19 +83,17 @@ export function nativeHtmlCapability(platform: HtmlFramePlatform): NativeHtmlCap
   try {
     documentFrame = (PublicClientUi as unknown as { DocumentFrame?: unknown }).DocumentFrame;
   } catch {
-    return { available: false, reason: "host-document-frame" };
-  }
-  if (!isUsableDocumentFrame(documentFrame)) {
-    return { available: false, reason: "host-document-frame" };
-  }
-  if (typeof Component !== "function") {
-    return { available: false, reason: "error-boundary" };
+    documentFrame = undefined;
   }
   const commandUi = UIManager as unknown as { dispatchViewManagerCommand?: unknown };
-  if (typeof commandUi?.dispatchViewManagerCommand !== "function" || typeof findNodeHandle !== "function") {
-    return { available: false, reason: "command-apis" };
-  }
-  return { available: true, reason: "ready" };
+  return selectNativeHtmlCapability({
+    platform,
+    documentFrame,
+    component: Component,
+    dispatchViewManagerCommand: commandUi?.dispatchViewManagerCommand,
+    findNodeHandle,
+    registeredViewManager: probeRegisteredViewManager(commandUi),
+  });
 }
 
 function newSession(): string {
@@ -186,7 +184,7 @@ function getNativeErrorBoundary(): ComponentType<NativeBoundaryProps> | null {
     return this.props.children;
   } as unknown as NativeBoundaryInstance["render"];
   Boundary.prototype.componentDidCatch = function (this: NativeBoundaryInstance): void {
-    this.props.onError("The native HTML host could not be mounted on this client");
+    this.props.onError(nativeMountErrorMessage(this.state.error));
   };
   Boundary.getDerivedStateFromError = (error: unknown): NativeBoundaryState => ({
     error: plainError(error),

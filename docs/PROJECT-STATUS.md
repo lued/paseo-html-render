@@ -30,7 +30,36 @@ daemons are normal and must remain protected. Execution/evidence contract:
   24 server inputs). Private full log: `/tmp/html-render-guard-full-tests.log`.
   This is local code evidence, not live Paseo or final package acceptance.
 
-## Current corrective deployment (2026-10-26, 22:29 UTC)
+## Current native-selection correction (2026-10-27, 04:35 UTC)
+
+The user's second physical attempt loaded the plugin but **failed inline
+interactivity**, selecting the PNG with the generic fallback. Parent reproduced
+the old full delivered bundle's false DocumentFrame prerequisite under the
+public0.12 UI shape in real Hermes. That supported version has no such export;
+the exact user's APK version is not established. New selection uses public
+native-manager discovery without registering a view; explicit negatives win,
+missing commands/boundary reject, and failure text is reason-specific.
+
+- Parent **291/291 complete serial tests on EACH Node22/26**, zero failure,
+  skip or cancellation. Full latest hosted **G1–G6:6/6 PASS** with real model,
+  password-prompt auth, one inline card after refresh and positive cleanup.
+- Real Hermes exact-delivered entry/constructors plus0.12/0.13 host matrices
+  and negative gates PASS through both Node drivers. Mounted selection test
+  is a DOM/native shim, not device evidence. Typecheck/bundles PASS.
+- Package/repack/source74 files and Paseo0.12/0.13 exact install-smokes PASS.
+  Current package81986a25f7310af00562c8970c82689574782aa3f792d7920c5399f7918983b5;
+  actual delivered clientebd409563517782a19df03408e71ea983d77d7b5ef813e647b4687cfd61b4362,
+  159,934 bytes; exact independent host-compiler equality. Existing plugin
+  normally reloaded. No auth/security/other-plugin/probe/npm/push/tag change.
+- **Corrected physical inline rendering is still unobserved.** A positive
+  native manager query is not proof of JS view registration or handshake.
+  Retry same saved card, no republish. Remaining device/Chrome/PWA/image/
+  lifecycle and ledger checks stay open. Remote CI unrun.
+
+Evidence:/tmp/hr-acceptance-20261027/native-selection-fix/parent/.
+See verification.md for retained failure and exact package/runtime provenance.
+
+## Earlier startup-only corrective deployment (2026-10-26, 22:29 UTC)
 
 - User's real Android screenshot **FAILED** the prior candidate at plugin
   initialization. Parent reproduced the exact prototype error in real Hermes:

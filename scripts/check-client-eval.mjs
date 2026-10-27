@@ -34,7 +34,7 @@ const host = await build({ ...common, stdin: { resolveDir: root,
   define: { "process.env.NODE_ENV": '"production"' }, format: "iife", globalName: "__host" });
 const sentinel = "return module.exports;";
 assert.equal(delivered.split(sentinel).length, 2, "expected one outer return for separately instrumented construction check");
-const nativeCheck = `module.exports.__nativeCheck=function(){
+const nativeCheck = `module.exports.__nativeCheck=function(nativeHost){
  var catalog=new ArtifactCatalog(),other=new ArtifactCatalog();
  catalog.beginGeneration();
  if(catalog.currentGeneration!==1||other.currentGeneration!==0)throw Error("catalog generation/instance isolation");
@@ -53,17 +53,27 @@ const nativeCheck = `module.exports.__nativeCheck=function(){
  boundary.state=Boundary.getDerivedStateFromError(Error("owned failure"));
  if(boundary.render()!==null)throw Error("boundary containment");
  boundary.componentDidCatch();if(!caught)throw Error("boundary error reporting");
- if(!nativeHtmlCapability("android").available||NATIVE_WEBVIEW_SECURITY_PROPS.messagingEnabled!==false)throw Error("native capability/security");
+ var oldHost=nativeHtmlCapability("android");
+ if(!oldHost.available||oldHost.reason!=="ready")throw Error("0.12 missing-DocumentFrame registered-WebView capability");
+ if(reportCardMode({platform:"android",renderMode:"auto",hasHtml:true,hasReport:false,nativeAvailable:oldHost.available})!=="native")throw Error("0.12 native selection");
+ nativeHost.UIManager.hasViewManagerConfig=function(){return false;};
+ var unavailable=nativeHtmlCapability("android");
+ if(unavailable.available||unavailable.reason!=="host-native-view")throw Error("missing native view must fail closed");
+ if(!/registered native WebView manager/.test(nativeFallbackMessage(unavailable.reason)))throw Error("fallback reason");
+ nativeHost.UIManager.hasViewManagerConfig=function(name){return name==="RNCWebView";};
+ if(NATIVE_WEBVIEW_SECURITY_PROPS.messagingEnabled!==false)throw Error("native security");
  return true;
-};\n`;
+};
+module.exports.__capability=function(){return nativeHtmlCapability("android");};\n`;
 const instrumented = delivered.replace(sentinel, nativeCheck + sentinel);
 const program = `
 function must(value,message){if(!value)throw Error(message);}
 var Dummy=function(){};
-var native={View:Dummy,Text:Dummy,Pressable:Dummy,Image:Dummy,StyleSheet:{create:function(value){return value;}},UIManager:{dispatchViewManagerCommand:Dummy},findNodeHandle:function(){return 1;}};
+var native={View:Dummy,Text:Dummy,Pressable:Dummy,Image:Dummy,StyleSheet:{create:function(value){return value;}},UIManager:{dispatchViewManagerCommand:Dummy,hasViewManagerConfig:function(name){return name==="RNCWebView";}},findNodeHandle:function(){return 1;}};
 var modal=Dummy;modal.Content=Dummy;
-var ui={DocumentFrame:Dummy,Modal:modal,useToast:Dummy};
-var modules={react:__host.R,"react/jsx-runtime":__host.J,"react-native":native,zod:__host.Z,"@getpaseo/plugin":__host.P,"@getpaseo/plugin/client":{},"@getpaseo/plugin/client/ui":ui,"@getpaseo/plugin/client/react-native":native,"@tanstack/react-query":{}};
+var legacyUi={SettingsGroup:Dummy,SettingsSection:Dummy,SettingsCard:Dummy,SettingsRow:Dummy,SettingsSwitch:Dummy,SettingsSelect:Dummy,SettingsInput:Dummy,SettingsAction:Dummy,ExternalLink:Dummy,SidebarRow:Dummy,SidebarSeparator:Dummy};
+var legacyRn={Icon:Dummy,Modal:modal,ScrollView:Dummy,FlatList:Dummy,TextInput:Dummy,copyText:Dummy,useToast:Dummy,useRevealedText:Dummy};
+var modules={react:__host.R,"react/jsx-runtime":__host.J,"react-native":native,zod:__host.Z,"@getpaseo/plugin":__host.P,"@getpaseo/plugin/client":{},"@getpaseo/plugin/client/ui":legacyUi,"@getpaseo/plugin/client/react-native":legacyRn,"@tanstack/react-query":{}};
 function requireHost(name){must(Object.prototype.hasOwnProperty.call(modules,name),"unexpected module");return modules[name];}
 function setup(source){
  var factory=(0,eval)(source);must(typeof factory==="function","factory missing");
@@ -75,8 +85,22 @@ function setup(source){
 setup(${JSON.stringify(delivered)});
 print("HERMES_ENTRY_OK");
 var inspected=setup(${JSON.stringify(instrumented)});
-must(inspected.__nativeCheck()===true,"native construction incomplete");
+must(inspected.__nativeCheck(native)===true,"native construction incomplete");
 print("HERMES_NATIVE_OK");
+var modernUi=Object.assign({},legacyUi,legacyRn,{DocumentFrame:Dummy});
+modules["@getpaseo/plugin/client/ui"]=modernUi;
+modules["@getpaseo/plugin/client/react-native"]=modernUi;
+setup(${JSON.stringify(delivered)});
+var modern=setup(${JSON.stringify(instrumented)});
+must(modern.__capability().available,"0.13 selection missing");
+native.UIManager.hasViewManagerConfig=function(){return false;};
+must(!modern.__capability().available&&modern.__capability().reason==="host-native-view","0.13 export overrode missing native manager");
+delete native.UIManager.hasViewManagerConfig;
+must(modern.__capability().available,"0.13 public export without optional manager query");
+native.UIManager.hasViewManagerConfig=function(){return true;};
+native.UIManager.dispatchViewManagerCommand=undefined;
+must(!modern.__capability().available&&modern.__capability().reason==="command-apis","missing command API must fail closed");
+print("HERMES_HOST_MATRIX_OK");
 `;
 const directory = await mkdtemp(join(tmpdir(), "hr-hermes-"));
 try {
@@ -89,8 +113,10 @@ try {
   const output = execFileSync(hermes, ["-Xes6-class", "-enable-eval", "-w", path], options);
   assert.match(output, /^HERMES_ENTRY_OK$/m);
   assert.match(output, /^HERMES_NATIVE_OK$/m);
+  assert.match(output, /^HERMES_HOST_MATRIX_OK$/m);
   console.log(JSON.stringify({ result: "pass", clientSha256: createHash("sha256").update(delivered).digest("hex"),
     clientBytes: Buffer.byteLength(delivered), engineVersion: version, entrySetup: true, nativeConstruction: true,
+    hostProfiles: ["0.12-separate-ui-no-DocumentFrame", "0.13-unified-ui"], hostNegativeCases: true,
     uiEvidence: "synthetic-unmounted; NOT Android/Fabric/WebView evidence" }, null, 2));
 } finally {
   await rm(directory, { recursive: true, force: true });

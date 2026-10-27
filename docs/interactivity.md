@@ -32,7 +32,7 @@ hash, renderer, widths and content heights.
 ## What works
 
 Inside the live web/desktop frame, in the Android client on a host that exposes
-the public native DocumentFrame/WebView capability, and in `interactive.html`
+the public native WebView/command capability, and in `interactive.html`
 when opened in a browser, the page may use:
 
 - inline `<style>`, inline `<script>`, the DOM, inline SVG and `data:` raster
@@ -56,10 +56,14 @@ the shell assigns it to an opaque `allow-scripts` inner frame. Only the constant
 shell script runs outside that frame. The shell forwards source-checked ready,
 height, link, image and theme messages through bounded, acknowledged chunks; it
 requires fresh focus/user activation before link/image requests. Missing
-capability, registration, handshake, acknowledgement, load or process failure is
-shown as an explicit error with retry. iOS, older hosts without the public
-capability, and explicit `static` mode continue to use the static PNG or native
-report. Browser/shim tests are not physical Android evidence.
+capability shows a reason-specific static fallback. Registration, handshake,
+acknowledgement, load or process failures after mounting show an explicit error
+with retry. The `DocumentFrame` export added in 0.13 is optional: supported 0.12
+clients use a public native-manager query instead. A query does not prove JS
+view registration or a working handshake, and no component is re-registered.
+iOS, hosts without the public capability, and explicit `static` mode continue
+to use the static PNG or native report. Browser/shim tests are not physical
+Android evidence.
 
 ## Static first
 

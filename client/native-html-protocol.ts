@@ -55,6 +55,116 @@ export function isUsableDocumentFrame(value: unknown): boolean {
   return typeof value === "function";
 }
 
+export type NativeHtmlCapability =
+  | { readonly available: true; readonly reason: "ready" }
+  | {
+      readonly available: false;
+      readonly reason:
+        | "platform"
+        | "host-native-view"
+        | "command-apis"
+        | "error-boundary";
+    };
+
+export interface NativeCapabilitySurfaces {
+  readonly platform: "ios" | "android" | "web";
+  readonly documentFrame: unknown;
+  readonly component: unknown;
+  readonly dispatchViewManagerCommand: unknown;
+  readonly findNodeHandle: unknown;
+  /**
+   * Result of a public RN view-manager probe. `null` means the host exposes no
+   * probe; it is not evidence that the view is registered.
+   */
+  readonly registeredViewManager: boolean | null;
+}
+
+/**
+ * Was RNCWebView already registered? `hasViewManagerConfig` is a public RN
+ * query and does not register or mount anything. `getViewManagerConfig` is a
+ * fallback for older public UIManager shapes; both are read-only.
+ */
+export function probeRegisteredViewManager(uiManager: unknown): boolean | null {
+  const manager = uiManager as {
+    hasViewManagerConfig?: unknown;
+    getViewManagerConfig?: unknown;
+  } | null | undefined;
+  if (!manager) return null;
+  if (typeof manager.hasViewManagerConfig === "function") {
+    try {
+      return manager.hasViewManagerConfig.call(manager, "RNCWebView") === true;
+    } catch {
+      return false;
+    }
+  }
+  if (typeof manager.getViewManagerConfig === "function") {
+    try {
+      const config: unknown = manager.getViewManagerConfig.call(manager, "RNCWebView");
+      return isObject(config);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Select the Android route without rendering a probe.
+ *
+ * DocumentFrame is an optional public export on 0.13, absent on 0.12. A native
+ * manager query is stronger evidence than that export: an explicit negative
+ * always wins. If no query is exposed, the 0.13 export permits a contained
+ * mount attempt. Neither signal proves JS view-config registration or a live
+ * handshake; mount errors and the ready deadline remain enforced. No path
+ * calls requireNativeComponent or registers a second view.
+ */
+export function selectNativeHtmlCapability(input: NativeCapabilitySurfaces): NativeHtmlCapability {
+  if (input.platform !== "android") return { available: false, reason: "platform" };
+  const hasDocumentFrame = isUsableDocumentFrame(input.documentFrame);
+  if (input.registeredViewManager === false || (!hasDocumentFrame && input.registeredViewManager !== true)) {
+    return { available: false, reason: "host-native-view" };
+  }
+  if (typeof input.component !== "function") {
+    return { available: false, reason: "error-boundary" };
+  }
+  if (
+    typeof input.dispatchViewManagerCommand !== "function" ||
+    typeof input.findNodeHandle !== "function"
+  ) {
+    return { available: false, reason: "command-apis" };
+  }
+  return { available: true, reason: "ready" };
+}
+
+/** Classify a mount failure without echoing a raw host URL or data. */
+export function nativeMountErrorMessage(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error ?? "");
+  if (
+    /view config not found.*RNCWebView/i.test(text) ||
+    /view config getter callback for component [`'"]?RNCWebView[`'"]?.*must be a function/i.test(text) ||
+    /RNCWebView.*(?:was not found|is not registered)|(?:was not found|is not registered).*RNCWebView/i.test(text)
+  ) {
+    return "Native HTML view is not registered on this client";
+  }
+  return "The native HTML host could not be mounted on this client";
+}
+
+/** Safe, reason-specific production notice for an Android static fallback. */
+export function nativeFallbackMessage(reason: NativeHtmlCapability["reason"]): string {
+  switch (reason) {
+    case "host-native-view":
+      return "Interactive HTML is unavailable: this client has no registered native WebView manager. Showing a static fallback.";
+    case "command-apis":
+      return "Interactive HTML is unavailable: this client cannot dispatch native WebView commands. Showing a static fallback.";
+    case "error-boundary":
+      return "Interactive HTML is unavailable: this client cannot mount the native error boundary. Showing a static fallback.";
+    case "platform":
+      return "Interactive HTML is unavailable on this platform. Showing a static fallback.";
+    default:
+      return "Interactive HTML is unavailable on this client. Showing a static fallback.";
+  }
+}
+
 /** Stable per-document key. Theme/layout are deliberately absent. */
 function hashText(value: string): string {
   let hash = 2166136261;

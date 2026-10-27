@@ -27,6 +27,7 @@ import {
 import { isSafeHttpUrl } from "../shared/report-model.ts";
 import { HtmlFrame } from "./html-frame.tsx";
 import { NativeHtmlFrame, nativeHtmlCapability } from "./native-html-frame.tsx";
+import { nativeFallbackMessage } from "./native-html-protocol.ts";
 import { FileLinkSection, toneColor } from "./report-blocks.tsx";
 import {
   cardHighlights,
@@ -100,11 +101,13 @@ export function ReportCard({ item, agentId, theme, layout }: PluginTimelineItemP
     native.available === false &&
     (effectiveRenderMode === "auto" || effectiveRenderMode === "iframe") &&
     ARTIFACT_ID.test(data.artifactId) &&
-    agentId.length > 0;
+    agentId.length > 0
+      ? nativeFallbackMessage(native.reason)
+      : null;
   const withNativeFallback = (content: ReactNode) => nativeFallback ? (
     <>
       <Text style={{ color: theme.colors.statusWarning, fontSize: 12, lineHeight: 18 }}>
-        Interactive HTML is unavailable on this client. Showing a static fallback.
+        {nativeFallback}
       </Text>
       {content}
     </>

@@ -15,7 +15,59 @@ candidate is now implemented and deployed as recorded below; actual physical
 Android acceptance remains open. See the internal Android-first acceptance plan
 for ownership and evidence requirements.
 
-## Corrective candidate — deployed 2026-10-26, 22:29 UTC
+## Native-selection correction — deployed 2026-10-27, 04:35 UTC
+
+The user's next physical Android attempt **FAILED interactivity**: the plugin
+loaded but displayed the PNG with the generic amber static-fallback message.
+That proves selection rejected native before mounting; the startup-only fix was
+not native acceptance. The exact installed phone version remains unknown.
+
+The old gate required a function DocumentFrame export. Public Paseo0.12 UI
+source has no such export (separate UI/RN namespaces), despite the supported
+range and possible existing native WebView. Parent reproduced that exact false
+host-document-frame result in the immutable 24ff delivered bundle under real
+Hermes with the actual0.12 export shape and positive native-manager/command
+surfaces. New selection uses a nonregistering public UIManager query instead;
+DocumentFrame is optional. Explicit negative queries win even on0.13, malformed
+configs fail closed, missing commands/boundary still reject, and visible
+fallback/mount failures are reason-specific and URL-safe. No private imports,
+new dependency, duplicate registration, bridge or cache/cookie clearing.
+A native-manager query does NOT prove JavaScript view registration or handshake.
+
+Parent verification after review corrections:
+- **291/291 on BOTH Node22.18.0 and26.12.1**, zero fail/skip/cancellation.
+- **Full G1–G6:6/6 PASS**, actual requested DeepSeek max protected hosted web,
+  password_prompt missing/wrong/correct outcomes, exactly one inline frame
+  after refresh, authorized source readback and positive owned cleanup.
+- Typecheck/bundles PASS;17 client/24 server inputs; Pele server-only.
+- New mounted selection regression covers no-DocumentFrame+manager present
+  versus absent; it uses DOM/native shims, NOT a physical WebView.
+- Real Hermes full exact-delivered entry/setup/cleanup, constructors and both
+  host profiles (0.12 separate namespaces/no DocumentFrame;0.13 unified UI),
+  including missing-manager/command negatives: PASS via both Node drivers.
+- Exact package/repack and both Paseo0.12/0.13 install-smokes PASS; all74 packed
+  files equal current source. Package SHA256:
+  81986a25f7310af00562c8970c82689574782aa3f792d7920c5399f7918983b5.
+- Packed1,566,361 /unpacked2,071,759 bytes;74 entries/43 required/40 local
+  links/zero forbidden. Actual catalog client SHA256:
+  ebd409563517782a19df03408e71ea983d77d7b5ef813e647b4687cfd61b4362,
+  159,934 bytes; exact independent installed-host compilation equality.
+- Existing html-render only normally reloaded. No host auth/relay/security,
+  other-plugin change, temporary probe, npm/push/tag/release. Remote CI unrun.
+
+Evidence:/tmp/hr-acceptance-20261027/native-selection-fix/parent/.
+Retained first parent full-suite failure: modern test shim newly exposed an
+explicit negative native-manager query by default although its fixture intended
+an available host. Parent fixed the fixture default, retained explicit false
+negative cases, and reran BOTH entire suites. Other review corrections reject
+primitive/array configs, avoid guessing registration failures from any error
+containing RNCWebView, and remove a swallowed timeout in the new mounted test.
+Physical Android native controls after this correction are **not yet observed**.
+Retry the same saved card; no republish needed. Chrome/PWA, images/lifecycle and
+remaining acceptance ledger stay open. Neither preceding candidate nor the
+worker's intermediate728e6e6f package is the verified current package.
+
+## Earlier startup-only correction — deployed 2026-10-26, 22:29 UTC
 
 The user's physical Android screenshot rejected the previous candidate: the
 plugin failed during setup with Cannot read property 'prototype' of undefined.

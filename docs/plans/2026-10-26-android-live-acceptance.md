@@ -4,7 +4,31 @@ Date: 2026-10-26
 Status: user authorized completing live acceptance (item 2), using OpenCode Go DeepSeek max subagents. npm authentication/publication is deferred to the last step. macOS is not an acceptance target.
 review: none
 
-## Corrective deployment — 2026-10-26, 22:29 UTC
+## Native selection correction — 2026-10-27, 04:35 UTC
+
+Second actual phone attempt **FAILED native parity**: plugin loaded but selected
+PNG fallback before mounting. Root source-backed mismatch: required public
+DocumentFrame is absent on supported0.12 UI exports. Parent real-Hermes exact
+24ff-bundle negative reproduces this with positive native-manager/command APIs;
+actual APK version remains unknown. Sole DeepSeek max writer implemented public,
+nonregistering native-manager selection; parent hardened negatives/diagnostics,
+added both host shapes to VM regression and reviewed the mounted shim case.
+
+Parent full291/291 on BOTH Node22/26, typecheck/bundles, exact package/repack and
+Paseo0.12/0.13 smokes PASS; full G1–G6:6/6 PASS. Exact actual delivered bundle
+passed Hermes factory/setup/constructors/0.12+0.13 and negative-case matrix on
+both drivers. New package81986a25f7310af00562c8970c82689574782aa3f792d7920c5399f7918983b5;
+delivered clientebd409563517782a19df03408e71ea983d77d7b5ef813e647b4687cfd61b4362,
+159,934 bytes; independent host compilation matches exactly. Existing plugin
+normally reloaded. No user auth/security/other-plugin/probe/npm/push/tag change.
+
+Native-manager availability is NOT JS view-registration/handshake or physical
+proof. Next: retry same saved card in actual app, not a new report or diagnostic
+screen. Full device/browser lifecycle/image/ownership ledger remains open.
+Evidence:/tmp/hr-acceptance-20261027/native-selection-fix/parent/; first full-suite
+fixture mismatch failure retained, both complete suites rerun after correction.
+
+## Earlier startup-only corrective deployment — 2026-10-26, 22:29 UTC
 
 The actual phone screenshot rejected the previous candidate: html-render failed
 on initialization with the prototype-of-undefined error. Parent reproduced the
