@@ -26,6 +26,7 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { BRIDGE_TOKEN_FILE, SELECTED_IDENTITY } from "../shared/identity.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -62,7 +63,7 @@ const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 const sanitize = (text, roots) => {
   let value = String(text);
   for (const [from, to] of roots) value = value.replaceAll(from, to);
-  return value.replace(/(PASEO_HTML_RENDER_TOKEN|bridge\.token)[^\n]*/gi, "$1=<redacted>");
+  return value.replace(/(PASEO_HTML_RENDER_TOKEN|bridge-v3\.token|bridge\.token)[^\n]*/gi, "$1=<redacted>");
 };
 
 function run(command, commandArgs, options = {}) {
@@ -306,7 +307,54 @@ async function connectClient(modules, home) {
   return modules.connectToDaemon({ target: { kind: "instance", home } });
 }
 
-async function createDisposableAgent(client, home, workspace, agentHome) {
+/** Identity-derived private transport paths; never persisted in an agent record. */
+function transportPaths(home) {
+  const dataRoot = join(home, "plugin-data", SELECTED_IDENTITY.dataDirName);
+  return {
+    dataRoot,
+    adapterPath: join(dataRoot, SELECTED_IDENTITY.adapterFileName),
+    legacyAdapterPath: join(dataRoot, SELECTED_IDENTITY.legacyAdapterFileName),
+    socketPath: join(dataRoot, SELECTED_IDENTITY.socketFileName),
+    tokenPath: join(dataRoot, BRIDGE_TOKEN_FILE),
+  };
+}
+
+/**
+ * The only 3.0 injection evidence: the sanitized session-open line. Saved agent
+ * configuration is launch-only and must never contain the server.
+ */
+const SESSION_OPEN = /session-open result=(\S+) server=(\S+) transport=(\S+) alwaysLoad=(\S+) agent=(\S+) provider=(\S+) reason=(\S+) purpose=(\S+)/;
+
+async function readSessionOpen(paseoBin, home, envExtra, agentId) {
+  let last = [];
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const output = await paseo(paseoBin, home, ["plugin", "--home", home, "logs", "html-render", "--json"], envExtra, 30_000);
+    const entries = JSON.parse(output.stdout);
+    last = entries;
+    for (const entry of Array.isArray(entries) ? entries : []) {
+      const message = String(entry?.message ?? entry?.text ?? "");
+      const match = SESSION_OPEN.exec(message);
+      if (!match) continue;
+      const facts = {
+        observed: true,
+        result: match[1],
+        server: match[2],
+        transport: match[3],
+        alwaysLoad: match[4] === "true",
+        agent: match[5],
+        provider: match[6],
+        reason: match[7],
+        purpose: match[8],
+        agentMatches: match[5] === agentId,
+      };
+      if (facts.result === "injected" && facts.agentMatches) return facts;
+    }
+    await sleep(250);
+  }
+  throw new Error(`no sanitized session-open injection line for agent ${agentId}: ${JSON.stringify(last.slice(-3))}`);
+}
+
+async function createDisposableAgent(client, home, workspace, agentHome, paseoBin, envExtra) {
   await fs.mkdir(workspace, { recursive: true, mode: 0o700 });
   await fs.mkdir(agentHome, { recursive: true, mode: 0o700 });
   const createdWorkspace = await client.createWorkspace({ source: { kind: "directory", path: workspace } });
@@ -330,12 +378,40 @@ async function createDisposableAgent(client, home, workspace, agentHome) {
   const entries = await fs.readdir(agentRoot, { recursive: true }).catch(() => []);
   const recordPath = entries.find((entry) => entry.endsWith(`${agent.id}.json`));
   if (!recordPath) throw new Error(`agent record not found for ${agent.id}`);
-  const record = JSON.parse(await fs.readFile(join(agentRoot, recordPath), "utf8"));
-  const mcp = record?.config?.mcpServers?.["html-render"];
-  if (!mcp || mcp.type !== "stdio" || !mcp.args?.[0]) throw new Error("html-render MCP server was not injected into the new agent");
-  if (mcp.alwaysLoad !== true) throw new Error("html-render MCP server was not marked alwaysLoad");
-  return { agent, workspace: createdWorkspace.workspace, record, mcp };
+  const recordText = await fs.readFile(join(agentRoot, recordPath), "utf8");
+  const record = JSON.parse(recordText);
+  const savedServers = record?.config?.mcpServers ?? {};
+  // The session-open contribution is launch-only. A saved entry would collide on
+  // the next open, so its presence is a hard failure, not a warning.
+  if (Object.prototype.hasOwnProperty.call(savedServers, SELECTED_IDENTITY.mcpServerName)) {
+    throw new Error(`session-open server ${SELECTED_IDENTITY.mcpServerName} leaked into the saved agent record`);
+  }
+  const transport = transportPaths(home);
+  const token = (await fs.readFile(transport.tokenPath, "utf8")).trim();
+  if (!/^[0-9a-f]{64}$/.test(token)) throw new Error("private bridge token file is malformed");
+  const tokenMode = (await fs.stat(transport.tokenPath)).mode & 0o777;
+  if (tokenMode !== 0o600) throw new Error(`private bridge token file mode is 0${tokenMode.toString(8)}; expected 0600`);
+  const adapterMode = (await fs.stat(transport.adapterPath)).mode & 0o777;
+  if (adapterMode !== 0o600) throw new Error(`generated adapter mode is 0${adapterMode.toString(8)}; expected 0600`);
+  const legacy = await fs.readFile(transport.legacyAdapterPath, "utf8");
+  if (!legacy.includes("html-render-legacy-tombstone")) throw new Error("the retired 2.x adapter is not a tombstone");
+  if (recordText.includes(token)) throw new Error("the private bridge token leaked into the saved agent record");
+  if (recordText.includes(SELECTED_IDENTITY.bridgeEnv.token)) throw new Error("the launch token variable leaked into the saved agent record");
+  const sessionOpen = await readSessionOpen(paseoBin, home, envExtra, agent.id);
+  if (sessionOpen.transport !== "stdio") throw new Error(`unexpected session-open transport ${sessionOpen.transport}`);
+  if (sessionOpen.server !== SELECTED_IDENTITY.mcpServerName) throw new Error(`unexpected session-open server ${sessionOpen.server}`);
+  if (sessionOpen.alwaysLoad !== true) throw new Error("session-open server was not marked alwaysLoad");
+  return {
+    agent,
+    workspace: createdWorkspace.workspace,
+    record,
+    sessionOpen,
+    savedNewServer: false,
+    savedLaunchEnv: false,
+    transport,
+  };
 }
+
 
 class Adapter {
   constructor(adapterPath, env) {
@@ -403,16 +479,20 @@ async function readWithRetry(client, artifactId, agentId) {
   throw lastError;
 }
 
-async function exercisePlugin({ modules, home, paseoBin, mcp, record, agent, workspace, agentHome, roots, expectedVersion }) {
+async function exercisePlugin({ modules, home, paseoBin, sessionOpen, transport, record, agent, workspace, agentHome, roots, expectedVersion }) {
+  // Direct adapter probe: the private owner-only token file proves the transport
+  // without putting the credential in evidence or in saved agent config.
+  const token = (await fs.readFile(transport.tokenPath, "utf8")).trim();
+  assert.match(token, /^[0-9a-f]{64}$/);
   const env = {
     ...process.env,
-    ...mcp.env,
     PASEO_AGENT_ID: agent.id,
     HOME: agentHome,
+    [SELECTED_IDENTITY.bridgeEnv.bridge]: transport.socketPath,
     // The adapter never needs a model or a checkout; keep cwd explicit.
-    PASEO_HTML_RENDER_CWD: workspace,
+    [SELECTED_IDENTITY.bridgeEnv.cwd]: workspace,
   };
-  const adapter = new Adapter(mcp.args[0], env);
+  const adapter = new Adapter(transport.adapterPath, env);
   const client = await connectClient(modules, home);
   try {
     const init = await adapter.request("initialize", {
@@ -420,7 +500,7 @@ async function exercisePlugin({ modules, home, paseoBin, mcp, record, agent, wor
       capabilities: {},
       clientInfo: { name: "html-render-package-smoke", version: "1" },
     });
-    assert.equal(init.serverInfo.name, "html-render");
+    assert.equal(init.serverInfo.name, SELECTED_IDENTITY.mcpServerName);
     assert.equal(init.serverInfo.version, expectedVersion);
     adapter.notify("notifications/initialized");
     const listing = await adapter.request("tools/list", {});
@@ -471,8 +551,13 @@ async function exercisePlugin({ modules, home, paseoBin, mcp, record, agent, wor
       originalExact: true,
       workspaceId,
       agentId: agent.id,
-      mcpInjected: true,
-      alwaysLoad: true,
+      sessionOpen,
+      savedNewServer: false,
+      savedLaunchEnv: false,
+      tokenFileMode: "0600",
+      adapterFileMode: "0600",
+      mcpInjected: sessionOpen.observed,
+      alwaysLoad: sessionOpen.alwaysLoad,
       env: roots,
     };
   } finally {
@@ -513,12 +598,14 @@ async function runBrowserNegative({
     const client = await connectClient(modules, home);
     let adapter = null;
     try {
-      const { agent, record, mcp } = await createDisposableAgent(client, home, workspace, agentHome);
-      adapter = new Adapter(mcp.args[0], {
+      const disposable = await createDisposableAgent(client, home, workspace, agentHome, paseoBin, envExtra);
+      const { agent, record, transport, sessionOpen } = disposable;
+      adapter = new Adapter(transport.adapterPath, {
         ...process.env,
-        ...mcp.env,
         PASEO_AGENT_ID: agent.id,
         HOME: agentHome,
+        [SELECTED_IDENTITY.bridgeEnv.bridge]: transport.socketPath,
+        [SELECTED_IDENTITY.bridgeEnv.cwd]: workspace,
       });
       await adapter.request("initialize", {
         protocolVersion: "2024-11-05",
@@ -557,6 +644,8 @@ async function runBrowserNegative({
         installed: installed.sourceInfo,
         recordWorkspaceId: record.workspaceId,
         agentId: agent.id,
+        sessionOpen,
+        savedNewServer: false,
       };
     } finally {
       adapter?.close();
@@ -798,18 +887,24 @@ async function main() {
     }
     const client = await connectClient(modules, home);
     try {
-      const disposable = await createDisposableAgent(client, home, workspace, agentHome);
+      const disposable = await createDisposableAgent(client, home, workspace, agentHome, paseoBin, daemonEnv);
       result.checks.mcp = {
-        injected: true,
-        alwaysLoad: disposable.mcp.alwaysLoad === true,
-        commandUsesNode: /\bnode(?:\.exe)?$/.test(disposable.mcp.command),
-        bridgeEnv: Object.keys(disposable.mcp.env ?? {}).filter((key) => key !== "PASEO_HTML_RENDER_TOKEN").sort(),
+        // Injection is proven by the sanitized session-open line, never by a
+        // saved record: the server is launch-only in 3.0.
+        injected: disposable.sessionOpen.observed,
+        server: disposable.sessionOpen.server,
+        transport: disposable.sessionOpen.transport,
+        alwaysLoad: disposable.sessionOpen.alwaysLoad,
+        savedNewServer: disposable.savedNewServer,
+        savedLaunchEnv: disposable.savedLaunchEnv,
+        privateTokenFile: "0600",
       };
       result.checks.adapter = await exercisePlugin({
         modules,
         home,
         paseoBin,
-        mcp: disposable.mcp,
+        sessionOpen: disposable.sessionOpen,
+        transport: disposable.transport,
         record: disposable.record,
         agent: disposable.agent,
         workspace,

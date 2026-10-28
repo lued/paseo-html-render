@@ -12,6 +12,7 @@ import {
   recordFacts,
   redactSensitive,
   renderToolFacts,
+  sessionOpenFacts,
   unixSocketPathBudget,
 } from "../scripts/fixture-paseo.mjs";
 
@@ -143,11 +144,11 @@ test("host registry boundary accepts the browser's string list and rejects malfo
 });
 
 test("fixture socket budget is computed from the actual owned bridge path", () => {
-  const short = "/tmp/hr-pw-AbC123/plugin-data/html-render/bridge.sock";
+  const short = "/tmp/hr-pw-AbC123/plugin-data/html-render/bridge-v3.sock";
   const shortBudget = unixSocketPathBudget(short);
   assert.equal(shortBudget.bytes, Buffer.byteLength(short, "utf8"));
   assert.equal(shortBudget.ok, true);
-  const long = `/tmp/${"x".repeat(130)}/plugin-data/html-render/bridge.sock`;
+  const long = `/tmp/${"x".repeat(130)}/plugin-data/html-render/bridge-v3.sock`;
   const longBudget = unixSocketPathBudget(long);
   assert.ok(longBudget.bytes > longBudget.maxBytes);
   assert.equal(longBudget.ok, false);
@@ -155,7 +156,8 @@ test("fixture socket budget is computed from the actual owned bridge path", () =
   assert.equal(projectDirNameFromCwd("/tmp/hr-pw-AbC123/workspace"), "tmp-hr-pw-AbC123-workspace");
 });
 
-test("record facts expose key names/booleans only, never MCP env or args", () => {
+test("record facts separate a legacy saved key from the launch-only v3 key, never exposing env or args", () => {
+  // A 2.x agent record: the legacy `html-render` key is historical state only.
   const record = {
     workspaceId: "wks_owned",
     cwd: "/tmp/hr-pw-AbC123/workspace",
@@ -177,17 +179,58 @@ test("record facts expose key names/booleans only, never MCP env or args", () =>
   assert.equal(facts.cwdMatches, true);
   assert.equal(facts.mcpServersKey, true);
   assert.deepEqual(facts.mcpServerNames, ["html-render"]);
-  assert.equal(facts.htmlRenderEntryObserved, true);
-  assert.equal(facts.alwaysLoadObserved, true);
+  assert.equal(facts.legacyKeyObserved, true);
+  assert.equal(facts.legacyKeyType, "stdio");
+  assert.equal(facts.newKeyPersisted, false);
+  assert.equal(facts.htmlRenderEntryObserved, false);
+  assert.equal(facts.alwaysLoadObserved, null);
+  assert.equal(facts.injectionEvidence, "not-persisted");
   const serialized = JSON.stringify(facts);
   assert.equal(serialized.includes("secret-token"), false);
   assert.equal(serialized.includes("/secret/"), false);
+
+  // A saved v3 key is a regression the fixture must name.
+  const leaked = recordFacts({
+    ...record,
+    config: { mcpServers: { "html-render-v3": { type: "stdio", alwaysLoad: true, command: "/secret/node" } } },
+  }, "wks_owned", "/tmp/hr-pw-AbC123/workspace");
+  assert.equal(leaked.newKeyPersisted, true);
+  assert.equal(leaked.injectionEvidence, "persisted-config");
+  assert.equal(JSON.stringify(leaked).includes("/secret/"), false);
+
   const missing = recordFacts(null, "wks_owned", "/tmp/x", "missing");
   assert.equal(missing.found, false);
   assert.equal(missing.readError, "missing");
   assert.equal(missing.mcpServersKey, null);
+  assert.equal(missing.newKeyPersisted, null);
   assert.equal(missing.alwaysLoadObserved, null);
-  assert.equal(missing.injectionEvidence, "not-observed");
+  assert.equal(missing.injectionEvidence, "not-persisted");
+});
+
+test("session-open facts come from the sanitized log line for the right agent", () => {
+  const line = (agent: string, extra = "") =>
+    `[html-render] session-open result=injected server=html-render-v3 transport=stdio alwaysLoad=true agent=${agent} provider=pi reason=create purpose=interactive${extra}`;
+  const entries = [
+    { message: "[paseo] Plugin ready" },
+    { message: "[html-render] session-open result=skipped skip=history server=html-render-v3 transport=none alwaysLoad=false agent=agent_a provider=pi reason=resume purpose=history" },
+    { message: line("agent_b") },
+    { message: line("agent_a") },
+  ];
+  const facts = sessionOpenFacts(entries, "agent_a", { token: "f".repeat(64), workspace: "/tmp/ws" });
+  assert.equal(facts.observed, true);
+  assert.equal(facts.server, "html-render-v3");
+  assert.equal(facts.transport, "stdio");
+  assert.equal(facts.alwaysLoad, true);
+  assert.equal(facts.reason, "create");
+  assert.equal(facts.purpose, "interactive");
+  assert.equal(facts.sanitized, true);
+
+  // Skip lines and other agents' injections are not evidence.
+  assert.equal(sessionOpenFacts(entries.slice(0, 3), "agent_a").observed, false);
+  // A line that leaks the credential or workspace path fails sanitization.
+  const leaky = [{ message: line("agent_a", " /tmp/ws PASEO_HTML_RENDER_TOKEN") }];
+  assert.equal(sessionOpenFacts(leaky, "agent_a", { workspace: "/tmp/ws" }).sanitized, false);
+  assert.equal(sessionOpenFacts("not-an-array", "agent_a").observed, false);
 });
 
 test("render tool facts require a real direct or nested render row", () => {

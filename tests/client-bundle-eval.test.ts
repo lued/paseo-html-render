@@ -8,8 +8,13 @@ test("production client entry compiles without class syntax for Hermes eval", as
     entryPoints: ["index.client.tsx"], bundle: true, platform: "neutral",
     format: "cjs", jsx: "automatic", target: "es2020",
     supported: { "async-await": false }, write: false,
-    external: ["react", "react/*", "react-native", "react-native/*",
-      "@tanstack/react-query", "zod", "@getpaseo/plugin", "@getpaseo/plugin/*"],
+    // Explicit host SDK entries, matching scripts/check-bundles.mjs. A wildcard
+    // would also externalize the private `@getpaseo/plugin/client/host`.
+    external: ["react", "react/jsx-runtime", "react-native", "@tanstack/react-query", "zod",
+      "@getpaseo/plugin", "@getpaseo/plugin/server", "@getpaseo/plugin/server/provider",
+      "@getpaseo/plugin/server/usage", "@getpaseo/plugin/server/acp",
+      "@getpaseo/plugin/client", "@getpaseo/plugin/client/ui",
+      "@getpaseo/plugin/client/react-native"],
   });
   assert.ok(result.outputFiles[0]);
   assertNoClientClasses(result.outputFiles[0].text);

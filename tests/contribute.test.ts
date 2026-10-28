@@ -5,15 +5,17 @@ import { join } from "node:path";
 import test from "node:test";
 import type { PaseoApi } from "@getpaseo/client";
 import type { PluginServerContext } from "@getpaseo/plugin/server";
-import contribute from "../server/contribute.ts";
+import contribute, { formatSessionOpenEvidence } from "../server/contribute.ts";
 import { ArtifactStore } from "../server/artifacts.ts";
+import { BRIDGE_TOKEN_FILE, PRODUCTION_IDENTITY } from "../shared/identity.ts";
 import { readArtifactRpc, readAssetRpc, readOriginalArtifactRpc, readReportRpc } from "../shared/protocol.ts";
 
 type Handler = (input: unknown, context: { paseo: PaseoApi }) => Promise<unknown>;
-type BeforeHook = (input: { request: unknown }, context: unknown) => Promise<unknown>;
+type BeforeHook = (input: { request: any }, context: unknown) => Promise<any>;
 type EventHook = (event: unknown, context: unknown) => Promise<void> | void;
 
 const PNG = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
+const IDENTITY = PRODUCTION_IDENTITY;
 
 function fakePaseoWorkspaces(
   workspaces: Array<{ id: string; path: string }>,
@@ -48,18 +50,8 @@ function fakePaseo(workspaceRoot: string): PaseoApi {
   return fakePaseoWorkspaces([{ id: "wks_test", path: workspaceRoot }], { agent_ok: "wks_test" });
 }
 
-test("daemon entry injects MCP into new agents, serves owned artifacts, and cleans up", async (t) => {
-  const dataRoot = await fs.mkdtemp(join(tmpdir(), "hr-contribute-"));
-  const workspace = await fs.mkdtemp(join(tmpdir(), "hr-contribute-ws-"));
-  const previous = process.env.PASEO_HTML_RENDER_DATA_DIR;
-  process.env.PASEO_HTML_RENDER_DATA_DIR = dataRoot;
-  t.after(async () => {
-    if (previous === undefined) delete process.env.PASEO_HTML_RENDER_DATA_DIR;
-    else process.env.PASEO_HTML_RENDER_DATA_DIR = previous;
-    await fs.rm(dataRoot, { recursive: true, force: true });
-    await fs.rm(workspace, { recursive: true, force: true });
-  });
-
+/** Minimal server context that records every registration. */
+function fakeServer() {
   const handlers = new Map<string, Handler>();
   const hooks = new Map<string, BeforeHook>();
   const events = new Map<string, EventHook>();
@@ -76,20 +68,123 @@ test("daemon entry injects MCP into new agents, serves owned artifacts, and clea
       return () => {};
     },
   } as unknown as PluginServerContext;
+  return { server, handlers, hooks, events };
+}
+
+function sessionRequest(overrides: Record<string, unknown> = {}) {
+  return {
+    agentId: "agent_ok",
+    workspaceId: "wks_test",
+    provider: "pi",
+    cwd: "/tmp/workspace",
+    reason: "resume",
+    purpose: "interactive",
+    title: null,
+    labels: {},
+    tools: [],
+    env: {},
+    mcpServers: {},
+    ...overrides,
+  };
+}
+
+test("daemon entry injects MCP at session open, serves owned artifacts, and cleans up", async (t) => {
+  const dataRoot = await fs.mkdtemp(join(tmpdir(), "hr-contribute-"));
+  const workspace = await fs.mkdtemp(join(tmpdir(), "hr-contribute-ws-"));
+  const previous = process.env.PASEO_HTML_RENDER_DATA_DIR;
+  process.env.PASEO_HTML_RENDER_DATA_DIR = dataRoot;
+  t.after(async () => {
+    if (previous === undefined) delete process.env.PASEO_HTML_RENDER_DATA_DIR;
+    else process.env.PASEO_HTML_RENDER_DATA_DIR = previous;
+    await fs.rm(dataRoot, { recursive: true, force: true });
+    await fs.rm(workspace, { recursive: true, force: true });
+  });
+
+  const { server, handlers, hooks, events } = fakeServer();
+  const logs: string[] = [];
+  const previousError = console.error;
+  console.error = (value?: unknown) => {
+    logs.push(String(value));
+  };
+  t.after(() => {
+    console.error = previousError;
+  });
 
   const cleanup = contribute(server);
+  // Register cleanup before any assertion so a failure cannot leak the bridge
+  // socket or the adapter process tree.
+  t.after(cleanup);
   const paseo = fakePaseo(workspace);
 
-  // A resumed agent establishes authority through the public session-open hook.
-  const sessionOpen = hooks.get("agent.session_open");
-  assert.ok(sessionOpen);
-  assert.equal(
-    await sessionOpen(
-      { request: { agentId: "agent_ok", workspaceId: "wks_test", provider: "pi", cwd: workspace, reason: "resume", purpose: "interactive", env: {} } },
-      { paseo, signal: new AbortController().signal },
-    ),
-    undefined,
-  );
+  // Launch-only injection: `agent.create` must not exist at all, because it
+  // writes the server into saved configuration and then collides with the
+  // session-open contribution on every later open.
+  assert.equal(hooks.get("agent.create"), undefined);
+  assert.ok(hooks.get("agent.session_open"));
+
+  // A resumed agent establishes authority and receives the server.
+  const sessionOpen = hooks.get("agent.session_open")!;
+  const request = sessionRequest({
+    cwd: workspace,
+    env: { EXISTING: "1" },
+    mcpServers: { other: { type: "stdio", command: "x" } },
+  });
+  const opened = (await sessionOpen(
+    { request },
+    { paseo, signal: new AbortController().signal },
+  )) as {
+    mcpServers: Record<string, { type: string; command: string; args: string[]; alwaysLoad?: boolean; env: Record<string, string> }>;
+    env: Record<string, string>;
+  };
+  assert.ok(opened, "an interactive open returns a request");
+  // The incoming request is immutable: only the returned copy carries the server.
+  assert.deepEqual(Object.keys(request.mcpServers), ["other"]);
+  assert.deepEqual(request.env, { EXISTING: "1" });
+  assert.deepEqual(Object.keys(opened.mcpServers).sort(), [IDENTITY.mcpServerName, "other"]);
+  // Other servers survive untouched.
+  assert.deepEqual(opened.mcpServers.other, { type: "stdio", command: "x" });
+  assert.deepEqual(opened.env, { EXISTING: "1" }, "launch environment stays untouched");
+  const injected = opened.mcpServers[IDENTITY.mcpServerName];
+  assert.ok(injected);
+  assert.equal(injected.type, "stdio");
+  assert.equal(injected.alwaysLoad, true);
+  assert.equal(injected.command, process.execPath);
+  assert.ok(injected.args[0]?.endsWith(IDENTITY.adapterFileName), injected.args[0]);
+  assert.equal(injected.env[IDENTITY.bridgeEnv.cwd], workspace);
+  assert.ok(injected.env[IDENTITY.bridgeEnv.token]);
+  // A desktop-managed daemon runs the adapter through its Electron binary, which
+  // needs this to behave as Node instead of starting the GUI and closing stdio.
+  assert.equal(injected.env.ELECTRON_RUN_AS_NODE, "1");
+  assert.ok((await fs.stat(injected.args[0]!)).size > 1_000);
+
+  // The private token file remains part of the transport contract. It is
+  // owner-only and never enters saved agent configuration, because the server
+  // itself is launch-only.
+  const tokenPath = join(dataRoot, BRIDGE_TOKEN_FILE);
+  assert.equal((await fs.stat(tokenPath)).mode & 0o777, 0o600);
+  assert.equal((await fs.readFile(tokenPath, "utf8")).trim(), injected.env[IDENTITY.bridgeEnv.token]);
+
+  // The adapter file and bridge socket exist before any render is requested.
+  assert.ok(await fs.stat(join(dataRoot, IDENTITY.socketFileName)));
+
+  // A legacy 2.x agent must find a tombstone, not a live bridge client.
+  const legacyPath = join(dataRoot, IDENTITY.legacyAdapterFileName);
+  const legacy = await fs.readFile(legacyPath, "utf8");
+  assert.ok(legacy.includes("html-render-legacy-tombstone"));
+  assert.ok(!legacy.includes("node:net"));
+
+  // Evidence is one sanitized line: no token, no workspace path, fixed fields.
+  const evidence = logs.find((line) => line.includes("session-open")) ?? "";
+  assert.match(evidence, /session-open result=injected/);
+  assert.ok(evidence.includes(`server=${IDENTITY.mcpServerName}`));
+  assert.match(evidence, /transport=stdio/);
+  assert.match(evidence, /alwaysLoad=true/);
+  assert.match(evidence, /agent=agent_ok/);
+  assert.match(evidence, /provider=pi/);
+  assert.match(evidence, /reason=resume/);
+  assert.match(evidence, /purpose=interactive/);
+  assert.ok(!evidence.includes(injected.env[IDENTITY.bridgeEnv.token]));
+  assert.ok(!evidence.includes(workspace));
 
   // A running agent whose plugin was reloaded mid-session warms on turn start.
   const turnStarted = events.get("agent.turn_started");
@@ -98,34 +193,6 @@ test("daemon entry injects MCP into new agents, serves owned artifacts, and clea
     { agent: { id: "agent_ok", workspaceId: "wks_test", parentAgentId: null, provider: "pi", cwd: workspace, title: null } },
     { paseo, signal: new AbortController().signal },
   );
-
-  const hook = hooks.get("agent.create");
-  assert.ok(hook);
-  const existing = { provider: "pi", cwd: workspace, mcpServers: { other: { type: "stdio", command: "x" } } };
-  const result = (await hook({ request: { config: existing } }, { paseo, signal: new AbortController().signal })) as {
-    config: { mcpServers: Record<string, { type: string; command: string; args: string[]; env: Record<string, string> }> };
-  };
-  // The request object is not mutated in place.
-  assert.equal(Object.keys(existing.mcpServers).length, 1);
-  assert.deepEqual(Object.keys(result.config.mcpServers).sort(), ["html-render", "other"]);
-  const injected = result.config.mcpServers["html-render"];
-  assert.equal(injected?.type, "stdio");
-  assert.equal(injected?.command, process.execPath);
-  assert.ok(injected?.args[0]?.endsWith(".mjs"));
-  assert.equal(injected?.env.PASEO_HTML_RENDER_CWD, workspace);
-  assert.ok(injected?.env.PASEO_HTML_RENDER_TOKEN);
-  // A desktop-managed daemon runs the adapter through its Electron binary, which
-  // needs this to behave as Node instead of starting the GUI and closing stdio.
-  assert.equal(injected?.env.ELECTRON_RUN_AS_NODE, "1");
-  assert.ok((await fs.stat(injected!.args[0]!)).size > 1_000);
-
-  // The token is shared by every future plugin process, not per-process state.
-  const tokenPath = join(dataRoot, "bridge.token");
-  assert.equal((await fs.stat(tokenPath)).mode & 0o777, 0o600);
-  assert.equal((await fs.readFile(tokenPath, "utf8")).trim(), injected!.env.PASEO_HTML_RENDER_TOKEN);
-
-  // The adapter file and bridge socket exist before any render is requested.
-  assert.ok(await fs.stat(join(dataRoot, "bridge.sock")));
 
   const store = new ArtifactStore(dataRoot);
   const saved = await store.save({
@@ -172,7 +239,91 @@ test("daemon entry injects MCP into new agents, serves owned artifacts, and clea
   );
 
   await cleanup();
-  await assert.rejects(() => fs.stat(join(dataRoot, "bridge.sock")));
+  await assert.rejects(() => fs.stat(join(dataRoot, IDENTITY.socketFileName)));
+});
+
+test("session open skips history, disabled labels, and an already-present server", async (t) => {
+  const dataRoot = await fs.mkdtemp(join(tmpdir(), "hr-contribute-skip-"));
+  const workspace = await fs.mkdtemp(join(tmpdir(), "hr-contribute-skip-ws-"));
+  const previous = process.env.PASEO_HTML_RENDER_DATA_DIR;
+  process.env.PASEO_HTML_RENDER_DATA_DIR = dataRoot;
+  t.after(async () => {
+    if (previous === undefined) delete process.env.PASEO_HTML_RENDER_DATA_DIR;
+    else process.env.PASEO_HTML_RENDER_DATA_DIR = previous;
+    await fs.rm(dataRoot, { recursive: true, force: true });
+    await fs.rm(workspace, { recursive: true, force: true });
+  });
+
+  const { server, hooks } = fakeServer();
+  const logs: string[] = [];
+  const previousError = console.error;
+  console.error = (value?: unknown) => {
+    logs.push(String(value));
+  };
+  t.after(() => {
+    console.error = previousError;
+  });
+  const cleanup = contribute(server);
+  t.after(cleanup);
+  const paseo = fakePaseo(workspace);
+  const sessionOpen = hooks.get("agent.session_open")!;
+  const open = (overrides: Record<string, unknown>) =>
+    sessionOpen({ request: sessionRequest({ cwd: workspace, ...overrides }) }, { paseo, signal: new AbortController().signal });
+
+  // A history open attaches no tools at all.
+  assert.equal(await open({ purpose: "history" }), undefined);
+  assert.ok(logs.some((line) => /result=skipped skip=history/.test(line)));
+  // The opt-out label is exact and case/whitespace tolerant.
+  assert.equal(await open({ labels: { "html-render/disabled": " TRUE " } }), undefined);
+  assert.ok(logs.some((line) => /result=skipped skip=label/.test(line)));
+  // Only "true" disables; any other value keeps the default.
+  assert.ok(await open({ labels: { "html-render/disabled": "no" } }), "a non-true label keeps injection");
+  assert.ok(logs.some((line) => /result=injected/.test(line)));
+  // A host that pre-populates the key is never overwritten.
+  const present = { [IDENTITY.mcpServerName]: { type: "stdio", command: "keep" } };
+  assert.equal(await open({ mcpServers: present }), undefined);
+  assert.ok(logs.some((line) => /result=skipped skip=already-present/.test(line)));
+  assert.deepEqual(Object.keys(present), [IDENTITY.mcpServerName]);
+});
+
+test("session-open evidence is sanitized and bounded", () => {
+  const line = formatSessionOpenEvidence({
+    result: "injected",
+    agent: 'evil agent\nwith "quotes" and token abc',
+    provider: "pi",
+    reason: "resume",
+    purpose: "interactive",
+    transport: "stdio",
+    alwaysLoad: true,
+    server: IDENTITY.mcpServerName,
+  });
+  assert.equal(line.split("\n").length, 1, "one line per open");
+  assert.ok(!line.includes(" " + '"'));
+  assert.match(line, /agent=evil_agent_with__quotes__and_token_abc/);
+  // An absent or hostile value falls back instead of emitting an empty field or
+  // unbounded text.
+  assert.equal(formatSessionOpenEvidence({
+    result: "skipped",
+    skip: "history",
+    agent: "",
+    provider: " ".repeat(4),
+    reason: "create",
+    purpose: "history",
+    transport: "none",
+    alwaysLoad: false,
+    server: IDENTITY.mcpServerName,
+  }), "session-open result=skipped skip=history server=html-render-v3 transport=none alwaysLoad=false agent=unattributed provider=unknown reason=create purpose=history");
+  const bounded = formatSessionOpenEvidence({
+    result: "injected",
+    agent: "a".repeat(500),
+    provider: "p",
+    reason: "r",
+    purpose: "interactive",
+    transport: "stdio",
+    alwaysLoad: true,
+    server: IDENTITY.mcpServerName,
+  });
+  assert.ok(bounded.length < 300, "the line must stay bounded");
 });
 
 test("an agent can read a card published under a sibling workspace on the same cwd", async (t) => {
@@ -187,20 +338,9 @@ test("an agent can read a card published under a sibling workspace on the same c
     await fs.rm(workspace, { recursive: true, force: true });
   });
 
-  const handlers = new Map<string, Handler>();
-  const server = {
-    handle(contract: { name: string }, handler: Handler) {
-      handlers.set(contract.name, handler);
-    },
-    before() {
-      return () => {};
-    },
-    on() {
-      return () => {};
-    },
-  } as unknown as PluginServerContext;
-
+  const { server, handlers } = fakeServer();
   const cleanup = contribute(server);
+  t.after(cleanup);
   // Two real Paseo workspaces can share one directory. Publish tie-breaks to
   // wks_aaa; the agent belongs to wks_zzz and must still read its own card.
   const paseo = fakePaseoWorkspaces(
@@ -256,21 +396,9 @@ test("report, asset, and interactive reads are exposed with ownership checks", a
     await fs.rm(workspace, { recursive: true, force: true });
   });
 
-  const handlers = new Map<string, Handler>();
-  const events = new Map<string, EventHook>();
-  const server = {
-    handle(contract: { name: string }, handler: Handler) {
-      handlers.set(contract.name, handler);
-    },
-    before() {
-      return () => {};
-    },
-    on(name: string, handler: EventHook) {
-      events.set(name, handler);
-      return () => {};
-    },
-  } as unknown as PluginServerContext;
+  const { server, handlers, events } = fakeServer();
   const cleanup = contribute(server);
+  t.after(cleanup);
   const paseo = fakePaseo(workspace);
 
   const store = new ArtifactStore(dataRoot);

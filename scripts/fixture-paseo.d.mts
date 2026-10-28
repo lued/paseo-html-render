@@ -46,6 +46,23 @@ export declare function recordFacts(
   readError?: string | null,
 ): Record<string, unknown>;
 
+export declare function sessionOpenFacts(
+  entries: unknown,
+  agentId: string,
+  options?: { token?: string; workspace?: string },
+): {
+  observed: boolean;
+  lineCount: number;
+  server: string | null;
+  transport: string | null;
+  alwaysLoad: boolean;
+  agentMatches: boolean;
+  provider: string | null;
+  reason: string | null;
+  purpose: string | null;
+  sanitized: boolean;
+};
+
 export declare function renderToolFacts(items: unknown, expectedTitle?: string): Record<string, unknown>;
 
 export declare function runProtectedAcceptance(options?: Record<string, unknown>): Promise<Record<string, unknown>>;
