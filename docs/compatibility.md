@@ -43,6 +43,34 @@ The file path is a compatibility adapter into Paseo's existing HTML file preview
 not a plugin route or guaranteed public navigation API. The card can copy the
 link/path; copying is not represented as opening a file tab.
 
+## Session-open injection (Paseo 0.14)
+
+The MCP server `html-render-v3` is contributed at `agent.session_open` for
+interactive sessions only. It is launch-only: never in a saved agent record, and
+re-derived on create, resume, refresh and import. History opens and agents
+labelled `html-render/disabled: "true"` get no server. An install, reload or
+disable reaches an idle agent on its next prompt and a busy agent at its next
+idle prompt.
+
+A 2.x agent keeps its saved `html-render` entry. Paseo still launches it,
+including for history opens, but the file it points at (`mcp-adapter-v1.mjs`) is
+now a tombstone: it lists no tools and never opens the bridge.
+
+**Host defect, Pi with default MCP settings.** With `daemon.mcp.injectIntoAgents`
+off (the 0.14 default), Pi reports MCP support only for a session launched with an
+MCP server, and the daemon checks the *old* session before a refresh. An idle Pi
+agent that opened with no MCP server, because the plugin was not installed yet or
+was disabled, then fails its next prompt after install or re-enable with
+`Provider 'pi' does not support MCP servers (plugin html-render)`. Restart the
+daemon once; the resume path does not make that check. Hosts with
+`injectIntoAgents: true` always launch Pi with Paseo's own MCP server and are not
+affected. The plugin cannot see the old session's capabilities, so it cannot
+work around this.
+
+Paseo 0.14 also folds a finished turn's tool rows by default, and the card is
+attached to the `html_render` row, so it is hidden until the turn is expanded.
+The final reply's `Open interactive report` link stays visible.
+
 ## Turn guard
 
 `html_render` defaults to one card per counted agent turn. The comparison is an

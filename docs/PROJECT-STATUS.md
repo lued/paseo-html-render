@@ -1,5 +1,23 @@
 # HTML Render: release checklist
 
+## 3.0.0 status (2026-10-28)
+
+Target: first npm release, **3.0.0** for Paseo `>=0.14.0-beta.1 <0.15.0`. The
+2.2.0 candidate below was never published and is folded into 3.0.0.
+
+- Done: session-open injection, `html-render-v3` key, versioned transport,
+  legacy tombstone, Android `onMessage` transport with stage diagnostics and a
+  non-destructive failure banner. Local gates, package smoke and the isolated
+  real-daemon lifecycle checks pass; see `docs/verification.md`.
+- Recorded negative: on 2026-10-27 at 14:16Z the user reported that the 2.2.0
+  `4b9e77a` ready recovery still timed out on the phone after a full close and
+  reopen. The 3.0 transport replaces that path and has not been device-tested.
+- Open: physical Android acceptance; Chrome/PWA parity; turn-collapse display
+  check; the Paseo host defect with `injectIntoAgents` off (documented,
+  workaround is a daemon restart); npm publication.
+
+Everything below is the 2.2.0-era checklist, kept as history.
+
 Updated: 2026-10-27
 Target: first npm release, candidate version 2.2.0; preserve existing v2.1.0.
 User direction: build it, dogfood the user-facing cases through Paseo here, then

@@ -30,7 +30,7 @@ paseo plugin install .
 paseo plugin ls
 ```
 
-Existing agents pick up the tools on their next prompt; no new agent is needed. Requires Paseo `>=0.14.0-beta.1 <0.15.0` (tested with 0.14.0-beta.1 and 0.14.0-beta.2), Node 22.18 or newer on the daemon host, and a sandbox-capable Chromium. Chromium is discovered from `PASEO_HTML_RENDER_CHROMIUM`, a Playwright cache, an installed `shared-browser` runtime, system Chromium, or an installed Chromium-family app. No browser is downloaded or installed.
+Existing agents pick up the tools on their next prompt (Pi with default MCP settings: restart the daemon once, see [compatibility](docs/compatibility.md)). Requires Paseo `>=0.14.0-beta.1 <0.15.0` (tested with 0.14.0-beta.1 and 0.14.0-beta.2), Node 22.18 or newer on the daemon host, and a sandbox-capable Chromium. Chromium is discovered from `PASEO_HTML_RENDER_CHROMIUM`, a Playwright cache, an installed `shared-browser` runtime, system Chromium, or an installed Chromium-family app. No browser is downloaded or installed.
 
 ## What it does
 
@@ -44,7 +44,7 @@ Live pages can use local controls, CSS transitions and inline SVG. Screenshots a
 
 ## Limits
 
-- The live frame cannot control Paseo agents, workspaces or files. Its controls are local; it can ask the host to open an `http(s)` link or a data-URI image.
+- The live frame cannot control Paseo agents, workspaces or files; its controls are local, except opening `http(s)` links and data-URI images.
 - A live page can still navigate itself; CSP and click interception do not fully contain `location.assign` or a meta refresh.
 - The turn guard compares exact prepared inputs and is not a permanent duplicate database: cosmetic changes count as new, a daemon restart clears state, and missing attribution or unknown turn lifecycle degrades with a warning. A late file-path failure after a durable save can return an error while still using the turn slot.
 - A 2.x agent keeps an inert saved `html-render` entry; its tools arrive as `html-render-v3`. Recreate the agent to drop the old entry.

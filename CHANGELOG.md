@@ -62,6 +62,13 @@ It also contains the never-published 2.2.0 candidate changes listed further down
   installs), and the card sits on the `html_render` tool row, so it is hidden
   until the turn is expanded. A plugin cannot opt out. The
   `[Open interactive report](...)` link in the final reply stays visible.
+- Paseo 0.14.0-beta.1/beta.2 host defect: with `daemon.mcp.injectIntoAgents` off
+  (the default), an idle Pi agent whose session opened with no MCP server fails its
+  next prompt after html-render is installed or re-enabled, with `Provider 'pi'
+  does not support MCP servers (plugin html-render)`. The daemon checks the old
+  session's capability before the refresh, and Pi reports MCP support only when a
+  session launched with an MCP server. Restart the daemon once; resumed sessions
+  are not affected. Hosts with `injectIntoAgents: true` are not affected.
 - `alwaysLoad` is honored only by the Claude provider; Pi and Codex load the
   server normally.
 - The Android `onMessage` path and the non-destructive banner pass emulated and
