@@ -17,7 +17,7 @@ Local gates on branch `feat/v0.14-migration`, Node 26.13.0, each bounded by
 | `npm run typecheck` | pass |
 | `npm test` | 310/310 pass, 104 s |
 | `npm run check:bundles` | pass: client `es2020`, server `node20`, explicit SDK externals, Pele server-only |
-| `npm run check:package` | pass: 74 entries, 43 required files, 0 forbidden; sha256 `feb6e821…a203f` |
+| `npm run check:package` | pass: 74 entries, 43 required files, 0 forbidden; sha256 `1c4baf58…7997` (commit `1546ca7`) |
 | `npm run smoke:package` (CLI/daemon 0.14.0-beta.2, isolated home) | pass: session-open line `injected server=html-render-v3 transport=stdio alwaysLoad=true reason=create purpose=interactive`; saved record without the v3 key or token; token file 0600; tombstone present; adapter `initialize`/`tools/list`/`html_preview`/`html_render`/RPC readback; both missing-browser negatives |
 | native tests (`tests/native-*`) | 29/29 pass; emulated, not device evidence |
 
