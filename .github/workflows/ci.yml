@@ -77,8 +77,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - paseo: "0.12.0"
-          - paseo: "0.13.0-beta.2"
+          - paseo: "0.14.0-beta.1"
+          - paseo: "0.14.0-beta.2"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -109,7 +109,7 @@ jobs:
       - name: Isolated reference-tarball install and adapter readback
         run: |
           node scripts/smoke-package.mjs \
-            --tarball "$RUNNER_TEMP/hr-package/paseo-html-render-2.2.0.tgz" \
+            --tarball "$RUNNER_TEMP/hr-package/paseo-html-render-3.0.0.tgz" \
             --paseo "$RUNNER_TEMP/paseo/node_modules/.bin/paseo" \
             --out "$RUNNER_TEMP/hr-smoke" \
             --skip-missing-browser

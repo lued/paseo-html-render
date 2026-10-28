@@ -107,24 +107,35 @@ npm run typecheck
 npm test
 npm run check:bundles
 npm run check:package
-npm run smoke:package -- --tarball /tmp/paseo-html-render-2.2.0.tgz
+npm run smoke:package -- --tarball /tmp/paseo-html-render-3.0.0.tgz
 ```
 
 A sandbox-capable Chromium must already be installed, or set
 `PASEO_HTML_RENDER_CHROMIUM` to its executable. No browser is downloaded and
 `--no-sandbox` is never used. Missing Chromium fails preview/publish explicitly.
-New agents receive MCP injection plus the rendering policy in the MCP handshake:
-render a card when the answer has structure, answer in text for single facts, prose,
-code, file contents or config. What the model actually sees is client- and
+Every interactive agent session receives the MCP server, plus the rendering policy
+in the MCP handshake: render a card when the answer has structure, answer in text
+for single facts, prose, code, file contents or config. What the model actually sees is client- and
 configuration-dependent: some harnesses expose MCP tools behind codemode, and a
 client or shared server description can override or truncate the 244-character
-summary. Do not infer universal exposure from one harness. Disabling the plugin
-removes both the tools and the policy; agents created while it was enabled keep
-their injected config until they are recreated. Existing session configurations
-are never edited. The bridge token is a durable 0600 file under the private data
-root, and the adapter re-reads it on every call, so a plugin reload does not
-invalidate MCP tools in existing agents. An adapter process that is already
-running still needs one reconnect to pick up the new adapter source.
+summary. Do not infer universal exposure from one harness. 
+Paseo 0.14 runs the plugin's `agent.session_open` hook on create, resume, refresh
+and import, and the server it returns (`html-render-v3`) is launch-only: it is
+never written into a saved agent record. Installing, reloading or disabling the
+plugin therefore reaches an idle agent on its next prompt, and a busy agent at
+its next idle prompt. History opens and agents labelled
+`html-render/disabled: "true"` get no server. One sanitized `session-open` line
+per open in the plugin log records what happened, without the token, launch
+environment or workspace path.
+
+Agents created by 2.x keep a saved `html-render` entry that the plugin cannot see
+or remove. 3.0 uses a different key so that entry cannot collide, and overwrites
+the old adapter file (`mcp-adapter-v1.mjs`) with an inert tombstone that lists no
+tools and never contacts the bridge. Recreate such an agent to drop the entry.
+
+The bridge token is a 0600 file (`bridge-v3.token`) under the private data root,
+and the adapter re-reads it on every call, so a plugin reload does not strand an
+adapter that is already running.
 
 See [`docs/compatibility.md`](docs/compatibility.md) for intentional T3 differences,
 bounded guard semantics, and the [public verification notes](https://github.com/lued/paseo-html-render/blob/main/docs/verification.md)

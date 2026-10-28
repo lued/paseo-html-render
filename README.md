@@ -8,7 +8,7 @@ Ask Paseo for a comparison, a flow, a screenshot review or a set of numbers. Ins
 
 <sub>A real capture of the [image-inspection demo](examples/showcase/image-inspection.html). The capture is a standalone demo page, not a mocked Paseo window; on web/desktop the same page runs as a live card in the timeline.</sub>
 
-New agents get two injected MCP tools: `html_preview` checks the page as a PNG, and `html_render` publishes the card and keeps a link to the full interactive HTML file.
+Each interactive agent session gets two MCP tools: `html_preview` checks the page as a PNG, and `html_render` publishes the card with a link to the full interactive HTML file.
 
 ## Try asking
 
@@ -20,7 +20,7 @@ New agents get two injected MCP tools: `html_preview` checks the page as a PNG, 
 
 ## Install
 
-**2.2.0 is an unreleased candidate**, not a published npm release. To test it, install the checkout:
+**3.0.0 is an unreleased candidate**, not a published npm release. To test it, install the checkout:
 
 ```sh
 git clone https://github.com/lued/paseo-html-render.git
@@ -30,7 +30,7 @@ paseo plugin install .
 paseo plugin ls
 ```
 
-Create a new agent after installing or upgrading so it receives the tools. Requires Paseo `>=0.12.0 <0.14.0` (tested with 0.12.0 and 0.13.0-beta.2), Node 22.18 or newer on the daemon host, and a sandbox-capable Chromium. Chromium is discovered from `PASEO_HTML_RENDER_CHROMIUM`, a Playwright cache, an installed `shared-browser` runtime, system Chromium, or an installed Chromium-family app. No browser is downloaded or installed.
+Existing agents pick up the tools on their next prompt; no new agent is needed. Requires Paseo `>=0.14.0-beta.1 <0.15.0` (tested with 0.14.0-beta.1 and 0.14.0-beta.2), Node 22.18 or newer on the daemon host, and a sandbox-capable Chromium. Chromium is discovered from `PASEO_HTML_RENDER_CHROMIUM`, a Playwright cache, an installed `shared-browser` runtime, system Chromium, or an installed Chromium-family app. No browser is downloaded or installed.
 
 ## What it does
 
@@ -47,7 +47,9 @@ Live pages can use local controls, CSS transitions and inline SVG. Screenshots a
 - The live frame cannot control Paseo agents, workspaces or files. Its controls are local; it can ask the host to open an `http(s)` link or a data-URI image.
 - A live page can still navigate itself; CSP and click interception do not fully contain `location.assign` or a meta refresh.
 - The turn guard compares exact prepared inputs and is not a permanent duplicate database: cosmetic changes count as new, a daemon restart clears state, and missing attribution or unknown turn lifecycle degrades with a warning. A late file-path failure after a durable save can return an error while still using the turn slot.
-- Agents created before install do not get the tools; start a new agent. After an upgrade, a running adapter may report itself stale, so reconnect the agent.
+- A 2.x agent keeps an inert saved `html-render` entry; its tools arrive as `html-render-v3`. Recreate the agent to drop the old entry.
+- Paseo 0.14 folds finished turns by default, hiding the card until you expand the turn; the report link in the reply stays visible.
+- Label an agent `html-render/disabled=true` to opt it out.
 
 ## Develop
 

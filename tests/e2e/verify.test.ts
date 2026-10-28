@@ -7,7 +7,7 @@
  *
  *   G1  real Chromium renderer + real artifact store (tools, privacy, bytes)
  *   G2  real ReportCard/HtmlFrame mounted in real Chromium with real artifacts
- *   G3  real stdio MCP adapter over the real bridge socket + history rebuild
+ *   G3  real stdio MCP adapter (v3) over the real bridge socket + history rebuild
  *   G4  cross-row deduplication capability probe (public SDK surface)
  *   G5  installed plugin registration and daemon identity
  *
@@ -30,6 +30,7 @@ import { createRenderer, findChromiumExecutable } from "../../server/renderer.ts
 import { createHtmlTools } from "../../server/tools.ts";
 import { decodeReportReference, encodeReportReference, transformTimelineToolCall } from "../../shared/recognize.ts";
 import { parseReportModel } from "../../shared/report-model.ts";
+import { SELECTED_IDENTITY } from "../../shared/selected-identity.ts";
 import { browserResult } from "../helpers/browser.ts";
 import {
   EVIDENCE_DIR,
@@ -555,7 +556,7 @@ test("G3 real MCP adapter and history rebuild", { timeout: 180_000 }, async () =
           capabilities: {},
           clientInfo: { name: "verify-e2e", version: "1" },
         })) as { serverInfo: { name: string } };
-        assert.equal(init.serverInfo.name, "html-render");
+        assert.equal(init.serverInfo.name, SELECTED_IDENTITY.mcpServerName);
         adapter.notify("notifications/initialized");
         const list = (await adapter.request("tools/list", {})) as { tools: Array<{ name: string }> };
         assert.deepEqual(list.tools.map((tool) => tool.name).sort(), ["html_preview", "html_render"]);
@@ -736,8 +737,12 @@ test("G6 real protected hosted client timeline and file preview", { timeout: 900
         artifactId: string | null;
         interactivePath: string | null;
         authPreflight: Record<string, string>;
-        bridge: { ready?: boolean; socketPresent?: boolean; socketIsSocket?: boolean; socketPathBytes?: number; socketPathLimit?: number; adapterPresent?: boolean; adapterHashMatches?: boolean; bridgeFailureLogged?: boolean };
-        agentRuntime: { record?: { found?: boolean; readError?: string | null; mcpServersKey?: boolean | null; alwaysLoadObserved?: boolean | null; injectionEvidence?: string } };
+        bridge: { ready?: boolean; socketPresent?: boolean; socketIsSocket?: boolean; socketPathBytes?: number; socketPathLimit?: number; adapterPresent?: boolean; adapterHashMatches?: boolean; bridgeFailureLogged?: boolean; legacyTombstonePresent?: boolean; tokenFilePresent?: boolean; tokenFileMode?: string | null };
+        agentRuntime: {
+          record?: { found?: boolean; readError?: string | null; mcpServersKey?: boolean | null; newKeyPersisted?: boolean | null; alwaysLoadObserved?: boolean | null; injectionEvidence?: string };
+          recordTokenLeak?: boolean;
+          sessionOpen?: { observed?: boolean; server?: string | null; transport?: string | null; alwaysLoad?: boolean; purpose?: string | null; sanitized?: boolean };
+        };
         toolCall: { count?: number; completedCount?: number; failedCount?: number; rowCallIdCount?: number; actualInvocationCount?: null; completedArtifactCount?: number; referenceMatchesCompletedRow?: boolean; markerParsed?: boolean; invocationEvidence?: string; directObserved?: boolean; codemodeObserved?: boolean; alwaysLoadRuntime?: string };
         artifact: { artifactId?: string; markerParsed?: boolean; titleMatches?: boolean; readAuthorized?: boolean; originalAuthorized?: boolean; storeOwned?: boolean; originalMatchesRequested?: boolean; originalHasMarker?: boolean; originalHasCsp?: boolean; sourceHtmlSha256?: string; originalHtmlSha256?: string; interactiveHtmlSha256?: string | null; adapterSourceSha256?: string | null; expectedAdapterSourceSha256?: string | null; interactivePath?: string };
         cleanup: { daemonStopped?: boolean; daemonStopEvidence?: string; fixtureRemoved?: boolean; browserState?: string; browserStopped?: boolean | null; browserProfileRemoved?: boolean | null; requiredCleanupPassed?: boolean; retainedByRequest?: boolean };
@@ -771,12 +776,25 @@ test("G6 real protected hosted client timeline and file preview", { timeout: 900
       assert.ok(Number.isInteger(fixture.bridge.socketPathBytes));
       assert.ok(Number.isInteger(fixture.bridge.socketPathLimit));
       assert.ok((fixture.bridge.socketPathBytes ?? Infinity) <= (fixture.bridge.socketPathLimit ?? 0));
+      assert.equal(fixture.bridge.legacyTombstonePresent, true, "retired 2.x adapter is a tombstone");
+      assert.equal(fixture.bridge.tokenFilePresent, true, "private bridge token file exists");
+      assert.equal(fixture.bridge.tokenFileMode, "0600", "private bridge token file is owner-only");
       assert.ok(fixture.agentRuntime.record, "owned agent record facts captured");
       assert.ok(
         fixture.agentRuntime.record.mcpServersKey === true ||
         fixture.agentRuntime.record.mcpServersKey === false ||
         fixture.agentRuntime.record.mcpServersKey === null,
       );
+      // 3.0 injection is launch-only: proven by the sanitized session-open line,
+      // and the saved record must hold neither the v3 key nor the credential.
+      assert.equal(fixture.agentRuntime.record.newKeyPersisted, false, "v3 key is not in saved config");
+      assert.equal(fixture.agentRuntime.recordTokenLeak, false, "bridge credential is not in saved config");
+      assert.equal(fixture.agentRuntime.sessionOpen?.observed, true, "session-open injection observed");
+      assert.equal(fixture.agentRuntime.sessionOpen?.server, SELECTED_IDENTITY.mcpServerName);
+      assert.equal(fixture.agentRuntime.sessionOpen?.transport, "stdio");
+      assert.equal(fixture.agentRuntime.sessionOpen?.alwaysLoad, true);
+      assert.equal(fixture.agentRuntime.sessionOpen?.purpose, "interactive");
+      assert.equal(fixture.agentRuntime.sessionOpen?.sanitized, true, "session-open line leaks nothing");
       assert.ok((fixture.toolCall.count ?? 0) > 0, "at least one real render tool row observed");
       assert.ok((fixture.toolCall.completedCount ?? 0) > 0, "a render tool row completed");
       assert.equal(fixture.toolCall.actualInvocationCount, null, "provider projection rows do not prove an underlying call count");

@@ -7,20 +7,23 @@ import { fileURLToPath } from "node:url";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (path: string) => fs.readFile(join(ROOT, path), "utf8");
 
-test("package, lockfile, manifest and adapter use the same 2.2.0 contract", async () => {
+test("package, lockfile, manifest and adapter use the same 3.0.0 contract", async () => {
   const pkg = JSON.parse(await read("package.json"));
   const lock = JSON.parse(await read("package-lock.json"));
   const manifest = JSON.parse(await read("paseo-plugin.json"));
   const identity = await read("shared/identity.ts");
   assert.equal(pkg.name, "paseo-html-render");
-  assert.equal(pkg.version, "2.2.0");
+  assert.equal(pkg.version, "3.0.0");
   assert.equal(pkg.private, false);
   assert.equal(lock.version, pkg.version);
   assert.equal(lock.packages[""].version, pkg.version);
-  assert.match(identity, /adapterVersion: "2\.2\.0"/);
+  assert.match(identity, /adapterVersion: "3\.0\.0"/);
+  assert.match(identity, /mcpServerName: "html-render-v3"/);
   assert.equal(pkg.engines.node, ">=22.18.0");
-  assert.equal(pkg.peerDependencies["@getpaseo/plugin"], ">=0.12.0 <0.14.0");
-  assert.equal(manifest.requirements.paseo, ">=0.12.0 <0.14.0");
+  assert.equal(pkg.peerDependencies["@getpaseo/plugin"], ">=0.14.0-beta.1 <0.15.0");
+  assert.equal(pkg.devDependencies["@getpaseo/plugin"], "0.14.0-beta.1");
+  assert.equal(lock.packages["node_modules/@getpaseo/plugin"].version, "0.14.0-beta.1");
+  assert.equal(manifest.requirements.paseo, ">=0.14.0-beta.1 <0.15.0");
   assert.equal(manifest.id, "html-render");
 });
 
@@ -52,13 +55,16 @@ test("the packed allowlist is public and excludes private working material", asy
 
 test("README labels the unreleased candidate and provides a checkout install", async () => {
   const readme = await read("README.md");
-  assert.match(readme, /2\.2\.0 is an unreleased candidate/);
+  assert.match(readme, /3\.0\.0 is an unreleased candidate/);
   assert.match(readme, /not a published npm release/);
   assert.match(readme, /paseo plugin install \./);
-  assert.doesNotMatch(readme, /paseo plugin install npm:paseo-html-render@2\.2\.0/);
+  assert.doesNotMatch(readme, /paseo plugin install npm:paseo-html-render@3\.0\.0/);
   assert.match(readme, /git clone https:\/\/github\.com\/lued\/paseo-html-render\.git/);
-  assert.match(readme, />=0\.12\.0 <0\.14\.0/);
-  assert.match(readme, /0\.12\.0 and 0\.13\.0-beta\.2/);
+  assert.match(readme, />=0\.14\.0-beta\.1 <0\.15\.0/);
+  assert.match(readme, /0\.14\.0-beta\.1 and 0\.14\.0-beta\.2/);
+  // 3.0 reaches existing agents at session open; the old advice is wrong now.
+  assert.doesNotMatch(readme, /start a new agent/i);
+  assert.match(readme, /html-render-v3/);
   assert.match(readme, /Node 22\.18 or newer/);
   assert.match(readme, /No browser is downloaded or installed/);
   assert.match(readme, /compatibility and limits/);
@@ -68,8 +74,11 @@ test("README labels the unreleased candidate and provides a checkout install", a
 test("the guard documentation is exact rather than overclaiming normalization or cwd fallback", async () => {
   const changelog = await read("CHANGELOG.md");
   const compatibility = await read("docs/compatibility.md");
-  assert.match(changelog, /## \[Unreleased\] — 2\.2\.0 candidate/);
-  assert.match(changelog, /Not published to npm or tagged as 2\.2\.0/);
+  assert.match(changelog, /## \[Unreleased\] — 3\.0\.0 candidate/);
+  assert.match(changelog, /Not published to npm or tagged as 3\.0\.0/);
+  // The unpublished 2.2.0 candidate is history, not a release.
+  assert.match(changelog, /## 2\.2\.0 candidate \(never published; folded into 3\.0\.0\)/);
+  assert.doesNotMatch(changelog, /## \[2\.2\.0\]/);
   assert.match(changelog, /exact fingerprint/);
   assert.match(changelog, /not semantic duplicate detection/);
   assert.match(changelog, /50 publishes per agent/);
@@ -94,11 +103,12 @@ test("release notes describe the production-only install and preserve v2.1.0", a
   assert.match(release, /v2\.1\.0/);
   assert.doesNotMatch(release, /not published yet/i);
   assert.match(release, /--npm-source/);
-  assert.match(release, /npm publish \/tmp\/hr-package\/paseo-html-render-2\.2\.0\.tgz --tag next/);
+  assert.match(release, /npm publish \/tmp\/hr-package\/paseo-html-render-3\.0\.0\.tgz --tag next/);
   assert.match(release, /positive npm-source result/);
   assert.match(release, /never (?:overwrite|rewrite)/i);
   assert.match(release, /Node.*22\.18\.0/s);
-  assert.match(release, /Paseo.*0\.12\.0/s);
+  assert.match(release, /Paseo.*0\.14\.0-beta\.1/s);
+  assert.match(release, /session-open/);
 });
 
 test("no server source directly imports the @getpaseo/client package", async () => {

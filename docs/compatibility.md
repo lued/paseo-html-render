@@ -59,10 +59,13 @@ the turn slot consumed. Do not describe this as permanent or semantic deduplicat
 
 ## Display parity
 
-**Android device status:** local inline interaction has been user-confirmed,
-followed by a native ready timeout. Bounded recovery and additional public event
-receivers do not yet establish sustained native readiness or lifecycle parity.
-Browser, shim and Hermes checks are separate evidence layers.
+**Android device status:** under 2.2.0, local inline interaction was
+user-confirmed, followed by a native ready timeout on cold reopen. 3.0 makes the
+RNCWebView `onMessage` bridge the primary page-to-native channel, keeps the
+fragment-URL path as fallback, names the failed stage, and keeps a rendered report
+mounted behind a Retry banner when only the control channel fails. None of that is
+physical-device evidence yet. Browser, shim and Hermes checks are separate
+evidence layers.
 
 | Capability | Plugin implementation / difference |
 | --- | --- |
@@ -78,8 +81,9 @@ Browser, shim and Hermes checks are separate evidence layers.
 | History | Marker-driven, bounded/cycle-safe nested codemode recognition; first valid reference per row, legacy v1 readable |
 | Deletion | Workspace-owned artifacts retained by default, opt-in workspace archive cleanup; not T3's thread-owned deletion |
 
-Android selection does not require the `DocumentFrame` export added in Paseo
-0.13: supported 0.12 clients can use public `UIManager` native-manager discovery.
+Android selection does not require the `DocumentFrame` export that 0.14 clients
+expose: legacy client surfaces without it still use public `UIManager`
+native-manager discovery.
 No component is re-registered. A positive query does not prove JavaScript view
 registration, mounting or the ready handshake; those failures remain contained
 and explicit. A negative query wins even if `DocumentFrame` exists.

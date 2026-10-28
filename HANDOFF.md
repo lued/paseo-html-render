@@ -1,3 +1,8 @@
+> **Superseded by 3.0 (2026-10-27).** References below to MCP injection into newly
+> created agents, `agent.create`, `bridge.token` and Paseo 0.12/0.13 describe 2.x.
+> 3.0 requires Paseo `>=0.14.0-beta.1 <0.15.0` and contributes `html-render-v3` at
+> `agent.session_open`; see `CHANGELOG.md` and `docs/verification.md`.
+>
 > **Historical (2026-10-20 canary era).** The five-workspace QA method and
 > DeepSeek-only rule below are retired by user request. Current state and the
 > autonomous harness are in `docs/verification.md`. Kept for history only.

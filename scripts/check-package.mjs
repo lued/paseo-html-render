@@ -148,10 +148,17 @@ try {
   if (Object.keys(packedPackage.dependencies ?? {}).some((name) => name === "@getpaseo/client")) {
     fail("packed package declares the heavy @getpaseo/client runtime dependency");
   }
-  if (!packedPackage.peerDependencies?.["@getpaseo/plugin"]?.includes("0.12.0")) {
+  // Session-open MCP injection needs the 0.14 hook surface; the floor is the
+  // tested prerelease, so the range must name it explicitly for semver to match.
+  const peerRange = packedPackage.peerDependencies?.["@getpaseo/plugin"];
+  if (!peerRange?.includes("0.14.0-beta.1")) {
     fail("packed package peer range no longer includes the tested minimum");
   }
   if (!manifest.requirements?.paseo) fail("packed manifest has no Paseo requirement");
+  if (manifest.requirements.paseo !== peerRange) {
+    fail(`manifest Paseo range ${manifest.requirements.paseo} != peer range ${peerRange}`);
+  }
+  if (!/mcpServerName:\s*"html-render-v3"/.test(identity)) fail("packed identity does not use the v3 MCP key");
 
   const serverFiles = files.filter((path) => path.startsWith("server/") && path.endsWith(".ts"));
   await assertNoDirectClientImports(serverFiles, async (path) => fs.readFile(join(packageRoot, path), "utf8"));
