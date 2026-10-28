@@ -26,7 +26,8 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { BRIDGE_TOKEN_FILE, SELECTED_IDENTITY } from "../shared/identity.ts";
+import { BRIDGE_TOKEN_FILE } from "../shared/identity.ts";
+import { SELECTED_IDENTITY } from "../shared/selected-identity.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
