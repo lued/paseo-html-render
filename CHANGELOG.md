@@ -11,8 +11,13 @@ It also contains the never-published 2.2.0 candidate changes listed further down
 
 ### Breaking
 
-- Paseo 0.12 and 0.13 are no longer supported. The host and peer range is
-  `>=0.14.0-beta.1 <0.15.0`; the SDK is pinned to `@getpaseo/plugin` 0.14.0-beta.1.
+- The daemon must be Paseo `>=0.14.0-beta.1 <0.15.0`; 0.12 and 0.13 daemons get
+  no tools. The manifest range is `>=0.13.2 <0.15.0` because Paseo checks the
+  same range against the app, and mobile apps are still on 0.13.2 (the client
+  SDK is byte-identical between 0.13.2 and 0.14.0-beta.1). On an older daemon
+  the session-open hook passes the request through and logs
+  `skip=host-unsupported`. The SDK is pinned to `@getpaseo/plugin` 0.14.0-beta.1
+  and the peer range is `>=0.14.0-beta.1 <0.15.0`.
 - The MCP server is contributed at `agent.session_open`, not written into an
   agent's saved configuration at `agent.create`. The `agent.create` hook is gone.
   The contribution is launch-only, so it reaches new, resumed, refreshed and

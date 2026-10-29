@@ -23,7 +23,9 @@ test("package, lockfile, manifest and adapter use the same 3.0.0 contract", asyn
   assert.equal(pkg.peerDependencies["@getpaseo/plugin"], ">=0.14.0-beta.1 <0.15.0");
   assert.equal(pkg.devDependencies["@getpaseo/plugin"], "0.14.0-beta.1");
   assert.equal(lock.packages["node_modules/@getpaseo/plugin"].version, "0.14.0-beta.1");
-  assert.equal(manifest.requirements.paseo, ">=0.14.0-beta.1 <0.15.0");
+  // One range gates both the daemon and the app; mobile apps are on 0.13.2.
+  // The 0.14 daemon floor is enforced at session open instead.
+  assert.equal(manifest.requirements.paseo, ">=0.13.2 <0.15.0");
   assert.equal(manifest.id, "html-render");
 });
 
@@ -62,6 +64,7 @@ test("README labels the unreleased candidate and provides a checkout install", a
   assert.match(readme, /git clone https:\/\/github\.com\/lued\/paseo-html-render\.git/);
   assert.match(readme, />=0\.14\.0-beta\.1 <0\.15\.0/);
   assert.match(readme, /0\.14\.0-beta\.1 and 0\.14\.0-beta\.2/);
+  assert.match(readme, /app 0\.13\.2 or newer/);
   // 3.0 reaches existing agents at session open; the old advice is wrong now.
   assert.doesNotMatch(readme, /start a new agent/i);
   assert.match(readme, /html-render-v3/);

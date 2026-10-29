@@ -49,7 +49,7 @@ function logValue(value: unknown, fallback: string, max = 64): string {
 
 export interface SessionOpenEvidence {
   readonly result: "injected" | "skipped";
-  readonly skip?: "history" | "label" | "already-present" | "bridge-unavailable";
+  readonly skip?: "history" | "label" | "already-present" | "bridge-unavailable" | "host-unsupported";
   readonly agent: string;
   readonly provider: string;
   readonly reason: string;
@@ -259,6 +259,7 @@ export default function contribute(server: PluginServerContext, options: Contrib
     }
   });
 
+  let warnedHostUnsupported = false;
   // The one place this plugin contributes an MCP server. `agent.session_open`
   // also runs on resume, refresh and import, so a reload reaches idle agents on
   // their next prompt and no agent has to be recreated.
@@ -274,6 +275,26 @@ export default function contribute(server: PluginServerContext, options: Contrib
       purpose: request.purpose,
       server: identity.mcpServerName,
     };
+    // `requirements.paseo` is checked against both the daemon and the app, and
+    // mobile apps are still on 0.13.2, so the range also admits 0.13 daemons.
+    // Only a 0.14 daemon passes an `mcpServers` map to this hook; an older one
+    // would silently drop a contribution. Pass the request through untouched
+    // and say plainly why there are no tools.
+    const hostMcpServers: unknown = (request as { mcpServers?: unknown }).mcpServers;
+    if (typeof hostMcpServers !== "object" || hostMcpServers === null) {
+      if (!warnedHostUnsupported) {
+        warnedHostUnsupported = true;
+        log("this Paseo daemon cannot receive MCP servers at session open; html_render and html_preview need a 0.14 daemon");
+      }
+      log(formatSessionOpenEvidence({
+        ...evidence,
+        result: "skipped",
+        skip: "host-unsupported",
+        transport: "none",
+        alwaysLoad: false,
+      }));
+      return;
+    }
     // A history open attaches no tools at all, so there is nothing to inject.
     if (request.purpose !== "interactive") {
       log(formatSessionOpenEvidence({

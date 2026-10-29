@@ -3,7 +3,7 @@
   "$comment": "Sandboxed live HTML on web/desktop; static and structured native reports. Screenshots disable scripts. Live pages block network/files/forms and keep an opaque origin. Originals and interactive file exports stay in the private artifact store.",
   "media": [],
   "requirements": {
-    "paseo": ">=0.14.0-beta.1 <0.15.0"
+    "paseo": ">=0.13.2 <0.15.0"
   },
   "name": "HTML Render"
 }

@@ -15,6 +15,7 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, promises as fs } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -148,15 +149,20 @@ try {
   if (Object.keys(packedPackage.dependencies ?? {}).some((name) => name === "@getpaseo/client")) {
     fail("packed package declares the heavy @getpaseo/client runtime dependency");
   }
-  // Session-open MCP injection needs the 0.14 hook surface; the floor is the
-  // tested prerelease, so the range must name it explicitly for semver to match.
+  // The SDK types need 0.14 (session-open `mcpServers`). The manifest range is
+  // checked against both the daemon and the app, and mobile apps are on 0.13.2,
+  // so it must admit that app version as well as the tested 0.14 daemons.
   const peerRange = packedPackage.peerDependencies?.["@getpaseo/plugin"];
   if (!peerRange?.includes("0.14.0-beta.1")) {
     fail("packed package peer range no longer includes the tested minimum");
   }
-  if (!manifest.requirements?.paseo) fail("packed manifest has no Paseo requirement");
-  if (manifest.requirements.paseo !== peerRange) {
-    fail(`manifest Paseo range ${manifest.requirements.paseo} != peer range ${peerRange}`);
+  const manifestRange = manifest.requirements?.paseo;
+  if (!manifestRange) fail("packed manifest has no Paseo requirement");
+  const semverSatisfies = createRequire(import.meta.url)("semver/functions/satisfies");
+  for (const version of ["0.13.2", "0.14.0"]) {
+    if (!semverSatisfies(version, manifestRange)) {
+      fail(`manifest Paseo range ${manifestRange} rejects ${version}`);
+    }
   }
   if (!/mcpServerName:\s*"html-render-v3"/.test(identity)) fail("packed identity does not use the v3 MCP key");
 

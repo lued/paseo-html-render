@@ -284,6 +284,19 @@ test("session open skips history, disabled labels, and an already-present server
   assert.equal(await open({ mcpServers: present }), undefined);
   assert.ok(logs.some((line) => /result=skipped skip=already-present/.test(line)));
   assert.deepEqual(Object.keys(present), [IDENTITY.mcpServerName]);
+
+  // A 0.13 daemon sends no `mcpServers` map (the shared requirements range admits
+  // it for the 0.13.2 app). The open passes through untouched, with one
+  // explanation line and an evidence line per open.
+  const legacyHost = sessionRequest({ cwd: workspace });
+  delete (legacyHost as { mcpServers?: unknown }).mcpServers;
+  delete (legacyHost as { tools?: unknown }).tools;
+  const signal = new AbortController().signal;
+  assert.equal(await sessionOpen({ request: legacyHost }, { paseo, signal }), undefined);
+  assert.equal(await sessionOpen({ request: legacyHost }, { paseo, signal }), undefined);
+  assert.equal(logs.filter((line) => /result=skipped skip=host-unsupported/.test(line)).length, 2);
+  assert.equal(logs.filter((line) => /need a 0\.14 daemon/.test(line)).length, 1, "the explanation is logged once");
+  assert.equal("mcpServers" in legacyHost, false, "the legacy request is not mutated");
 });
 
 test("session-open evidence is sanitized and bounded", () => {

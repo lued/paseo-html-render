@@ -45,6 +45,14 @@ link/path; copying is not represented as opening a file tab.
 
 ## Session-open injection (Paseo 0.14)
 
+**Versions.** The daemon must be 0.14.0-beta.1 or newer. The app may be 0.13.2
+(the current mobile release) or newer. Paseo checks the single
+`requirements.paseo` range (`>=0.13.2 <0.15.0`) against both, so the range also
+admits a 0.13 daemon. That daemon passes no `mcpServers` map to the hook, so
+the plugin passes the request through, gets no tools, and logs
+`skip=host-unsupported` with one explanation line. The client SDK `dist` is
+byte-identical between 0.13.2 and 0.14.0-beta.1.
+
 The MCP server `html-render-v3` is contributed at `agent.session_open` for
 interactive sessions only. It is launch-only: never in a saved agent record, and
 re-derived on create, resume, refresh and import. History opens and agents

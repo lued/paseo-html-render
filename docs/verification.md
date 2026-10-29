@@ -51,6 +51,15 @@ pre-upgrade config backup exists, the current one is
 - No card was produced on slydio; the card evidence above comes from the
   isolated 0.14.0-beta.2 daemon.
 
+Dogfood on the user's daemon (0.14.0-beta.2, plugin installed from this
+worktree, 2026-10-29): the existing chat reopened with `injected
+server=html-render-v3 reason=resume` and published artifact
+`16a012fb1d084d84934fbff8c053b866` from a nested codemode call. The Android app
+(0.13.2; no 0.14 mobile release yet) then showed the plugin as failed: `requires
+Paseo >=0.14.0-beta.1 <0.15.0. Your app is 0.13.2`. Paseo checks the same range
+against the app. The range is now `>=0.13.2 <0.15.0`, and a 0.13 daemon is
+handled at session open (`skip=host-unsupported`).
+
 Not verified: physical Android (cold start, 120 s dwell, reopen, background,
 theme, links and image zoom, the failure banner), Chrome and PWA parity, the
 turn-collapse display, Claude/Codex providers, and npm publication.

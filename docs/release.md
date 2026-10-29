@@ -7,11 +7,14 @@ Existing tag `v2.1.0` is historical and must not be moved.
 
 ## Support matrix
 
-The release claims Node `>=22.18.0` and Paseo `>=0.14.0-beta.1 <0.15.0`. The
-floor names the prerelease explicitly because a semver range excludes
-prereleases unless a comparator carries one. Paseo 0.12 and 0.13 are not
-supported: 3.0 contributes its MCP server through the 0.14 `agent.session_open`
-hook. Validate the minimum and current host before publication:
+The release claims Node `>=22.18.0`, a Paseo daemon `>=0.14.0-beta.1 <0.15.0`
+and a Paseo app `>=0.13.2`. 3.0 contributes its MCP server through the 0.14
+`agent.session_open` hook, so 0.12 and 0.13 daemons are not supported. Paseo
+checks `requirements.paseo` against both the daemon and the app, and mobile apps
+are still on 0.13.2, so the manifest range is `>=0.13.2 <0.15.0`; an older daemon
+loads the plugin but gets no tools and logs `skip=host-unsupported`. The client
+SDK `dist` is byte-identical between 0.13.2 and 0.14.0-beta.1. Validate the
+minimum and current host before publication:
 
 | Node | Paseo daemon | Paseo CLI | `@getpaseo/plugin` SDK | Evidence |
 | --- | --- | --- | --- | --- |
