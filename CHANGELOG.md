@@ -88,6 +88,12 @@ It also contains the never-published 2.2.0 candidate changes listed further down
   explicit SDK externals, no Node builtins or private `client/host` import in the
   client bundle.
 
+### Fixed
+
+- macOS: headless Chromium is launched with `--use-mock-keychain`. Without it a
+  non-GUI session blocks CDP `Page.navigate` on the login keychain prompt, which
+  stalled both rendering and the verification harnesses. Linux is unchanged.
+
 ### Known limits
 
 - Paseo 0.14 folds a finished turn's tool rows by default ("collapse turns" on new
