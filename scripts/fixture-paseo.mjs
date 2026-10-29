@@ -749,7 +749,7 @@ export async function runProtectedAcceptance(options = {}) {
     try {
       const info = await fs.stat(tokenPath);
       tokenFilePresent = info.isFile();
-      tokenFileMode = (info.mode & 0o777).toString(8).padStart(3, "0");
+      tokenFileMode = (info.mode & 0o777).toString(8).padStart(4, "0");
       token = (await fs.readFile(tokenPath, "utf8")).trim();
       tokenFileBytes = Buffer.byteLength(token, "utf8");
     } catch { /* facts below fail closed */ }
