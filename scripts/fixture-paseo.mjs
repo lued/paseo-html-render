@@ -566,7 +566,9 @@ export async function runProtectedAcceptance(options = {}) {
   const outDir = resolve(options.outDir ?? await fs.mkdtemp(join(tmpdir(), "html-render-protected-")));
   await fs.mkdir(outDir, { recursive: true, mode: 0o700 });
   await fs.chmod(outDir, 0o700);
-  const workRoot = await fs.mkdtemp(join(tmpdir(), "hr-pw-"));
+  // macOS per-user TMPDIR paths are longer than a Unix socket allows; the
+  // fixture home holds bridge-v3.sock, so use the short /tmp root there.
+  const workRoot = await fs.mkdtemp(join(process.platform === "darwin" ? "/tmp" : tmpdir(), "hr-pw-"));
   await fs.chmod(workRoot, 0o700);
   const home = join(workRoot, "home");
   const workspace = join(workRoot, "workspace");
