@@ -90,6 +90,14 @@ It also contains the never-published 2.2.0 candidate changes listed further down
 
 ### Fixed
 
+- GitHub and Git sources install again. Paseo clones a Git plugin and installs
+  nothing, so the `pele` runtime dependency failed compilation with
+  `Could not resolve "pele"` in `server/graph.ts`. The report graph now uses a
+  vendored flowchart build of pele 1.7.0 in `server/vendor/`, rebuilt with
+  `node scripts/vendor-pele.mjs`, and `pele` moved to `devDependencies`. The
+  package declares no runtime dependency, so directory, Git, npm and registry
+  installs all compile from the checkout. The server bundle also drops from
+  1.10 MB to 0.36 MB because only one grammar is bundled.
 - macOS: headless Chromium is launched with `--use-mock-keychain`. Without it a
   non-GUI session blocks CDP `Page.navigate` on the login keychain prompt, which
   stalled both rendering and the verification harnesses. Linux is unchanged.

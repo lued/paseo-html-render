@@ -18,8 +18,12 @@ import type { AbortSignal } from "./cancellation.ts";
  * bounded before it runs: at most 200 nodes, 400 edges, 100 decisions, 200
  * characters per label, and 200,000 characters of generated Mermaid. Those
  * bounds are the timeout substitute for a hostile 200-node graph.
+ *
+ * ./vendor/pele-flowchart.mjs is pele 1.7.0 with only the flowchart grammar.
+ * Vendoring it keeps the package free of runtime dependencies, so a bare git
+ * clone compiles with no install step.
  */
-import { render as renderMermaid } from "pele";
+import { render as renderMermaid } from "./vendor/pele-flowchart.mjs";
 import {
   MAX_CAPTURED_HEIGHT,
   MAX_GRAPH_EDGES,

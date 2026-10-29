@@ -40,9 +40,11 @@ npm install --ignore-scripts --legacy-peer-deps --omit=dev
 ```
 
 `--legacy-peer-deps` means the plugin cannot rely on peer auto-install. Paseo’s
-compiler supplies its SDK, React, React Native and Zod as host externals; `pele`
-is a real package dependency and is bundled into the server. The package has no
-direct `@getpaseo/client` import or runtime dependency.
+compiler supplies its SDK, React, React Native and Zod as host externals. The
+package declares no runtime dependencies, so a git clone compiles with no install
+step: the report graph uses a vendored build of pele 1.7.0 in `server/vendor/`,
+rebuilt with `node scripts/vendor-pele.mjs`. There is no direct `@getpaseo/client`
+import or runtime dependency.
 
 Run the source gates first:
 

@@ -37,6 +37,8 @@ const SERVER_EXTERNALS = [
 ];
 /** The host exposes these only through the public entries above. */
 const FORBIDDEN_PRIVATE = "@getpaseo/plugin/client/host";
+/** Vendored flowchart renderer, the only server-side renderer. */
+const VENDORED_RENDERER = "server/vendor/pele-flowchart.mjs";
 
 const directory = process.env.HTML_RENDER_EVIDENCE_DIR
   ? resolve(process.env.HTML_RENDER_EVIDENCE_DIR)
@@ -66,7 +68,7 @@ const serverImports = Object.keys(server.metafile.inputs)
 // The client bundle is host-neutral: no server code, no Pele, no Node builtins
 // and no private host entry point.
 assert.ok(!clientInputs.some((path) => /(?:^|\/)server\//.test(path)), "server code must not enter the client");
-assert.ok(!clientInputs.some((path) => path.includes("node_modules/pele/")), "Pele must stay out of the client");
+assert.ok(!clientInputs.some((path) => path.includes(VENDORED_RENDERER)), "the vendored renderer must stay out of the client");
 assert.deepEqual(clientImports.filter((path) => /^node:/.test(path)), [], "client bundle must import no Node builtins");
 assert.deepEqual(clientImports.filter((path) => path === FORBIDDEN_PRIVATE), [], "client must not import the private host module");
 assert.deepEqual(
@@ -79,7 +81,7 @@ const bundled = new Set([...clientInputs, ...serverInputs]);
 const externalImports = [...new Set([...clientImports, ...serverImports])]
   .filter((path) => !path.startsWith("node:") && !bundled.has(path));
 for (const specifier of externalImports) {
-  if (specifier === "pele" || specifier.startsWith("node_modules/")) continue;
+  if (specifier.startsWith("node_modules/")) continue;
   assert.ok(
     CLIENT_EXTERNALS.includes(specifier) || SERVER_EXTERNALS.includes(specifier),
     `${specifier} is not an explicit host external`,
@@ -91,8 +93,8 @@ const clientText = await readFile(join(directory, "client.cjs"), "utf8");
 assertNoClientClasses(clientText);
 assert.doesNotMatch(clientText, /require\(["']node:/, "client bundle contains a Node builtin require");
 assert.ok(
-  serverInputs.some((path) => path.includes("node_modules/pele/")),
-  "Pele must be bundled into the server",
+  serverInputs.some((path) => path.includes(VENDORED_RENDERER)),
+  "the vendored renderer must be bundled into the server",
 );
 assert.ok(!serverInputs.some((path) => /(?:^|\/)client\//.test(path)), "client code must not enter the server");
 assert.deepEqual(
@@ -130,5 +132,5 @@ console.log(JSON.stringify({
   clientInputs: clientInputs.length,
   serverInputs: serverInputs.length,
   externals: { client: CLIENT_EXTERNALS, server: SERVER_EXTERNALS },
-  pele: "server-only",
+  renderer: "vendored-flowchart",
 }));

@@ -170,7 +170,7 @@ counts and last title length, never the title itself. The page strip identifies
 | Fullscreen | Removed at user request. No expand button, viewport overlay, fullscreen zoom toolbar, or Escape-dismiss channel; iframe fullscreen permission explicitly denied |
 | Native | Android: inline trusted-shell adapter for original HTML in `auto`/`iframe` when the public host capability is ready; explicit errors/retry on failure. iOS and unavailable Android hosts: structured report when `report` exists, otherwise static PNG. Full arbitrary HTML via assistant file link where the client supports it. |
 | Static fallback | Light/dark PNGs, requested frame cap distinct from actual screenshot dimensions; missing/live-failed states remain readable |
-| Graph | Pinned `pele@1.7.0` converts bounded generated Mermaid to light/dark SVG then inert PNG; native nodes/edges/decisions stay authoritative |
+| Graph | A vendored pele 1.7.0 flowchart build converts bounded generated Mermaid to light/dark SVG then inert PNG; native nodes/edges/decisions stay authoritative |
 | Accounting | Usage quantities explicitly measured, estimated or unavailable; no inferred cost/model attribution |
 | History | Marker-driven, bounded/cycle-safe nested codemode recognition; first valid reference per row, legacy v1 readable |
 | Deletion | Workspace-owned artifacts retained by default, opt-in workspace archive cleanup; not T3's thread-owned deletion |

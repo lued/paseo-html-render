@@ -840,10 +840,11 @@ async function main() {
     });
     const installedPackage = JSON.parse(await fs.readFile(join(pkgDir, "node_modules", "paseo-html-render", "package.json"), "utf8"));
     assert.equal(installedPackage.version, expectedVersion);
-    assert.ok(existsSync(join(pkgDir, "node_modules", "pele")));
+    assert.equal(existsSync(join(pkgDir, "node_modules", "pele")), false, "the plugin must install nothing at runtime");
+    assert.ok(existsSync(join(pkgDir, "node_modules", "paseo-html-render", "server", "vendor", "pele-flowchart.mjs")));
     assert.equal(existsSync(join(pkgDir, "node_modules", "@getpaseo", "client")), false, "production tree must not rely on @getpaseo/client");
     pluginSource = join(pkgDir, "node_modules", "paseo-html-render");
-    result.checks.productionTree = { source: "reference-tarball", version: installedPackage.version, pele: true, getpaseoClient: false };
+    result.checks.productionTree = { source: "reference-tarball", version: installedPackage.version, runtimeDependencies: Object.keys(installedPackage.dependencies ?? {}), vendoredRenderer: true };
   } else {
     pluginSource = npmSource;
     result.checks.productionTree = { source: "npm", request: npmSource, version: expectedVersion };

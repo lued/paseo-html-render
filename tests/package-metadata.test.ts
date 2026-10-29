@@ -29,6 +29,19 @@ test("package, lockfile, manifest and adapter use the same 3.0.0 contract", asyn
   assert.equal(manifest.id, "html-render");
 });
 
+test("the package needs no preparation step on install", async () => {
+  const pkg = JSON.parse(await read("package.json"));
+  const manifest = JSON.parse(await read("paseo-plugin.json"));
+  const vendor = await read("server/vendor/pele-flowchart.mjs");
+  // A git clone installs nothing, so a runtime dependency would need a manifest
+  // preparation command and npm on the daemon host. The report graph uses a
+  // committed build of the pinned pele instead.
+  assert.deepEqual(pkg.dependencies ?? {}, {}, "a runtime dependency would need a preparation command");
+  assert.equal(pkg.devDependencies.pele, "1.7.0");
+  assert.equal(manifest.build, undefined, "no preparation command is needed");
+  assert.match(vendor, /^\/\*\*\n \* Generated from pele 1\.7\.0, flowchart only/);
+});
+
 test("the packed allowlist is public and excludes private working material", async () => {
   const pkg = JSON.parse(await read("package.json"));
   const files: string[] = pkg.files;
@@ -50,9 +63,8 @@ test("the packed allowlist is public and excludes private working material", asy
     assert.ok(!path.includes("HANDOFF"), path);
     assert.ok(!path.startsWith("scripts/"), path);
   }
-  const dependencies = pkg.dependencies ?? {};
-  assert.equal(dependencies.pele, "1.7.0");
-  assert.equal(dependencies["@getpaseo/client"], undefined, "host SDK type must not become a runtime dependency");
+  const dependencies: Record<string, string> = pkg.dependencies ?? {};
+  assert.deepEqual(dependencies, {}, "the package must declare no runtime dependencies");
 });
 
 test("README labels the unreleased candidate and provides a checkout install", async () => {

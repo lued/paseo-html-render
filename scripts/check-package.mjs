@@ -62,6 +62,7 @@ try {
     "package.json", "paseo-plugin.json", "README.md", "OVERVIEW.md", "SECURITY.md", "CONTRIBUTING.md", "LICENSE", "CHANGELOG.md",
     "index.client.tsx", "index.server.ts",
     "server/authority.ts", "server/contribute.ts", "server/tools.ts", "shared/identity.ts",
+    "server/vendor/pele-flowchart.mjs", "server/vendor/LICENSE.pele",
     "docs/compatibility.md", "docs/interactivity.md", "docs/release.md", "docs/showcase.md",
     "docs/images/showcase/hero.png", "docs/images/showcase/image-inspection.png",
     "docs/images/showcase/render-pipeline.png", "docs/images/showcase/incident-timeline.gif",
@@ -145,10 +146,10 @@ try {
   if (packedPackage.private !== false) fail("packed package is not public");
   if (!/^\d+\.\d+\.\d+$/.test(packedPackage.version)) fail("packed package version is not exact semver");
   if (adapterVersion !== packedPackage.version) fail(`adapter ${adapterVersion} != package ${packedPackage.version}`);
-  if (!packedPackage.dependencies?.pele) fail("packed package does not declare pele");
-  if (Object.keys(packedPackage.dependencies ?? {}).some((name) => name === "@getpaseo/client")) {
-    fail("packed package declares the heavy @getpaseo/client runtime dependency");
-  }
+  // A git clone installs nothing, so a runtime dependency would need a manifest
+  // preparation command and npm on the daemon host. Keep the package clean.
+  const runtimeDependencies = Object.keys(packedPackage.dependencies ?? {});
+  if (runtimeDependencies.length > 0) fail(`packed package declares runtime dependencies: ${runtimeDependencies.join(", ")}`);
   // The SDK types need 0.14 (session-open `mcpServers`). The manifest range is
   // checked against both the daemon and the app, and mobile apps are on 0.13.2,
   // so it must admit that app version as well as the tested 0.14 daemons.
