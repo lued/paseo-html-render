@@ -150,9 +150,12 @@ so every complete title stays below a conservative 4,000-character budget
 8 s ready deadline, 120 s transfer deadline and iframe sandbox are unchanged.
 Oversized unrelated load URLs are ignored, not mistaken for transport data.
 
-Device title/event ordering, actual title delivery and large-image throughput
-are **not yet verified**. More small chunks mean more native round trips; the
-unchanged transfer deadline may still be a practical limit. A host exposing the
+On the fresh `diag-2` test card, the user reported **“works and no errors”**.
+That is positive basic phone evidence for this candidate, not a timed lifecycle
+or throughput result. Sustained dwell, cold reopens, background/resume,
+theme/link/image actions and large-image throughput are not individually
+confirmed. More small chunks mean more native round trips; the unchanged
+transfer deadline may still be a practical limit. A host exposing the
 raw WebView title could display chunk content: do not log native event titles.
 The safe failure banner includes accepted title counts plus raw event/hash
 counts and last title length, never the title itself. The page strip identifies

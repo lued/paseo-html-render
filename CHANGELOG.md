@@ -104,9 +104,11 @@ It also contains the never-published 2.2.0 candidate changes listed further down
 - `alwaysLoad` is honored only by the Claude provider; Pi and Codex load the
   server normally.
 - On Android the `onMessage` bridge never delivers to a raw mount; it is kept for
-  hosts that dispatch the plain event. Title delivery/event ordering and
-  large-image throughput are unverified on device; physical acceptance is still
-  open. Smaller chunks increase native round trips without extending deadlines.
+  hosts that dispatch the plain event. The user reports the fresh `diag-2` phone
+  card works without errors. Timed lifecycle checks, title/event ordering under
+  sustained interaction and large-image throughput remain unverified; full
+  physical acceptance is still open. Smaller chunks increase native round trips
+  without extending deadlines.
   A host exposing raw WebView titles could display chunk content; native titles
   must not be logged.
 

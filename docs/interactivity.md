@@ -61,7 +61,8 @@ the wrapper-routed bridge, and its load URL may omit the changed fragment; the
 `diag-2` candidate reads the title separately from native loading events. Chunk
 data is 3,000 encoded characters so a full title stays below 4,000 characters;
 all carriers share session validation, ordered assembly and acknowledgement.
-Actual device title delivery and large-image throughput remain unverified.
+A fresh `diag-2` phone card was user-reported working without errors; timed
+lifecycle checks and large-image throughput remain unverified.
 The shell requires fresh focus/user
 activation before link/image requests. Missing capability shows a
 reason-specific static fallback. Load, mount or render-process failures show an

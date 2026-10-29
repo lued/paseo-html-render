@@ -113,13 +113,38 @@ to adapter tests with rewritten fragment-free event URLs, the full real-browser
 interaction case now runs using **only title reads** for ready, height, real
 link clicks, two identical multi-chunk image opens and a theme change during an
 image transfer. Parent/access/storage/network sandbox negatives still pass.
-These are browser/shim/VM results, **not Android success**. Title/native-event
-ordering, title delivery itself and large-image throughput remain unverified
-on the phone. Smaller chunks increase native round trips without extending the
-transfer deadline. Next physical check is on `diag-2`.
+These are browser/shim/VM results and do not themselves establish Android
+success. Smaller chunks increase native round trips without extending the
+transfer deadline.
 
-Not verified: a successful physical Android handshake, cold start, 120 s dwell,
-reopen, background, theme, links and image zoom, Chrome and PWA parity, the
+**Positive physical `diag-2` result:** after publishing the fresh test artifact
+`ea4c955e03c5c4f4060fd756ce119f7f` with `9df7f33` running from this worktree,
+the user reported **“works and no errors”**. The card includes local counter
+and expand controls, an image-zoom target and an external link. This is basic
+phone success, not a claim that each action was separately checked or that
+elapsed time, title/event ordering or throughput was measured. It supersedes
+“no successful phone result” status but not the remaining acceptance gates.
+
+**Main-readiness package follow-up:** code `9df7f33` plus the basic-phone-result
+documentation refresh was packed and smoke-tested as one exact tarball:
+SHA-256 `030627840c696c5a6749dc627657d6abe1b48742da6986f167712996a26cbf21`,
+74 entries, 43 required files, 0 forbidden. The isolated production-tree smoke
+passes on Node 26.13.0, npm 11.20.0, CLI/daemon 0.14.0-beta.2 and host SDK
+0.14.0-beta.2 (project SDK remains pinned at beta.1). It proves session-open
+injection, saved record without the v3 key/launch env, 0600 private token,
+initialize/tools-list/PNG preview/publish/readback and both missing-browser
+negatives. No model prompts or user agents are involved. Evidence:
+`/tmp/hr-v3-evidence/main-readiness-9df7f33/` (tarball, package check, smoke
+results and sanitized log copies). The first run failed because the long
+evidence path exceeded the Unix socket pathname limit; the **same tarball**
+passed with a short throwaway fixture home. Both results are retained, and the
+short fixture/home processes were cleaned up. This is not an npm-source install
+or registry publication. GitHub `main` was checked read-only and still points
+to base `4318e1b`; no branch push, merge, tag or publication was performed.
+
+Not verified: timed cold start, 120 s dwell, two cold reopens, background/resume,
+theme round-trip, separately confirmed links and image zoom, large-image
+throughput, Chrome and PWA parity, the
 turn-collapse display, Claude/Codex providers, and npm publication.
 
 **Live acceptance resumed 2026-10-26; not production-accepted.** The user has
