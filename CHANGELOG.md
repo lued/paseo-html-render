@@ -90,6 +90,18 @@ It also contains the never-published 2.2.0 candidate changes listed further down
 
 ### Fixed
 
+- Cards now recognize the tool-row names Paseo's `omp` provider produces.
+  `omp` bridges MCP itself (`providers/omp/mcp-bridge.js`), so the model calls
+  `mcp_<server>__<tool>_<12-hex>` and Paseo renames the timeline item to
+  `${server} / ${tool}` (`providers/omp/agent.js`, `message-history.js`), i.e.
+  `html-render-v3 / html_render`. `isRenderToolCall` split only on `__` and `.`,
+  so neither form matched; the marker was present and the artifact readable, but
+  no card was projected, the `artifacts/<id>/` path fallback and the gap
+  re-projection retry were skipped (both are gated on the same check), and no
+  error was logged anywhere. Names are now normalized to letters and digits
+  before the comparison, which also keeps rejecting lookalikes such as
+  `not_html_render` and `html_renderer`. Reported from a second host where every
+  render returned only the marker and the `interactive.html` file link worked.
 - GitHub and Git sources install again. Paseo clones a Git plugin and installs
   nothing, so the `pele` runtime dependency failed compilation with
   `Could not resolve "pele"` in `server/graph.ts`. The report graph now uses a

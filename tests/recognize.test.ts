@@ -57,6 +57,53 @@ test("recognition is marker-driven and still rejects invalid markers", () => {
   assert.equal(recognizeToolCall({ name: "not_html_render", detail: { output: "done" } }), null);
 });
 
+test("recognizes the omp bridge name and Paseo's omp timeline rename", () => {
+  const encoded = encodeReportReference(card);
+  // What omp records (sha256(server\0tool)[0:12] appended) and what Paseo's omp
+  // provider rewrites it to on the timeline.
+  const names = [
+    "mcp_html-render-v3__html_render_3422f593a2e9",
+    "html-render-v3 / html_render",
+  ];
+  for (const name of names) {
+    assert.deepEqual(
+      recognizeToolCall({ name, detail: { type: "unknown", input: { html: "<p>" }, output: encoded } }),
+      card,
+      name,
+    );
+  }
+  // A bridge-shaped name whose tail is not the 12-hex hash is not this tool.
+  assert.equal(
+    recognizeToolCall({ name: "mcp_html-render-v3__html_render_nothex", detail: { output: encoded } }),
+    null,
+  );
+  // `<server>_<tool>` with no `__` separator stays ambiguous with lookalikes
+  // such as `not_html_render`, so it is deliberately not claimed here.
+  assert.equal(
+    recognizeToolCall({ name: "html_render_v3_html_render", detail: { output: encoded } }),
+    null,
+  );
+  // Lookalikes stay rejected even though the marker is valid.
+  for (const name of [
+    "html_renderer",
+    "my_html_render",
+    "mcp__html_render_v3__not_html_render",
+    "html-render-v3 / html_preview",
+  ]) {
+    assert.equal(recognizeToolCall({ name, detail: { output: encoded } }), null, name);
+  }
+});
+
+test("recognizes an omp bridged render nested inside a codemode row", () => {
+  const encoded = encodeReportReference(card);
+  const detail = {
+    output: {
+      details: { calls: [{ name: "mcp_html-render-v3__html_render_3422f593a2e9", output: encoded }] },
+    },
+  };
+  assert.deepEqual(recognizeToolCall({ name: "codemode", detail }), card);
+});
+
 test("recognizes a real Pi codemode row with the MCP call nested in details", () => {
   const encoded = encodeReportReference(card);
   const detail = {

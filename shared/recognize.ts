@@ -335,9 +335,7 @@ export function findReportReference(
  * result, so the persisted row is named `codemode`. Kept for diagnostics.
  */
 export function isHtmlRenderToolName(name: unknown): boolean {
-  if (typeof name !== "string") return false;
-  const bare = name.includes("__") ? name.slice(name.lastIndexOf("__") + 2) : name;
-  return bare === "html_render";
+  return typeof name === "string" && isRenderToolCall(name);
 }
 
 export interface RecognizedToolCall {
@@ -365,22 +363,42 @@ export function createTimelineTransformState(
 }
 
 /**
- * Tool-row names that belong to the render tool itself.
+ * Reduces every name shape a provider has produced for this tool to one token.
  *
  * A per-item transformer cannot see sibling rows, so the row name is the only
  * way to avoid rendering the same artifact twice. Pi stores the marker in two
  * rows: the outer `codemode` wrapper and the inner
  * `mcp__html_render__html_render` result. Rendering both produced duplicate
  * inline cards in the real client (reproduced 2026-10-20), so generic wrappers
- * are rejected here and only the render tool's own row becomes a card.
+ * are rejected and only the render tool's own row becomes a card.
+ *
+ * The same tool therefore has to be recognized under several spellings, where
+ * only the last component names it:
+ *
+ *   html_render                                   bare tool name
+ *   mcp__html_render_v3__html_render               `mcp__<server>__<tool>`
+ *   html-render-v3.html_render                     dot namespace
+ *   html-render-v3 / html_render                   Paseo's omp timeline rename
+ *   mcp_html-render-v3__html_render_3422f593a2e9   omp bridge hash suffix
+ *
+ * Paseo's omp provider bridges MCP itself and renames the timeline item to
+ * `${server} / ${tool}`, so a stored row can carry the agent's raw bridged name
+ * or that rewrite. Comparing letters and digits only keeps one rule for all of
+ * them while still rejecting lookalikes (`not_html_render`, `html_renderer`).
  */
-const RENDER_TOOL_NAMES = new Set(["html_render", "html-render", "htmlrender"]);
+function normalizeToolName(name: string): string {
+  let last = name.trim().toLowerCase();
+  // `mcp_html-render-v3__html_render_3422f593a2e9` -> `html_render_3422f593a2e9`
+  const slash = last.lastIndexOf(" / ");
+  if (slash !== -1) last = last.slice(slash + 3);
+  last = last.split(/__|\./).pop() ?? last;
+  // Deterministic 12-hex hash appended by Paseo's omp MCP bridge.
+  last = last.replace(/_[0-9a-f]{12}$/, "");
+  return last.replace(/[^a-z0-9]/g, "");
+}
 
 export function isRenderToolCall(name: string): boolean {
-  // Provider namespaces look like `mcp__html_render__html_render` or
-  // `html-render.html_render`; the final segment names the tool itself.
-  const last = name.trim().split(/__|\./).pop()?.toLowerCase() ?? "";
-  return RENDER_TOOL_NAMES.has(last);
+  return normalizeToolName(name) === "htmlrender";
 }
 
 /**

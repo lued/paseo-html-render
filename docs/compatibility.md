@@ -79,6 +79,27 @@ Paseo 0.14 also folds a finished turn's tool rows by default, and the card is
 attached to the `html_render` row, so it is hidden until the turn is expanded.
 The final reply's `Open interactive report` link stays visible.
 
+## Provider tool names
+
+The card is attached to the persisted render row, so the row's tool name decides
+whether it can ever appear. Names observed in real stores:
+
+| Name | Source | Claimed |
+| --- | --- | --- |
+| `html_render` | bare tool | yes |
+| `mcp__html_render_v3__html_render` | Pi, Claude `mcp__<server>__<tool>` | yes |
+| `html-render-v3.html_render` | dot namespace | yes |
+| `mcp_html-render-v3__html_render_3422f593a2e9` | omp bridge: `<server>__<tool>_<sha256[0:12]>` | yes |
+| `html-render-v3 / html_render` | Paseo omp timeline rename | yes |
+| `html_render_v3_html_render` | `<server>_<tool>` with a single underscore | no |
+
+Comparison normalizes the last component to letters and digits, so the bridge
+hash, the ` / ` rename, `__`, `.`, `-` and `_` separators all compare equal while
+`not_html_render` and `html_renderer` do not. The single-underscore
+`<server>_<tool>` form is deliberately not claimed: without the bridge hash it is
+indistinguishable from a lookalike. `omp` reaches the yes-column through both
+forms, so no agent has to be recreated.
+
 ## Turn guard
 
 `html_render` defaults to one card per counted agent turn. The comparison is an
