@@ -12,6 +12,7 @@ import {
   readSizeChangedMessage,
 } from "../shared/html-document.ts";
 import {
+  NATIVE_ACK_TIMEOUT_MS,
   NATIVE_MAX_CHUNK_CHARS,
   NativeChunkAssembler,
   buildNativeShellDocument,
@@ -274,8 +275,9 @@ test("native shell exposes a missing acknowledgement as a visible transport fail
     navigation: "data",
     interact: async (io) => {
       await waitFor(async () => String(await evaluate(io, "location.hash")).startsWith("#paseo-p2n="), 3_000);
-      // A late retry request must not re-arm the original five-second chunk
-      // deadline. The old retry implementation failed this bounded wait.
+      const sentAt = Date.now();
+      // A late retry request must not re-arm the chunk deadline. The old retry
+      // implementation failed this bounded wait.
       await new Promise((resolve) => setTimeout(resolve, 3_000));
       await evaluate(io, `document.dispatchEvent(new MessageEvent("message",{data:${JSON.stringify(JSON.stringify({
         type: "paseo-ready-probe", session: SESSION,
@@ -283,11 +285,15 @@ test("native shell exposes a missing acknowledgement as a visible transport fail
       const hash = await waitFor(async () => {
         const value = String(await evaluate(io, "location.hash"));
         return value.startsWith("#paseo-error=") ? value : null;
-      }, 3_000);
-      await evaluate(io, `window.__result=${JSON.stringify({ hash })}`);
+      }, 10_000);
+      await evaluate(io, `window.__result=${JSON.stringify({ hash, elapsed: Date.now() - sentAt })}`);
     },
   }) as Record<string, unknown>;
   assert.equal(result.hash, "#paseo-error=ack-timeout");
+  // One resend on every channel after the first deadline, then fail at the
+  // second: about two deadlines, never more.
+  assert.ok(Number(result.elapsed) > NATIVE_ACK_TIMEOUT_MS, `failed too early: ${String(result.elapsed)} ms`);
+  assert.ok(Number(result.elapsed) < 2 * NATIVE_ACK_TIMEOUT_MS + 2_000, `failed too late: ${String(result.elapsed)} ms`);
 });
 
 test("native shell resends genuine ready after a lost initial native fragment", { timeout: 30_000 }, async () => {
@@ -396,7 +402,7 @@ async function readBridge(io: BrowserInteraction): Promise<Record<string, unknow
   return (JSON.parse(String(raw)) as string[]).map((entry) => JSON.parse(entry) as Record<string, unknown>);
 }
 
-test("native shell sends page->native chunks over the onMessage bridge, not the fragment URL", { timeout: 30_000 }, async () => {
+test("native shell sends each page->native chunk on the onMessage bridge and as a fragment URL", { timeout: 30_000 }, async () => {
   const inner = buildLiveDocument({ html: "<p>bridge primary</p>", title: "Bridge", theme: theme("dark") });
   const shell = withBridge(buildNativeShellDocument(inner, SESSION));
   const result = await browserResult(shell, {
@@ -408,8 +414,12 @@ test("native shell sends page->native chunks over the onMessage bridge, not the 
         return list.length > 0 ? list : null;
       }, 8_000);
       const first = payloads[0]!;
-      // The bridge is primary: the same transfer must not also churn the URL.
-      const hash = String(await evaluate(io, "location.hash"));
+      // The same chunk also goes out as a fragment, because Android drops bridge
+      // messages for a raw RNCWebView mount.
+      const hash = await waitFor(async () => {
+        const value = String(await evaluate(io, "location.hash"));
+        return value.startsWith("#paseo-p2n=") ? value : null;
+      }, 1_500);
       await evaluate(io, `document.dispatchEvent(new MessageEvent("message",{data:${JSON.stringify(JSON.stringify({
         type: "paseo-ack",
         session: SESSION,
@@ -420,12 +430,17 @@ test("native shell sends page->native chunks over the onMessage bridge, not the 
       await evaluate(io, `window.__result=${JSON.stringify({
         first,
         hash,
-        payloadCount: payloads.length,
+        // The shell moves on to its next message after an ack; only a resend of
+        // the acknowledged chunk would be wrong.
+        payloadCount: (await readBridge(io)).filter((p) => p.mid === first.mid && p.seq === first.seq).length,
         errorHash: String(await evaluate(io, "location.hash")).startsWith("#paseo-error="),
       })}`);
     },
   }) as Record<string, unknown>;
-  assert.equal(result.hash, "", "no fragment traffic while the bridge delivers");
+  const fragment = parseNativeTransportUrl(`about:blank${String(result.hash)}`, SESSION);
+  assert.ok(fragment?.ok && fragment.chunk, "the fragment copy parses");
+  assert.equal(fragment.chunk.messageId, (result.first as { mid?: number }).mid, "same message identity on both channels");
+  assert.equal(fragment.chunk.data, (result.first as { data?: string }).data, "same chunk payload on both channels");
   assert.equal(result.errorHash, false);
   const first = result.first as { type?: string; session?: string; mid?: number; seq?: number; total?: number; data?: string };
   assert.equal(first.type, "paseo-p2n");
@@ -436,17 +451,18 @@ test("native shell sends page->native chunks over the onMessage bridge, not the 
   const decoded = decodeNativeTransportMessage(String(first.data));
   assert.equal(decoded.ok, true);
   assert.equal(readReadyMessage(decoded.ok ? decoded.value : null), true, "the bridge carries the genuine ready payload");
-  assert.equal(Number(result.payloadCount), 1, "one chunk, one bridge delivery");
+  assert.equal(Number(result.payloadCount), 1, "an acknowledged chunk is not resent");
 });
 
-test("an unacknowledged bridge send falls back to the fragment channel once", { timeout: 40_000 }, async () => {
+test("a bridge that silently drops messages does not delay the fragment copy", { timeout: 40_000 }, async () => {
   const inner = buildLiveDocument({ html: "<p>bridge fallback</p>", title: "Fallback", theme: theme("dark") });
   const shell = withBridge(buildNativeShellDocument(inner, SESSION));
   const result = await browserResult(shell, {
     viewport: { width: 800, height: 600 },
     navigation: "data",
     interact: async (io) => {
-      // Never acknowledge the bridge: the shell must not give up silently.
+      // The device case: the bridge accepts postMessage and nothing arrives. The
+      // fragment copy must already be out, not wait for an ack timeout.
       const payloads = await waitFor(async () => {
         const list = await readBridge(io);
         return list.length > 0 ? list : null;
@@ -455,7 +471,7 @@ test("an unacknowledged bridge send falls back to the fragment channel once", { 
       const fallback = await waitFor(async () => {
         const hash = String(await evaluate(io, "location.hash"));
         return hash.startsWith("#paseo-p2n=") ? hash : null;
-      }, 12_000);
+      }, 1_500);
       const parsed = parseNativeTransportUrl(`about:blank${fallback}`, SESSION);
       if (!parsed?.ok || !parsed.chunk) throw new Error("fallback chunk did not parse");
       await evaluate(io, `document.dispatchEvent(new MessageEvent("message",{data:${JSON.stringify(JSON.stringify({

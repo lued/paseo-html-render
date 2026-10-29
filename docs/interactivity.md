@@ -55,8 +55,8 @@ public host capability is present. The report document stays inert JSON until
 the shell assigns it to an opaque `allow-scripts` inner frame. Only the constant
 shell script runs outside that frame. The shell forwards source-checked ready,
 height, link, image and theme messages through bounded, acknowledged chunks,
-sent first over the RNCWebView `onMessage` bridge and, if that is unavailable or
-unacknowledged, over the fragment-URL fallback; it requires fresh focus/user
+each sent both over the RNCWebView `onMessage` bridge and as a fragment URL
+(Android delivers only the fragment to this mount); it requires fresh focus/user
 activation before link/image requests. Missing capability shows a
 reason-specific static fallback. Load, mount or render-process failures show an
 explicit error with retry. A ready, acknowledgement or theme failure keeps the

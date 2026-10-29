@@ -433,7 +433,7 @@ test("ready timeout diagnostics name the failed stage with safe counters only", 
   assert.equal(/https?:|data:|#paseo|session/i.test(labelled), false, "diagnostics never echo URLs, payloads or sessions");
 });
 
-test("the trusted shell prefers the onMessage bridge and keeps the fragment fallback", () => {
+test("the trusted shell sends every chunk on the bridge and as a fragment URL", () => {
   const shell = buildNativeShellDocument(buildLiveDocument({
     html: "<p>bridge</p>",
     title: "Bridge",
@@ -442,8 +442,13 @@ test("the trusted shell prefers the onMessage bridge and keeps the fragment fall
   assert.match(shell, /window\.ReactNativeWebView/);
   assert.match(shell, /type:"paseo-p2n"/);
   assert.match(shell, /bridge\.postMessage/);
-  assert.match(shell, /location\.replace\("#paseo-p2n="/, "the fragment channel is still built");
-  assert.match(shell, /if\(!deliver\("bridge"\)\)deliver\("fragment"\)/, "bridge first, fragment fallback");
-  assert.match(shell, /bridgePreferred=false/, "an unacknowledged bridge send switches to the fragment path");
+  // Android's RNCWebView routes bridge messages to its own JS router, which a
+  // raw mount never hears, so the bridge is never the only copy of a chunk.
+  assert.match(shell, /deliver\("bridge"\);\s*deliver\("fragment"\);/, "both channels carry every chunk");
+  // Android WebView reports a committed same-document replace through
+  // doUpdateVisitedHistory, so the fragment needs no growing history.
+  assert.match(shell, /location\.replace\("#paseo-p2n="/, "the fragment channel is built");
+  assert.doesNotMatch(shell, /pushState/);
+  assert.doesNotMatch(shell, /bridgePreferred/);
   assert.doesNotMatch(shell, /allow-same-origin/);
 });

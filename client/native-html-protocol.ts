@@ -536,16 +536,14 @@ var INNER=JSON.parse(p.textContent);
 var SESSION=__SESSION__,CHUNK=__CHUNK__,MAXCHUNKS=__MAXCHUNKS__,MAXENC=__MAXENC__,MAXQUEUE=__MAXQUEUE__,ACKMS=__ACKMS__,TRANSFERMS=__TRANSFERMS__;
 var queue=[],queueChars=0,sending=null,ackTimer=0,themeSeq=0,nextMessageId=1,failed=false;
 var readyMessage=null,readyAcked=false,readyProbeAttempts=0,readyRetryTimer=0,readyRetryCount=0;
-var bridge=null,bridgePreferred=true;
+var bridge=null;
 try{var rn=window.ReactNativeWebView;if(rn&&typeof rn.postMessage==="function")bridge=rn;}catch(_){bridge=null;}
 function fail(code){if(failed)return;failed=true;if(ackTimer){clearTimeout(ackTimer);ackTimer=0;}if(readyRetryTimer){clearTimeout(readyRetryTimer);readyRetryTimer=0;}queue=[];queueChars=0;sending=null;location.replace("${NATIVE_ERROR_PREFIX}"+code);}
 function arm(){if(ackTimer)clearTimeout(ackTimer);ackTimer=setTimeout(function(){
   ackTimer=0;
   if(failed||!sending)return;
-  // One bounded cross-channel fallback per chunk, then fail. A bridge send that
-  // was never acknowledged is retried once as a fragment URL, and the fragment
-  // channel is preferred from then on; the reverse never happens.
-  if(sending.channels.fragment===0){bridgePreferred=false;if(deliver("fragment")){arm();return;}}
+  // One bounded resend on every channel per chunk, then fail.
+  if(sending.resentSeq!==sending.sequence){sending.resentSeq=sending.sequence;deliver("bridge");deliver("fragment");arm();return;}
   fail("ack-timeout");
 },ACKMS);}
 function clearReadyRetry(){if(readyRetryTimer){clearTimeout(readyRetryTimer);readyRetryTimer=0;}}
@@ -553,9 +551,9 @@ function deliver(kind){
   if(!sending)return false;
   var data=sending.encoded.slice(sending.sequence*CHUNK,sending.sequence*CHUNK+CHUNK);
   if(kind==="bridge"){
-    if(!bridgePreferred||!bridge)return false;
+    if(!bridge)return false;
     try{bridge.postMessage(JSON.stringify({type:"${NATIVE_BRIDGE_TYPE}",session:SESSION,mid:sending.id,seq:sending.sequence,total:sending.total,data:data}));}
-    catch(_){bridgePreferred=false;return false;}
+    catch(_){bridge=null;return false;}
     sending.channels.bridge+=1;
     return true;
   }
@@ -568,7 +566,12 @@ function deliver(kind){
 function sendChunk(){
   if(!sending)return;
   if(Date.now()-sending.started>TRANSFERMS)return fail("transfer-timeout");
-  if(!deliver("bridge"))deliver("fragment");
+  // Never trust the bridge alone. On Android, RNCWebView hands bridge messages to
+  // its own JS router, keyed by a messagingModuleName that only its <WebView>
+  // wrapper knows, so a raw mount never sees them. Every chunk also goes out as
+  // a fragment URL; the native assembler applies a duplicate once.
+  deliver("bridge");
+  deliver("fragment");
   // Retries keep the original per-chunk deadline, rather than extending it.
   if(!ackTimer)arm();
 }

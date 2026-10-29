@@ -11,9 +11,14 @@
  * transport fails, the component shows an explicit error/retry state. It never
  * falls back to rendering report HTML outside the sandbox.
  *
- * Page -> native data arrives on the RNCWebView `onMessage` bridge first and on
- * the historical fragment callbacks second; both feed one ordered assembler, so
- * a chunk seen on both channels is applied once. A control-channel failure
+ * The shell sends every page -> native chunk twice: on the RNCWebView
+ * `onMessage` bridge and as a fragment URL, which Android reports through
+ * `doUpdateVisitedHistory` as a loading-start event. On Android the bridge never
+ * reaches this raw mount (RNCWebView routes it to its own wrapper by
+ * `messagingModuleName`), so the fragment carries the data there. Both feed one
+ * ordered assembler, so a chunk seen on both channels is applied once.
+ *
+ * A control-channel failure
  * (ready deadline, ack rejection, theme ack) no longer tears the frame down: a
  * report that already renders stays mounted behind a non-destructive banner and
  * Retry remounts explicitly.

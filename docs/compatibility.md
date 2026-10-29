@@ -96,12 +96,20 @@ the turn slot consumed. Do not describe this as permanent or semantic deduplicat
 ## Display parity
 
 **Android device status:** under 2.2.0, local inline interaction was
-user-confirmed, followed by a native ready timeout on cold reopen. 3.0 makes the
-RNCWebView `onMessage` bridge the primary page-to-native channel, keeps the
-fragment-URL path as fallback, names the failed stage, and keeps a rendered report
-mounted behind a Retry banner when only the control channel fails. None of that is
-physical-device evidence yet. Browser, shim and Hermes checks are separate
-evidence layers.
+user-confirmed, followed by a native ready timeout on cold reopen. On the 3.0
+first device run (app 0.13.2), the report rendered behind the banner with
+`no page messages; onMessage 0, fragment 0, probes 1`. Cause, from
+`react-native-webview` 13.16.1: on Android, bridge messages go to the library's
+own JS router, keyed by a `messagingModuleName` only its `<WebView>` wrapper
+knows, so a raw RNCWebView mount never receives them. That build trusted the
+bridge and sent the fragment copy only after a 5 s ack timeout, leaving 3 s of
+the 8 s ready deadline. 3.0 now sends every chunk on both channels at once. The
+fragment path is the 2.x one: Chromium's WebView posts `doUpdateVisitedHistory`
+for every committed same-document navigation, including `location.replace`, and
+RNCWebView reports that as a loading-start event with the URL. This passes
+browser, shim and Hermes checks; physical-device acceptance is still open. The
+2.2.0 cold-reopen timeout used the fragment path alone and is not explained by
+this cause.
 
 | Capability | Plugin implementation / difference |
 | --- | --- |

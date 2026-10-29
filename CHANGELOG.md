@@ -41,10 +41,17 @@ It also contains the never-published 2.2.0 candidate changes listed further down
   alwaysLoad, agent id, provider, reason, purpose). It never contains the bridge
   token, the launch environment or a workspace path. Package smoke and the e2e
   fixture use it as injection evidence instead of the saved agent record.
-- Android transport v2: the RNCWebView `onMessage` bridge is the primary
-  page-to-native channel (`messagingEnabled: true` on the trusted shell only);
-  the fragment-URL path remains the fallback. Both feed one ordered, deduplicating
-  assembler with the same size and session checks.
+- Android transport v2: every page-to-native chunk goes out on two channels at
+  once, the RNCWebView `onMessage` bridge (`messagingEnabled: true` on the trusted
+  shell only) and the fragment URL. Both feed one ordered, deduplicating
+  assembler with the same size and session checks. An unacknowledged chunk is
+  resent once on both channels, then the transfer fails.
+  The first 3.0 device run timed out with `onMessage 0, fragment 0, probes 1`.
+  Cause, from the `react-native-webview` 13.16.1 source: on Android, bridge
+  messages go to the library's own JS router, keyed by a `messagingModuleName`
+  that only its `<WebView>` wrapper knows, so a raw RNCWebView mount never
+  receives them. The earlier build trusted the bridge and sent the fragment copy
+  only after a 5 s ack timeout, which left 3 s of the 8 s ready deadline.
 - Android diagnostics name the failed stage (`no page messages`, `chunks without
   ready`, `probe unanswered`) with numeric counters only.
 
@@ -76,8 +83,9 @@ It also contains the never-published 2.2.0 candidate changes listed further down
   are not affected. Hosts with `injectIntoAgents: true` are not affected.
 - `alwaysLoad` is honored only by the Claude provider; Pi and Codex load the
   server normally.
-- The Android `onMessage` path and the non-destructive banner pass emulated and
-  Hermes checks only. Physical-device acceptance is still open.
+- On Android the `onMessage` bridge never delivers to a raw mount; it is kept for
+  hosts that dispatch the plain event. The dual-channel path passes emulated and
+  Hermes checks; physical-device acceptance is still open.
 
 ## 2.2.0 candidate (never published; folded into 3.0.0)
 
