@@ -81,6 +81,12 @@ export const MAX_MEASURE_WIDTHS = 24;
 export const MAX_MARKER_HEIGHTS = 24;
 /** Marker decode budget; never raised without a compatibility review. */
 export const MAX_MARKER_CHARS = 8_192;
+/**
+ * Assistant reply text mirrored into the message card. Paseo keeps an unbounded
+ * message, so this is a mirror bound only: a longer reply keeps its native
+ * rendering (and no card) rather than being truncated.
+ */
+export const MAX_MESSAGE_TEXT_CHARS = 200_000;
 
 /** interactive.html is delivered through Paseo's file preview, not an RPC. */
 export const MAX_INTERACTIVE_HTML_BYTES = 8 * 1_048_576;

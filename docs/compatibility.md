@@ -79,6 +79,16 @@ Paseo 0.14 also folds a finished turn's tool rows by default, and the card is
 attached to the `html_render` row, so it is hidden until the turn is expanded.
 The final reply's `Open interactive report` link stays visible.
 
+The reply avoids that: when the final assistant message carries the artifact link
+(`artifacts/<id>/interactive.html`), the card is published on the reply instead
+of the tool row, and the catalog hides the tool-row copy. Paseo keeps the last
+assistant message when it collapses a turn, so the card survives
+`chatDisplay: "collapseTurns"`. Two accepted costs: the reply is re-rendered by
+the plugin (Paseo's own `Markdown` component, so theme/selection/links behave),
+and the fold loses its end anchor for that turn's trailing segment, so the tool
+rows there stay unfolded. Replies without the link, replies citing more than one
+artifact, and artifacts published before this build keep the tool-row card.
+
 ## Provider tool names
 
 The card is attached to the persisted render row, so the row's tool name decides

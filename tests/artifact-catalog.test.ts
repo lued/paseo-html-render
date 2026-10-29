@@ -82,3 +82,34 @@ test("a gap that later fills still leaves the catalog consistent", () => {
   assert.equal(catalog.isGap("gap-1"), true);
   assert.equal(catalog.canonicalCallId(A), "call-2");
 });
+
+test("a reply reference outranks the render row and hides its card", () => {
+  const catalog = new ArtifactCatalog();
+  // The tool row is projected first and claims the artifact.
+  assert.deepEqual(catalog.record({ data: card(A), source: "marker", callId: "call-1" }), {
+    show: true,
+    changed: true,
+  });
+  catalog.takeDirty();
+  // The final reply names the same artifact: it becomes canonical.
+  assert.deepEqual(catalog.record({ data: card(A), source: "message", callId: `message:${A}` }), {
+    show: true,
+    changed: true,
+  });
+  catalog.takeDirty();
+  // Re-projection then drops the card from the tool row.
+  assert.deepEqual(catalog.record({ data: card(A), source: "marker", callId: "call-1" }), {
+    show: false,
+    changed: false,
+  });
+  // A second reply citing the same artifact keeps its text and gets no card.
+  assert.deepEqual(catalog.record({ data: card(A), source: "message", callId: "message:second" }), {
+    show: false,
+    changed: false,
+  });
+  // Another artifact is unaffected.
+  assert.deepEqual(catalog.record({ data: card(B), source: "marker", callId: "call-2" }), {
+    show: true,
+    changed: true,
+  });
+});

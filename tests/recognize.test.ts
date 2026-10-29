@@ -7,6 +7,7 @@ import {
   decodeReportReference,
   encodeReportReference,
   recognizeToolCall,
+  reportReferenceFromMessageText,
   transformTimelineToolCall,
 } from "../shared/recognize.ts";
 import { MAX_MARKER_CHARS } from "../shared/limits.ts";
@@ -55,6 +56,28 @@ test("recognition is marker-driven and still rejects invalid markers", () => {
   assert.equal(recognizeToolCall({ name: "html_render", detail: { output: "done" } }), null);
   // A name alone never creates a card.
   assert.equal(recognizeToolCall({ name: "not_html_render", detail: { output: "done" } }), null);
+});
+
+test("the reply's artifact link moves the card onto the message", () => {
+  const id = "0123456789abcdef0123456789abcdef";
+  const other = "fedcba9876543210fedcba9876543210";
+  const link = `[Open interactive report](</home/x/.paseo/plugin-data/html-render/artifacts/${id}/interactive.html>)`;
+
+  const ref = reportReferenceFromMessageText(`Balancer fixed.\n\n${link}\n`);
+  assert.equal(ref?.artifactId, id);
+  // Placeholder metadata only; the artifact RPC is authoritative.
+  assert.equal(ref?.renderMode, "auto");
+  assert.equal(ref?.width, 728);
+
+  // Ambiguous or unrelated references stay on the tool rows.
+  assert.equal(
+    reportReferenceFromMessageText(`${link} and artifacts/${other}/interactive.html`),
+    null,
+  );
+  assert.equal(reportReferenceFromMessageText(`artifacts/${id}/preview.png`), null);
+  assert.equal(reportReferenceFromMessageText(`artifacts/${id.slice(1)}/interactive.html`), null);
+  assert.equal(reportReferenceFromMessageText("Open interactive report"), null);
+  assert.equal(reportReferenceFromMessageText(""), null);
 });
 
 test("recognizes the omp bridge name and Paseo's omp timeline rename", () => {

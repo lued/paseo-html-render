@@ -1,6 +1,6 @@
 import { SELECTED_IDENTITY } from "./selected-identity.ts";
 import type { PluginIdentity } from "./identity.ts";
-import { MAX_MARKER_CHARS, PREVIEW_DEFAULT_WIDTH } from "./limits.ts";
+import { MAX_MARKER_CHARS, MAX_MESSAGE_TEXT_CHARS, PREVIEW_DEFAULT_WIDTH } from "./limits.ts";
 import { reportCardSchema, type MeasuredHeight, type ReportCardData } from "./protocol.ts";
 
 /**
@@ -206,6 +206,41 @@ export function recoverReportReferenceFromArtifactPath(
   return parsed.success ? parsed.data : null;
 }
 
+const MESSAGE_ARTIFACT_LINK = /artifacts[\\/]([0-9a-f]{32})[\\/]interactive\.html/g;
+
+/**
+ * The render contract makes the final reply carry the artifact link:
+ * `[Open interactive report](</abs/path/artifacts/<id>/interactive.html>)`.
+ *
+ * That link is the only thing tying a reply to its artifact, so it is matched
+ * literally: the exact file name under `artifacts/<32 hex>/`. Several distinct
+ * ids mean the reply covers more than one report, which stays on the tool rows.
+ * Metadata here is a placeholder; the artifact RPC supplies the authoritative
+ * title and render mode once the card mounts.
+ */
+export function reportReferenceFromMessageText(text: string): ReportCardData | null {
+  if (typeof text !== "string" || text.length === 0 || text.length > MAX_MESSAGE_TEXT_CHARS) {
+    return null;
+  }
+  let artifactId: string | null = null;
+  for (const match of text.matchAll(MESSAGE_ARTIFACT_LINK)) {
+    const id = match[1];
+    if (!id) continue;
+    if (artifactId !== null && artifactId !== id) return null;
+    artifactId = id;
+  }
+  if (artifactId === null) return null;
+  const parsed = reportCardSchema.safeParse({
+    artifactId,
+    title: "HTML report",
+    summary: null,
+    width: PREVIEW_DEFAULT_WIDTH,
+    height: REPAIRED_FRAME_HEIGHT,
+    renderMode: "auto",
+  });
+  return parsed.success ? parsed.data : null;
+}
+
 function sortedHeights(heights: readonly MeasuredHeight[] | undefined): MeasuredHeight[] | undefined {
   if (!heights || heights.length === 0) return undefined;
   return [...heights].sort((left, right) => left[0] - right[0]);
@@ -261,7 +296,13 @@ const MAX_SCAN_STRINGS = 400;
 const MAX_SCANNED_STRING_CHARS = 200_000;
 const MAX_SCAN_DEPTH = 12;
 
-export type ReferenceSource = "marker" | "path";
+/**
+ * Which row a reference came from. A reply that names the artifact outranks a
+ * tool row, because Paseo keeps the final assistant message when it collapses a
+ * finished turn while the render row is folded away; a persisted marker outranks
+ * the artifact-path fallback.
+ */
+export type ReferenceSource = "marker" | "path" | "message";
 
 export interface FoundReportReference {
   readonly data: ReportCardData;

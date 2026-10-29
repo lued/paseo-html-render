@@ -12,6 +12,7 @@ import {
   MAX_INTERACTIVE_HTML_BYTES,
   MAX_INTERACTIVE_HTML_CHARS,
   MAX_MARKER_HEIGHTS,
+  MAX_MESSAGE_TEXT_CHARS,
   MAX_PATH_CHARS,
   MAX_PREVIEW_PNG_BYTES,
   MAX_REPORT_BYTES,
@@ -70,6 +71,18 @@ export const reportCardSchema = z.object({
   heights: measuredHeightsSchema.optional(),
 });
 export type ReportCardData = z.output<typeof reportCardSchema>;
+
+/**
+ * The card carried on the assistant reply, plus the reply text it replaces.
+ *
+ * Paseo projects a timeline transformer's output as a plugin item, so attaching
+ * the card to the reply means re-rendering that reply. Keeping the text in the
+ * payload lets the component draw it with Paseo's own Markdown component.
+ */
+export const reportMessageSchema = reportCardSchema.extend({
+  text: z.string().min(1).max(MAX_MESSAGE_TEXT_CHARS),
+});
+export type ReportMessageData = z.output<typeof reportMessageSchema>;
 
 /** Named raster assets a client may request. The report body is never an asset. */
 export const reportAssetNameSchema = z.enum(["preview", "previewLight", "graphDark", "graphLight"]);

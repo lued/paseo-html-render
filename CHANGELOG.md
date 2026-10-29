@@ -9,6 +9,22 @@ All notable changes to this project are documented here. The format follows
 Not published to npm or tagged as 3.0.0. Requires Paseo `>=0.14.0-beta.1 <0.15.0`.
 It also contains the never-published 2.2.0 candidate changes listed further down.
 
+### Added
+
+- The report card now also renders on the assistant's final reply. Paseo's
+  `chat display > collapse turns` (the 0.14 default) reduces a finished turn to
+turn triggers up to the **last assistant message**, so a card attached to the
+  `html_render` row is invisible until the turn is expanded and no plugin can opt
+  out. The reply carries the artifact link, so the client transformer for
+  `assistant_message` moves the card there: the artifact RPC still supplies the
+  title and render mode, the reply text is re-rendered with Paseo's own Markdown
+  component, and the catalog (new `message` source rank) hides the tool-row copy
+  after a re-projection. Two accepted costs: the plugin renders that message
+  instead of the host, and the fold loses its end anchor for the trailing segment
+  of such turns, which then stay unfolded. A plain reply, a reply citing more than
+  one artifact, or a reply the schema cannot bound keeps the native message and
+  the tool-row card.
+
 ### Breaking
 
 - The daemon must be Paseo `>=0.14.0-beta.1 <0.15.0`; 0.12 and 0.13 daemons get
@@ -120,6 +136,8 @@ It also contains the never-published 2.2.0 candidate changes listed further down
   installs), and the card sits on the `html_render` tool row, so it is hidden
   until the turn is expanded. A plugin cannot opt out. The
   `[Open interactive report](...)` link in the final reply stays visible.
+  Superseded for the card itself: it moves to the reply when the reply carries the
+  artifact link (see Added), which is the only position the fold keeps.
 - Paseo 0.14.0-beta.1/beta.2 host defect: with `daemon.mcp.injectIntoAgents` off
   (the default), an idle Pi agent whose session opened with no MCP server fails its
   next prompt after html-render is installed or re-enabled, with `Provider 'pi'

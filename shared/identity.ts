@@ -39,6 +39,13 @@ export interface PluginIdentity {
   readonly markerPrefix: string;
   /** Timeline renderer kind. */
   readonly rendererKind: string;
+  /**
+   * Renderer kind for the card carried on the final reply. Paseo folds a
+   * finished turn's rows away but keeps the last assistant message, so a card
+   * attached to the render row is hidden by `collapseTurns` while this one is
+   * not. A separate kind keeps the two schemas apart.
+   */
+  readonly messageRendererKind: string;
   /** Timeline renderer/report-card schema version. */
   readonly reportVersion: number;
   /** Host screen id used for the report screen. */
@@ -47,6 +54,8 @@ export interface PluginIdentity {
   readonly screenTitle: string;
   /** Timeline transformer id. */
   readonly transformerId: string;
+  /** Transformer id for assistant replies that carry a report link. */
+  readonly messageTransformerId: string;
   /** Directory component below `$PASEO_HOME/plugin-data`. */
   readonly dataDirName: string;
   /** Environment override for the private data root, or null to ignore it. */
@@ -80,10 +89,12 @@ export const PRODUCTION_IDENTITY: PluginIdentity = Object.freeze({
   mcpServerName: "html-render-v3",
   markerPrefix: "paseo-html-render:v1:",
   rendererKind: "html-report-card",
+  messageRendererKind: "html-report-message",
   reportVersion: 1,
   screenId: "report",
   screenTitle: "HTML report",
   transformerId: "html-report-card",
+  messageTransformerId: "html-report-message",
   dataDirName: "html-render",
   dataDirEnv: "PASEO_HTML_RENDER_DATA_DIR",
   archiveCleanupEnv: "PASEO_HTML_RENDER_PURGE_ON_ARCHIVE",

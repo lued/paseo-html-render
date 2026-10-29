@@ -33,7 +33,7 @@ export interface RecordCardResult {
   readonly changed: boolean;
 }
 
-const SOURCE_RANK: Readonly<Record<ReferenceSource, number>> = { path: 0, marker: 1 };
+const SOURCE_RANK: Readonly<Record<ReferenceSource, number>> = { path: 0, marker: 1, message: 2 };
 
 export interface ArtifactCatalog {
   record(input: ObservedCard): RecordCardResult;
