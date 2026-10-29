@@ -5,13 +5,18 @@
  * data in a non-executable script element until the shell assigns it to the
  * sandboxed inner iframe. No report markup is ever parsed as outer HTML.
  *
- * Page -> native messages use bounded, acknowledged chunks over two channels:
- * the RNCWebView `onMessage` bridge (`messagingEnabled` on the trusted shell)
- * and the historical URL-fragment callbacks, sent together. Both channels
- * feed one ordered assembler, so a chunk delivered twice is acknowledged
- * twice and applied once. The native side revalidates every complete message
- * with the existing shared readers; the shell also source-filters and requires
- * fresh focus/user activation before forwarding link/image requests.
+ * Page -> native messages use bounded, acknowledged chunks over three
+ * carriers: the RNCWebView `onMessage` bridge (`messagingEnabled` on the
+ * trusted shell), the historical URL-fragment callbacks, and the document
+ * title read from the same loading event. All three are sent together and feed
+ * one ordered assembler, so a chunk delivered twice is acknowledged twice and
+ * applied once. The title carrier exists because Android WebView reports a
+ * `loadDataWithBaseURL` commit URL from the renderer's stored `data:` URL
+ * (Chromium `render_frame_impl.cc` MaybeGetOverriddenURL), which loses the
+ * fragment; the title travels in the same event independently of that URL.
+ * The native side revalidates every complete message with the existing shared
+ * readers; the shell also source-filters and requires fresh focus/user
+ * activation before forwarding link/image requests.
  *
  * The bridge object is injected into the shell document, never into the
  * report: the report stays in an opaque `allow-scripts` iframe that cannot
@@ -26,12 +31,24 @@ import { utf8ByteLength } from "../shared/report-model.ts";
 
 export const NATIVE_P2N_PREFIX = "#paseo-p2n=";
 export const NATIVE_ERROR_PREFIX = "#paseo-error=";
+/** Document-title carrier. Bounded, prefixed, and parsed by one strict reader. */
+export const NATIVE_TITLE_PREFIX = "paseo-p2n-title:";
+export const NATIVE_TITLE_ERROR_PREFIX = "paseo-error-title:";
 export const NATIVE_THEME_ACK_TYPE = "paseo-theme-ack";
 /** Visible on both sides so device evidence identifies this diagnostic build. */
-export const NATIVE_DIAGNOSTIC_REVISION = "diag-1";
+export const NATIVE_DIAGNOSTIC_REVISION = "diag-2";
 export const NATIVE_READY_TIMEOUT_MS = Math.max(HTML_FRAME_READY_TIMEOUT_MS, 8_000);
 export const NATIVE_MAX_URL_CHARS = 65_536;
-export const NATIVE_MAX_CHUNK_CHARS = 60_000;
+/**
+ * Chromium caps `document.title` at `blink::mojom::kMaxTitleChars` (4096) and
+ * kills the renderer when a title exceeds it, so the whole title — prefix,
+ * session, canonical numbers, retry suffix and chunk data — must stay below it
+ * with headroom. One chunk therefore carries 3000 encoded characters, which
+ * leaves even a ten-digit message id plus retry suffix at 3109 ASCII
+ * characters (891 under the budget).
+ */
+export const NATIVE_MAX_TITLE_CHARS = 4000;
+export const NATIVE_MAX_CHUNK_CHARS = 3000;
 /** Worst-case URI encoding of the 8 MiB base64 image source plus JSON headroom. */
 export const NATIVE_MAX_ENCODED_CHARS = 28 * 1_024 * 1_024;
 export const NATIVE_MAX_CHUNKS = Math.ceil(NATIVE_MAX_ENCODED_CHARS / NATIVE_MAX_CHUNK_CHARS) + 8;
@@ -250,8 +267,13 @@ function hashOf(url: string | undefined): string | undefined {
 
 /** Parse one page->native chunk URL. Unknown hashes return undefined. */
 export function parseNativeTransportUrl(url: string | undefined, session: string): NativeTransportParse | undefined {
-  if (typeof url !== "string" || url.length > NATIVE_MAX_URL_CHARS) {
-    return { ok: false, error: "transport URL is too long" };
+  if (typeof url !== "string") return undefined;
+  if (url.length > NATIVE_MAX_URL_CHARS) {
+    // A large unrelated URL must not poison the control channel. On Android the
+    // initial loading event for an html source carries the whole original data:
+    // source, which is unrelated to the transport. Only a URL that claims the
+    // transport envelope is a real oversized message.
+    return url.includes(NATIVE_P2N_PREFIX) ? { ok: false, error: "transport URL is too long" } : undefined;
   }
   const at = url.indexOf(NATIVE_P2N_PREFIX);
   if (at < 0) return undefined;
@@ -292,6 +314,39 @@ function readChunkFields(input: {
   if (data.length > NATIVE_MAX_CHUNK_CHARS) return { ok: false, error: "transport chunk data is too long" };
   if (!/^[A-Za-z0-9%._!~*'()-]*$/.test(data)) return { ok: false, error: "transport chunk contains unsupported characters" };
   return { ok: true, chunk: { messageId, sequence, total, data } };
+}
+
+/**
+ * Parse one document-title chunk (`paseo-p2n-title:<session>,<mid>,<seq>,<total>,<data>`).
+ *
+ * The title is read from the same loading event as the URL, but it is a
+ * separate carrier: Android rewrites the commit URL for `loadDataWithBaseURL`
+ * documents, while the title is whatever the document last set. Unrelated
+ * titles (`Interactive HTML`, host chrome, another document) return undefined
+ * so they never fail the control channel; a title that claims the prefix and
+ * breaks the shared bounds is rejected exactly like a malformed fragment.
+ */
+export function parseNativeTitle(title: unknown, session: string): NativeTransportParse | undefined {
+  if (typeof title !== "string" || title.length === 0) return undefined;
+  if (title.length > NATIVE_MAX_TITLE_CHARS) {
+    return title.startsWith(NATIVE_TITLE_PREFIX) ? { ok: false, error: "title message is too long" } : undefined;
+  }
+  if (!title.startsWith(NATIVE_TITLE_PREFIX)) return undefined;
+  const payload = title.slice(NATIVE_TITLE_PREFIX.length);
+  const fields = payload.split(",");
+  if (fields.length !== 5) return { ok: false, error: "title chunk must have five fields" };
+  const [rawSession, rawMessage, rawSeq, rawTotal, rawData] = fields as [string, string, string, string, string];
+  // The retry suffix keeps a resent title distinct without being message data.
+  const data = rawData.replace(/;r=[1-9][0-9]{0,3}$/, "");
+  return readChunkFields({ session: rawSession, messageId: rawMessage, sequence: rawSeq, total: rawTotal, data }, session);
+}
+
+/** Parse a bounded failure marker carried by the document title. */
+export function parseNativeErrorTitle(title: unknown): string | undefined {
+  if (typeof title !== "string" || title.length > NATIVE_MAX_TITLE_CHARS) return undefined;
+  if (!title.startsWith(NATIVE_TITLE_ERROR_PREFIX)) return undefined;
+  const code = title.slice(NATIVE_TITLE_ERROR_PREFIX.length);
+  return /^[a-z0-9-]{1,40}$/.test(code) ? code : "invalid";
 }
 
 /** Envelope type of one RNCWebView `onMessage` page->native chunk. */
@@ -340,6 +395,14 @@ export interface NativeTransportCounters {
   readonly pageMessages: number;
   /** Fragment callback URLs accepted by the same validator. */
   readonly fragments: number;
+  /** Document-title chunks accepted by the same validator. */
+  readonly titles: number;
+  /** Raw loading/progress events, even when they carry no transport data. */
+  readonly navigationEvents: number;
+  /** Raw event URLs that contain any hash (never the URL or hash itself). */
+  readonly navigationHashEvents: number;
+  /** Most recent event title length, capped at the title budget plus one. */
+  readonly lastTitleChars: number;
   /** Chunks accepted by the assembler, including acknowledged duplicates. */
   readonly chunks: number;
   /** Complete messages decoded into a protocol value. */
@@ -355,6 +418,10 @@ export interface NativeTransportCounters {
 export const NATIVE_TRANSPORT_COUNTERS: NativeTransportCounters = Object.freeze({
   pageMessages: 0,
   fragments: 0,
+  titles: 0,
+  navigationEvents: 0,
+  navigationHashEvents: 0,
+  lastTitleChars: 0,
   chunks: 0,
   messages: 0,
   probes: 0,
@@ -365,6 +432,7 @@ export const NATIVE_TRANSPORT_COUNTERS: NativeTransportCounters = Object.freeze(
 /** Which hop of the page->native control channel produced no ready message. */
 export type NativeTransportStage =
   | "no-page-messages"
+  | "title-only"
   | "chunks-without-ready"
   | "probe-unanswered"
   | "no-ready-handshake";
@@ -373,12 +441,16 @@ export type NativeTransportStage =
  * Name the failed stage from accepted-traffic counters.
  *
  * Order matters and follows the diagnostic questions from the device bug:
- * nothing arrived at all (both channels dead) before data arrived without a
- * ready, before a probe that produced nothing, before partial/incomplete data.
+ * nothing arrived at all (every carrier dead) before data arrived without a
+ * ready, before title-only traffic (the bridge and fragment URLs are dead but
+ * the document title is alive), before a probe that produced nothing, before
+ * partial/incomplete data.
  */
 export function nativeTransportStage(counters: NativeTransportCounters): NativeTransportStage {
-  if (counters.pageMessages + counters.fragments === 0) return "no-page-messages";
+  const urlCarriers = counters.pageMessages + counters.fragments;
+  if (urlCarriers + counters.titles === 0) return "no-page-messages";
   if (counters.messages > 0) return "chunks-without-ready";
+  if (urlCarriers === 0) return "title-only";
   if (counters.probes > 0 && counters.messagesSinceProbe === 0) return "probe-unanswered";
   return "no-ready-handshake";
 }
@@ -387,6 +459,8 @@ export function nativeTransportStageLabel(stage: NativeTransportStage): string {
   switch (stage) {
     case "no-page-messages":
       return "no page messages";
+    case "title-only":
+      return "titles without bridge or fragment";
     case "chunks-without-ready":
       return "chunks without ready";
     case "probe-unanswered":
@@ -412,7 +486,9 @@ export function nativeReadyTimeoutMessage(counters: NativeTransportCounters): st
     `chunks ${counters.chunks},`,
     `messages ${counters.messages},`,
     `probes ${counters.probes},`,
-    `rejected ${counters.rejected}.`,
+    `rejected ${counters.rejected},`,
+    `titles ${counters.titles}.`,
+    `Native events ${counters.navigationEvents}, URL hash events ${counters.navigationHashEvents}, last title chars ${counters.lastTitleChars}.`,
   ].join(" ");
 }
 
@@ -537,7 +613,7 @@ function inertJson(value: string): string {
 const SHELL_SCRIPT = `(function(){
 var f=document.getElementById("f"),p=document.getElementById("p");
 var INNER=JSON.parse(p.textContent);
-var SESSION=__SESSION__,CHUNK=__CHUNK__,MAXCHUNKS=__MAXCHUNKS__,MAXENC=__MAXENC__,MAXQUEUE=__MAXQUEUE__,ACKMS=__ACKMS__,TRANSFERMS=__TRANSFERMS__;
+var SESSION=__SESSION__,CHUNK=__CHUNK__,MAXCHUNKS=__MAXCHUNKS__,MAXENC=__MAXENC__,MAXQUEUE=__MAXQUEUE__,ACKMS=__ACKMS__,TRANSFERMS=__TRANSFERMS__,TITLEMAX=__TITLEMAX__;
 var queue=[],queueChars=0,sending=null,ackTimer=0,themeSeq=0,nextMessageId=1,failed=false;
 var readyMessage=null,readyAcked=false,readyProbeAttempts=0,readyRetryTimer=0,readyRetryCount=0;
 var bridge=null;
@@ -545,7 +621,7 @@ try{var rn=window.ReactNativeWebView;if(rn&&typeof rn.postMessage==="function")b
 // Local-only evidence: this strip needs no working page->native channel. Never
 // put a URL, session, report text, error message or message payload in it.
 var diagnostic=document.getElementById("transport-diagnostic");
-var stats={loads:0,events:0,inner:0,ready:0,native:0,probes:0,bridge:0,bridgeErrors:0,fragments:0,navigationErrors:0,errors:0};
+var stats={loads:0,events:0,inner:0,ready:0,native:0,probes:0,bridge:0,bridgeErrors:0,fragments:0,navigationErrors:0,errors:0,titles:0,titleErrors:0,titleChars:0};
 function bump(k){stats[k]=Math.min(99999,stats[k]+1);}
 function paint(){
   if(!diagnostic||diagnostic.hidden)return;
@@ -555,17 +631,37 @@ function paint(){
     " | iframe loads "+stats.loads+", events "+stats.events+", inner "+stats.inner+", ready "+stats.ready+
     " | native "+stats.native+", probes received "+stats.probes+
     " | bridge "+stats.bridge+", bridge errors "+stats.bridgeErrors+", fragments sent "+stats.fragments+
-    ", navigation errors "+stats.navigationErrors+", script errors "+stats.errors;
+    ", navigation errors "+stats.navigationErrors+", script errors "+stats.errors+
+    " | title "+stats.titles+" sent, title errors "+stats.titleErrors+", title "+stats.titleChars+" chars";
 }
 var diagnosticTimer=setTimeout(function(){if(!readyAcked&&diagnostic){diagnostic.hidden=false;paint();}},__DIAGMS__);
 f.addEventListener("load",function(){bump("loads");paint();});
 window.addEventListener("error",function(){bump("errors");paint();});
-function fail(code){if(failed)return;failed=true;if(ackTimer){clearTimeout(ackTimer);ackTimer=0;}if(readyRetryTimer){clearTimeout(readyRetryTimer);readyRetryTimer=0;}queue=[];queueChars=0;sending=null;location.replace("${NATIVE_ERROR_PREFIX}"+code);}
+function fail(code){if(failed)return;failed=true;if(ackTimer){clearTimeout(ackTimer);ackTimer=0;}if(readyRetryTimer){clearTimeout(readyRetryTimer);readyRetryTimer=0;}queue=[];queueChars=0;sending=null;var marker="${NATIVE_TITLE_ERROR_PREFIX}"+code;if(marker.length<=TITLEMAX){try{document.title=marker;}catch(_){}}location.replace("${NATIVE_ERROR_PREFIX}"+code);}
+function attemptSuffix(next){return next>1?";r="+(next-1):"";}
+function titleValue(){
+  if(!sending)return null;
+  var data=sending.encoded.slice(sending.sequence*CHUNK,sending.sequence*CHUNK+CHUNK);
+  // The retry suffix matches the fragment attempt about to be made so both
+  // carriers describe the same attempt; it is not message data.
+  return "${NATIVE_TITLE_PREFIX}"+SESSION+","+sending.id+","+sending.sequence+","+sending.total+","+data+attemptSuffix(sending.channels.fragment+1);
+}
+function deliverTitle(){
+  var value=titleValue();
+  if(value===null)return false;
+  // Hard bound before assignment: Chromium kills the renderer above its own
+  // title cap, so an over-budget value is dropped and counted, never set.
+  if(value.length>TITLEMAX){bump("titleErrors");paint();return false;}
+  bump("titles");stats.titleChars=value.length;
+  try{document.title=value;}catch(_){bump("titleErrors");paint();return false;}
+  paint();
+  return true;
+}
 function arm(){if(ackTimer)clearTimeout(ackTimer);ackTimer=setTimeout(function(){
   ackTimer=0;
   if(failed||!sending)return;
   // One bounded resend on every channel per chunk, then fail.
-  if(sending.resentSeq!==sending.sequence){sending.resentSeq=sending.sequence;deliver("bridge");deliver("fragment");arm();return;}
+  if(sending.resentSeq!==sending.sequence){sending.resentSeq=sending.sequence;deliver("bridge");deliverTitle();deliver("fragment");arm();return;}
   fail("ack-timeout");
 },ACKMS);}
 function clearReadyRetry(){if(readyRetryTimer){clearTimeout(readyRetryTimer);readyRetryTimer=0;}}
@@ -598,8 +694,12 @@ function sendChunk(){
   // Never trust the bridge alone. On Android, RNCWebView hands bridge messages to
   // its own JS router, keyed by a messagingModuleName that only its <WebView>
   // wrapper knows, so a raw mount never sees them. Every chunk also goes out as
-  // a fragment URL; the native assembler applies a duplicate once.
+  // a fragment URL and as the document title; the native assembler applies a
+  // duplicate once. The title is set immediately before the navigation because
+  // WebView rewrites the commit URL of a loadDataWithBaseURL document but reads
+  // the title from the document itself.
   deliver("bridge");
+  deliverTitle();
   deliver("fragment");
   // Retries keep the original per-chunk deadline, rather than extending it.
   if(!ackTimer)arm();
@@ -733,6 +833,7 @@ export function buildNativeShellDocument(innerDocument: string, session: string)
     .replace("__MAXQUEUE__", String(NATIVE_MAX_QUEUE))
     .replace("__ACKMS__", String(NATIVE_ACK_TIMEOUT_MS))
     .replace("__TRANSFERMS__", String(NATIVE_TRANSFER_TIMEOUT_MS))
+    .replace("__TITLEMAX__", String(NATIVE_MAX_TITLE_CHARS))
     .replace("__DIAGMS__", String(NATIVE_READY_TIMEOUT_MS));
   return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${NATIVE_SHELL_CSP}"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Interactive HTML</title><style>html,body{margin:0;padding:0;height:100%;overflow:hidden;background:transparent}iframe{display:block;width:100%;height:100%;border:0;background:transparent}</style></head><body><div id="transport-diagnostic" role="status" hidden style="position:fixed;top:0;left:0;right:0;z-index:1;padding:8px;background:#241d0f;color:#ffe0a3;font:12px/1.5 monospace;overflow-wrap:anywhere;pointer-events:none"></div><iframe id="f" sandbox="allow-scripts" referrerpolicy="no-referrer" allow="fullscreen 'none'" title="Interactive HTML"></iframe><script type="application/json" id="p">${inertJson(innerDocument)}</script><script>${script}</script></body></html>`;
 }

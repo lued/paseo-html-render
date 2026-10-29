@@ -53,7 +53,9 @@ test("a real data URL reproduces blocked fragment sends and exposes page-side ev
   assert.match(result.text, /native 1, probes received 1/);
   assert.match(result.text, /bridge [1-9]\d*, bridge errors 0, fragments sent [1-9]\d*, navigation errors 0/,
     "an attempted navigation may be silently blocked, not throw");
-  for (const secret of [SESSION, PRIVATE, result.payload.data, "data:text/html"]) {
+  assert.match(result.text, /title [1-9]\d* sent, title errors 0, title [1-9]\d* chars/,
+    "title deliveries are counted separately from fragment callbacks");
+  for (const secret of [SESSION, PRIVATE, result.payload.data, "data:text/html", "paseo-p2n-title"]) {
     assert.equal(result.text.includes(secret), false, "strip contains only scheme, lengths, bounded counters and a fixed build ID");
   }
 });

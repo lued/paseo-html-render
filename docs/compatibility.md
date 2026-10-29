@@ -110,8 +110,8 @@ RNCWebView reports that as a loading-start event with the URL. This passes
 browser, shim and Hermes checks; physical-device acceptance is still open. The
 2.2.0 cold-reopen timeout used the fragment path alone and is not explained by
 this limitation. The user re-tested `bd8ec1e` after restart: the same zero-traffic
-banner persists. Dual sends did **not** fix the device failure; its cause is still
-unresolved. `probes 1` is an attempted command, not proof of page receipt.
+banner persists. Dual sends did **not** fix the device failure. `probes 1` alone
+is an attempted command, not proof of page receipt.
 
 The `diag-1` build adds a timeout-only, page-local strip that does not rely on
 native callbacks. It reports only the document scheme/URL and hash lengths,
@@ -125,10 +125,38 @@ A true `data:` Chromium document reproduces blocked `location.replace` fragment
 sends, but this alone does **not** establish the WebView's document scheme:
 Chromium `content/renderer/render_frame_impl.cc` explicitly substitutes
 `base_url_for_data_url` as the **document URL** for `loadDataWithBaseURL`, not
-merely a displayed URL. The shell uses `baseUrl: "about:blank"`. Device-local
-scheme/hash/send/probe evidence is needed before changing the transport again.
+merely a displayed URL. The shell uses `baseUrl: "about:blank"`.
 The browser harness now distinguishes the legacy `data` option (actually
 `about:blank` plus setContent) from a real `data-url` navigation.
+
+The physical `diag-1` screenshot supplies that missing evidence: `page about:
+187 chars, hash 176`, iframe load 1, inner messages 2, ready 1, native messages 1,
+probe received 1, bridge/fragment attempts 5 each, no script/navigation errors;
+app-side bridge and fragment counts remain zero. Rendering, inner ready, the
+native-to-page command and the local hash change all work. The return hop does
+not. Chromium's `MaybeGetOverriddenURL` in
+`content/renderer/render_frame_impl.cc` explicitly returns the original stored
+`data:` URL for `loadDataWithBaseURL` commits **even after same-document
+navigation** (crbug.com/40187600). A changed renderer hash therefore does not
+prove the native loading event contains that fragment.
+
+The **`diag-2` candidate** writes the same chunk to a prefixed document title
+immediately before fragment navigation, then reads `nativeEvent.title` before
+the event URL. It uses the same strict session/chunk validator and assembler,
+not a substitute ready signal. All three carriers remain active; duplicate
+chunks are acknowledged and applied once. Encoded chunk data is 3,000 characters
+so every complete title stays below a conservative 4,000-character budget
+(Chromium's limit is 4,096). The 28 MiB encoded-message cap, 8 MiB image budget,
+8 s ready deadline, 120 s transfer deadline and iframe sandbox are unchanged.
+Oversized unrelated load URLs are ignored, not mistaken for transport data.
+
+Device title/event ordering, actual title delivery and large-image throughput
+are **not yet verified**. More small chunks mean more native round trips; the
+unchanged transfer deadline may still be a practical limit. A host exposing the
+raw WebView title could display chunk content: do not log native event titles.
+The safe failure banner includes accepted title counts plus raw event/hash
+counts and last title length, never the title itself. The page strip identifies
+`diag-2` and title attempts/errors/length. Android acceptance remains open.
 
 | Capability | Plugin implementation / difference |
 | --- | --- |

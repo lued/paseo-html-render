@@ -71,8 +71,8 @@ The `diag-1` candidate adds independent page-local evidence without changing
 the transport or 8 s deadline. It reports scheme and lengths (no URL), iframe
 loads, raw/source-accepted/ready messages, actual native-probe receipt and send/error
 counts, then hides after a real ready ack. The native timeout text identifies
-`diag-1` too. Next required evidence: a phone screenshot with both diagnostic
-blocks visible. This is an instrumented build, not a claimed fix. Local diagnostic
+`diag-1` too. The phone screenshot with both diagnostic blocks was received
+(see below). This was an instrumented build, not a claimed fix. Local diagnostic
 gates: typecheck; 312/312 tests (123 s); bundle check; real Hermes entry,
 constructor, host-matrix and generated-document equality checks; package check
 (74 entries, 43 required files, 0 forbidden) all pass. These do not supersede the
@@ -84,7 +84,39 @@ mode; its old `data` mode is actually about:blank/setContent. Chromium reproduce
 blocked fragment navigation on true data URLs, but WebView's
 `loadDataWithBaseURL` substitutes the base URL as the document URL in
 `content/renderer/render_frame_impl.cc`. Therefore that reproduction alone does
-not prove the phone uses a data: document; page-local evidence is still needed.
+not prove the phone uses a data: document.
+
+**Physical `diag-1` follow-up:** screenshot shows page `about:`, URL length 187,
+hash length 176; iframe loads 1, events 2, inner 2, ready 1; native messages 1,
+probes received 1; bridge and fragment sends 5 each; navigation, bridge and script
+errors 0. App-side counters remain `onMessage 0, fragment 0, chunks 0, messages 0,
+probes 1, rejected 0`. This establishes that rendering, the inner ready message,
+actual probe receipt and the renderer's hash update succeed, while the return
+hop fails. Chromium's `MaybeGetOverriddenURL` explicitly returns the stored
+original URL for loadDataWithBaseURL documents even after same-document commits
+(crbug.com/40187600); the native event need not contain the renderer's fragment.
+
+**`diag-2` candidate:** every chunk is written to a prefixed document title
+before fragment navigation. The adapter reads `nativeEvent.title` independently
+of the event URL; the bridge and fragment carriers remain, all feeding the same
+strict validator and assembler. Chunk data is 3,000 encoded characters; a full
+title is bounded before assignment at 4,000 characters (Chromium limit 4,096).
+The message/image budgets, 8 s ready deadline, 120 s transfer deadline, sandbox
+and security props are unchanged. No raw native title is logged or shown in the
+failure diagnostics. Larger unrelated original load URLs are ignored rather
+than rejected as oversized transport envelopes.
+
+Local candidate gates: 322/322 tests (136 s), typecheck, bundle check, package
+check (74 entries, 43 required files, 0 forbidden) and real Hermes
+generated-document/entry/constructor/host-matrix checks pass. In addition
+to adapter tests with rewritten fragment-free event URLs, the full real-browser
+interaction case now runs using **only title reads** for ready, height, real
+link clicks, two identical multi-chunk image opens and a theme change during an
+image transfer. Parent/access/storage/network sandbox negatives still pass.
+These are browser/shim/VM results, **not Android success**. Title/native-event
+ordering, title delivery itself and large-image throughput remain unverified
+on the phone. Smaller chunks increase native round trips without extending the
+transfer deadline. Next physical check is on `diag-2`.
 
 Not verified: a successful physical Android handshake, cold start, 120 s dwell,
 reopen, background, theme, links and image zoom, Chrome and PWA parity, the

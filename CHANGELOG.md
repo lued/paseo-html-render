@@ -41,11 +41,12 @@ It also contains the never-published 2.2.0 candidate changes listed further down
   alwaysLoad, agent id, provider, reason, purpose). It never contains the bridge
   token, the launch environment or a workspace path. Package smoke and the e2e
   fixture use it as injection evidence instead of the saved agent record.
-- Android transport v2: every page-to-native chunk goes out on two channels at
-  once, the RNCWebView `onMessage` bridge (`messagingEnabled: true` on the trusted
-  shell only) and the fragment URL. Both feed one ordered, deduplicating
-  assembler with the same size and session checks. An unacknowledged chunk is
-  resent once on both channels, then the transfer fails.
+- Android transport v2: every page-to-native chunk goes out on three carriers:
+  the RNCWebView `onMessage` bridge (`messagingEnabled: true` on the trusted
+  shell only), the fragment URL and a prefixed document title set before that
+  navigation. All feed one ordered, deduplicating assembler with the same size
+  and session checks. An unacknowledged chunk is resent once on all carriers,
+  then the transfer fails. This is the `diag-2` candidate, not device acceptance.
   The first 3.0 device run timed out with `onMessage 0, fragment 0, probes 1`.
   Cause, from the `react-native-webview` 13.16.1 source: on Android, bridge
   messages go to the library's own JS router, keyed by a `messagingModuleName`
@@ -59,8 +60,20 @@ It also contains the never-published 2.2.0 candidate changes listed further down
   or payloads. Both the strip and native banner identify the build. This is a
   diagnostic change, **not a verified device fix**. The native 8 s deadline,
   sandbox and transport are unchanged. A genuine ready ack hides the strip.
+- The physical `diag-1` screenshot proves inner ready, actual probe receipt and
+  local hash updates succeed while the app receives zero bridge/fragment chunks.
+  Chromium's `MaybeGetOverriddenURL` reports the original loadDataWithBaseURL
+  source even after same-document navigation, losing the updated fragment.
+  `diag-2` reads the chunk from `nativeEvent.title` independently of the URL.
+  Titles are bounded before assignment at 4,000 characters (below Chromium's
+  4,096 limit); chunk data is 3,000 characters. Full message/image budgets and
+  all deadlines are unchanged. Large unrelated load URLs no longer trigger a
+  false oversized-transport error. Tests cover title-only ready/interaction,
+  multi-chunk images, duplicate carriers, rejected titles and real-shell order.
 - Android diagnostics name the failed stage (`no page messages`, `chunks without
-  ready`, `probe unanswered`) with numeric counters only.
+  ready`, `probe unanswered`, `titles without bridge or fragment`) with numeric
+  counters only. `diag-2` adds title send/receive counts, native event/hash counts
+  and title lengths; no diagnostic echoes title contents or payloads.
 
 ### Changed
 
@@ -91,8 +104,11 @@ It also contains the never-published 2.2.0 candidate changes listed further down
 - `alwaysLoad` is honored only by the Claude provider; Pi and Codex load the
   server normally.
 - On Android the `onMessage` bridge never delivers to a raw mount; it is kept for
-  hosts that dispatch the plain event. The dual-channel path passes emulated and
-  Hermes checks; physical-device acceptance is still open.
+  hosts that dispatch the plain event. Title delivery/event ordering and
+  large-image throughput are unverified on device; physical acceptance is still
+  open. Smaller chunks increase native round trips without extending deadlines.
+  A host exposing raw WebView titles could display chunk content; native titles
+  must not be logged.
 
 ## 2.2.0 candidate (never published; folded into 3.0.0)
 

@@ -11,12 +11,15 @@
  * transport fails, the component shows an explicit error/retry state. It never
  * falls back to rendering report HTML outside the sandbox.
  *
- * The shell sends every page -> native chunk twice: on the RNCWebView
- * `onMessage` bridge and as a fragment URL, which Android reports through
- * `doUpdateVisitedHistory` as a loading-start event. On Android the bridge never
- * reaches this raw mount (RNCWebView routes it to its own wrapper by
- * `messagingModuleName`), so the fragment carries the data there. Both feed one
- * ordered assembler, so a chunk seen on both channels is applied once.
+ * The shell sends every page -> native chunk three times: on the RNCWebView
+ * `onMessage` bridge, as a fragment URL, which Android reports through
+ * `doUpdateVisitedHistory` as a loading-start event, and as the document title
+ * read from that same loading event. On Android the bridge never reaches this
+ * raw mount (RNCWebView routes it to its own wrapper by `messagingModuleName`),
+ * and a `loadDataWithBaseURL` commit URL is the renderer's stored `data:` URL,
+ * so the fragment is dropped from the URL. The title is read from the document
+ * itself and survives both rewrites. All three feed one ordered assembler, so a
+ * chunk seen on more than one carrier is applied once.
  *
  * A control-channel failure
  * (ready deadline, ack rejection, theme ack) no longer tears the frame down: a
@@ -64,6 +67,7 @@ import {
 import {
   NATIVE_THEME_ACK_TIMEOUT_MS,
   NATIVE_READY_TIMEOUT_MS,
+  NATIVE_MAX_TITLE_CHARS,
   NATIVE_TRANSPORT_COUNTERS,
   NATIVE_WEBVIEW_SECURITY_PROPS,
   NativeChunkAssembler,
@@ -71,7 +75,9 @@ import {
   decodeNativeTransportMessage,
   nativeReadyTimeoutMessage,
   parseNativeBridgeMessage,
+  parseNativeErrorTitle,
   parseNativeErrorUrl,
+  parseNativeTitle,
   parseNativeTransportUrl,
   nativeMountErrorMessage,
   probeRegisteredViewManager,
@@ -133,6 +139,8 @@ interface NativeMessageRefs {
 interface NavigationEvent {
   nativeEvent?: {
     url?: string;
+    /** Bounded document title carried by the same loading event. */
+    title?: string;
     description?: string;
     didCrash?: boolean;
   };
@@ -434,7 +442,7 @@ function NativeHtmlFrameInstance({
     handleComplete(decoded.value);
   }, [acknowledgeChunk, failControl, handleComplete, session]);
 
-  /** Fragment receiver: one of the two simultaneous page->native channels. */
+  /** Fragment receiver: one of the three simultaneous page->native carriers. */
   const handleChunkUrl = useCallback((url: string | undefined) => {
     const parsed = parseNativeTransportUrl(url, session);
     if (!parsed) return false;
@@ -445,6 +453,26 @@ function NativeHtmlFrameInstance({
       return true;
     }
     countersRef.current.fragments += 1;
+    acceptChunk(parsed.chunk);
+    return true;
+  }, [acceptChunk, failControl, session]);
+
+  /**
+   * Title receiver: the same chunk read from `nativeEvent.title`.
+   *
+   * Android rewrites the commit URL for a `loadDataWithBaseURL` document, but
+   * the document title travels unchanged in the same loading event.
+   */
+  const handleChunkTitle = useCallback((title: string | undefined) => {
+    const parsed = parseNativeTitle(title, session);
+    if (!parsed) return false;
+    if (!parsed.ok || !parsed.chunk) {
+      if (parsed.stale) return true;
+      countersRef.current.rejected += 1;
+      failControl("control", `Native HTML transport rejected data: ${parsed.error ?? "malformed chunk"}`);
+      return true;
+    }
+    countersRef.current.titles += 1;
     acceptChunk(parsed.chunk);
     return true;
   }, [acceptChunk, failControl, session]);
@@ -465,14 +493,26 @@ function NativeHtmlFrameInstance({
   }, [acceptChunk, failControl, session]);
 
   const onNavigationEvent = useCallback((event: NavigationEvent) => {
+    const title = event.nativeEvent?.title;
     const url = event.nativeEvent?.url;
-    // Early progress events may have no URL. Only an actual transport URL can
-    // contribute data; ordinary loading/progress is never readiness.
-    if (typeof url !== "string") return;
-    if (handleChunkUrl(url)) return;
-    const transportError = parseNativeErrorUrl(url);
+    // Keep raw event delivery separate from accepted chunks. If title delivery
+    // fails on a device, the banner can distinguish no callback from a callback
+    // carrying a rewritten URL or missing title, without exposing either value.
+    const counters = countersRef.current;
+    counters.navigationEvents = Math.min(99999, counters.navigationEvents + 1);
+    if (typeof url === "string" && url.includes("#")) {
+      counters.navigationHashEvents = Math.min(99999, counters.navigationHashEvents + 1);
+    }
+    counters.lastTitleChars = typeof title === "string" ? Math.min(title.length, NATIVE_MAX_TITLE_CHARS + 1) : 0;
+    // The title is parsed first: it is the carrier Android cannot rewrite, and
+    // a chunk seen here must not be lost to an unrelated URL on the same event.
+    const titleHandled = handleChunkTitle(title);
+    const urlHandled = typeof url === "string" ? handleChunkUrl(url) : false;
+    if (titleHandled || urlHandled) return;
+    const transportError =
+      parseNativeErrorTitle(title) ?? (typeof url === "string" ? parseNativeErrorUrl(url) : undefined);
     if (transportError) failControl("control", `Native HTML transport failed: ${transportError}`);
-  }, [failControl, handleChunkUrl]);
+  }, [failControl, handleChunkTitle, handleChunkUrl]);
 
   const requestReadyProbe = useCallback(() => {
     const counters = countersRef.current;
