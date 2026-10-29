@@ -79,6 +79,8 @@ async function openBrowser(executable, profileRoot, childGroupFile) {
       "--lang=en-US",
       "--no-first-run",
       "--no-default-browser-check",
+      // macOS blocks headless CDP navigation on the login keychain prompt.
+      ...(process.platform === "darwin" ? ["--use-mock-keychain"] : []),
       "about:blank",
     ], { stdio: "ignore", detached: true });
   } catch (error) {

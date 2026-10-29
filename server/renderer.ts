@@ -471,6 +471,9 @@ export function createRenderer(options: RendererOptions = {}): FullRenderer {
           "--hide-scrollbars",
           "--disable-features=Translate,BackForwardCache,AcceptCHFrame",
           "--host-resolver-rules=MAP * ~NOTFOUND",
+          // A headless macOS renderer must not block on the login keychain
+          // prompt; it never needs stored credentials.
+          ...(process.platform === "darwin" ? ["--use-mock-keychain"] : []),
           "about:blank",
         ],
         { stdio: ["ignore", "ignore", "pipe"], detached: false },

@@ -38,7 +38,10 @@ export async function browserResult(html: string, options: BrowserOptions = {}):
     "--no-first-run", "--no-default-browser-check", "--disable-gpu", "--disable-dev-shm-usage",
     "--disable-background-networking", "--disable-component-update", "--disable-sync",
     "--disable-background-timer-throttling", "--disable-renderer-backgrounding",
-    "--disable-backgrounding-occluded-windows", "about:blank"],
+    "--disable-backgrounding-occluded-windows",
+    // macOS blocks headless CDP navigation on the login keychain prompt.
+    ...(process.platform === "darwin" ? ["--use-mock-keychain"] : []),
+    "about:blank"],
     { stdio: "ignore" });
   let socket: WebSocket | undefined;
   let next = 1;
