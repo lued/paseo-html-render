@@ -45,7 +45,6 @@ import {
 } from "react-native";
 import {
   HTML_FRAME_MIN_HEIGHT,
-  HTML_FRAME_READY_TIMEOUT_MS,
   appearanceFromColors,
   buildDocumentTheme,
   buildLiveDocument,
@@ -64,6 +63,7 @@ import {
 } from "../shared/html-document.ts";
 import {
   NATIVE_THEME_ACK_TIMEOUT_MS,
+  NATIVE_READY_TIMEOUT_MS,
   NATIVE_TRANSPORT_COUNTERS,
   NATIVE_WEBVIEW_SECURITY_PROPS,
   NativeChunkAssembler,
@@ -139,9 +139,9 @@ interface NavigationEvent {
 }
 
 /**
- * The real RNCWebView `onMessage` event shape. Android delivers the string the
- * page passed to `window.ReactNativeWebView.postMessage` as `nativeEvent.data`;
- * some hosts also attach `nativeEvent.url`. Nothing in it is trusted.
+ * The RNCWebView `onMessage` event shape on hosts that dispatch it to this
+ * component. Android's wrapper-routed messages do not reach a raw mount.
+ * Nothing in the envelope or optional URL is trusted.
  */
 interface NativeMessageEvent {
   nativeEvent?: {
@@ -434,7 +434,7 @@ function NativeHtmlFrameInstance({
     handleComplete(decoded.value);
   }, [acknowledgeChunk, failControl, handleComplete, session]);
 
-  /** Fragment fallback receiver: the pre-0.14 page->native channel. */
+  /** Fragment receiver: one of the two simultaneous page->native channels. */
   const handleChunkUrl = useCallback((url: string | undefined) => {
     const parsed = parseNativeTransportUrl(url, session);
     if (!parsed) return false;
@@ -449,7 +449,7 @@ function NativeHtmlFrameInstance({
     return true;
   }, [acceptChunk, failControl, session]);
 
-  /** Primary receiver: the real RNCWebView `onMessage` event. */
+  /** Bridge receiver for hosts that dispatch the plain onMessage event. */
   const handleBridgeMessage = useCallback((event: NativeMessageEvent) => {
     const parsed = parseNativeBridgeMessage(event?.nativeEvent?.data, session);
     // Not our envelope: a foreign bridge writer must not break the transport.
@@ -509,7 +509,7 @@ function NativeHtmlFrameInstance({
     if (build.error || ready || fatal || notice) return;
     const timer = setTimeout(() => {
       failControl("ready-timeout", nativeReadyTimeoutMessage(countersRef.current));
-    }, Math.max(HTML_FRAME_READY_TIMEOUT_MS, 8_000));
+    }, NATIVE_READY_TIMEOUT_MS);
     readyTimerRef.current = timer;
     return () => {
       clearTimeout(timer);

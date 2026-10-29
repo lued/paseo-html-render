@@ -98,8 +98,8 @@ the turn slot consumed. Do not describe this as permanent or semantic deduplicat
 **Android device status:** under 2.2.0, local inline interaction was
 user-confirmed, followed by a native ready timeout on cold reopen. On the 3.0
 first device run (app 0.13.2), the report rendered behind the banner with
-`no page messages; onMessage 0, fragment 0, probes 1`. Cause, from
-`react-native-webview` 13.16.1: on Android, bridge messages go to the library's
+`no page messages; onMessage 0, fragment 0, probes 1`. A verified limitation,
+from `react-native-webview` 13.16.1: on Android, bridge messages go to the library's
 own JS router, keyed by a `messagingModuleName` only its `<WebView>` wrapper
 knows, so a raw RNCWebView mount never receives them. That build trusted the
 bridge and sent the fragment copy only after a 5 s ack timeout, leaving 3 s of
@@ -109,7 +109,26 @@ for every committed same-document navigation, including `location.replace`, and
 RNCWebView reports that as a loading-start event with the URL. This passes
 browser, shim and Hermes checks; physical-device acceptance is still open. The
 2.2.0 cold-reopen timeout used the fragment path alone and is not explained by
-this cause.
+this limitation. The user re-tested `bd8ec1e` after restart: the same zero-traffic
+banner persists. Dual sends did **not** fix the device failure; its cause is still
+unresolved. `probes 1` is an attempted command, not proof of page receipt.
+
+The `diag-1` build adds a timeout-only, page-local strip that does not rely on
+native callbacks. It reports only the document scheme/URL and hash lengths,
+iframe loads, message/source-filter/ready counts, probes actually received by
+the shell, send attempts and error counts. It never includes the URL, session,
+report text or payload. A genuine ready acknowledgement hides it again. The
+native timeout banner carries the same build ID so a screenshot can distinguish
+a stale client bundle.
+
+A true `data:` Chromium document reproduces blocked `location.replace` fragment
+sends, but this alone does **not** establish the WebView's document scheme:
+Chromium `content/renderer/render_frame_impl.cc` explicitly substitutes
+`base_url_for_data_url` as the **document URL** for `loadDataWithBaseURL`, not
+merely a displayed URL. The shell uses `baseUrl: "about:blank"`. Device-local
+scheme/hash/send/probe evidence is needed before changing the transport again.
+The browser harness now distinguishes the legacy `data` option (actually
+`about:blank` plus setContent) from a real `data-url` navigation.
 
 | Capability | Plugin implementation / difference |
 | --- | --- |

@@ -1,6 +1,6 @@
 # Verification and release evidence
 
-Updated: 2026-10-28. Candidate: **paseo-html-render 3.0.0**, plugin id
+Updated: 2026-10-29. Candidate: **paseo-html-render 3.0.0**, plugin id
 `html-render`, MCP key `html-render-v3`. This is a staged release record, not a
 claim that npm publication or live client acceptance has finished. Historical
 `v2.1.0` stays unchanged. Everything after the 3.0 section is **pre-0.14
@@ -60,8 +60,34 @@ Paseo >=0.14.0-beta.1 <0.15.0. Your app is 0.13.2`. Paseo checks the same range
 against the app. The range is now `>=0.13.2 <0.15.0`, and a 0.13 daemon is
 handled at session open (`skip=host-unsupported`).
 
-Not verified: physical Android (cold start, 120 s dwell, reopen, background,
-theme, links and image zoom, the failure banner), Chrome and PWA parity, the
+**Android device failure, 2026-10-29:** the report renders and stays mounted
+behind the non-destructive banner, but the ready handshake consistently times
+out, including after app restart on `bd8ec1e`. Screenshot: `onMessage 0,
+fragment 0, chunks 0, messages 0, probes 1, rejected 0`. Dual-channel immediate
+sends did not fix it. `probes 1` counts an attempted command, not receipt in the
+page. Physical Android acceptance is **failing**, not passed by the local gates.
+
+The `diag-1` candidate adds independent page-local evidence without changing
+the transport or 8 s deadline. It reports scheme and lengths (no URL), iframe
+loads, raw/source-accepted/ready messages, actual native-probe receipt and send/error
+counts, then hides after a real ready ack. The native timeout text identifies
+`diag-1` too. Next required evidence: a phone screenshot with both diagnostic
+blocks visible. This is an instrumented build, not a claimed fix. Local diagnostic
+gates: typecheck; 312/312 tests (123 s); bundle check; real Hermes entry,
+constructor, host-matrix and generated-document equality checks; package check
+(74 entries, 43 required files, 0 forbidden) all pass. These do not supersede the
+failing phone result.
+
+The Hermes check now compares the actual generated inner document and shell
+byte-for-byte with Node's builders. The browser helper now has a real `data-url`
+mode; its old `data` mode is actually about:blank/setContent. Chromium reproduces
+blocked fragment navigation on true data URLs, but WebView's
+`loadDataWithBaseURL` substitutes the base URL as the document URL in
+`content/renderer/render_frame_impl.cc`. Therefore that reproduction alone does
+not prove the phone uses a data: document; page-local evidence is still needed.
+
+Not verified: a successful physical Android handshake, cold start, 120 s dwell,
+reopen, background, theme, links and image zoom, Chrome and PWA parity, the
 turn-collapse display, Claude/Codex providers, and npm publication.
 
 **Live acceptance resumed 2026-10-26; not production-accepted.** The user has

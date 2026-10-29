@@ -6,8 +6,8 @@
  * sandboxed inner iframe. No report markup is ever parsed as outer HTML.
  *
  * Page -> native messages use bounded, acknowledged chunks over two channels:
- * the RNCWebView `onMessage` bridge (primary, `messagingEnabled` on the trusted
- * shell) and the historical URL-fragment callbacks (fallback). Both channels
+ * the RNCWebView `onMessage` bridge (`messagingEnabled` on the trusted shell)
+ * and the historical URL-fragment callbacks, sent together. Both channels
  * feed one ordered assembler, so a chunk delivered twice is acknowledged
  * twice and applied once. The native side revalidates every complete message
  * with the existing shared readers; the shell also source-filters and requires
@@ -20,12 +20,16 @@
  *
  * This module has no React, React Native, Node or DOM imports.
  */
+import { HTML_FRAME_READY_TIMEOUT_MS } from "../shared/html-document.ts";
 import { MAX_INTERACTIVE_HTML_BYTES } from "../shared/limits.ts";
 import { utf8ByteLength } from "../shared/report-model.ts";
 
 export const NATIVE_P2N_PREFIX = "#paseo-p2n=";
 export const NATIVE_ERROR_PREFIX = "#paseo-error=";
 export const NATIVE_THEME_ACK_TYPE = "paseo-theme-ack";
+/** Visible on both sides so device evidence identifies this diagnostic build. */
+export const NATIVE_DIAGNOSTIC_REVISION = "diag-1";
+export const NATIVE_READY_TIMEOUT_MS = Math.max(HTML_FRAME_READY_TIMEOUT_MS, 8_000);
 export const NATIVE_MAX_URL_CHARS = 65_536;
 export const NATIVE_MAX_CHUNK_CHARS = 60_000;
 /** Worst-case URI encoding of the 8 MiB base64 image source plus JSON headroom. */
@@ -44,8 +48,8 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 /**
  * Security props for the raw RNCWebView component. No cache/cookie clearing.
  *
- * `messagingEnabled` is on because `onMessage` is the primary page->native
- * channel and only the constant trusted shell is loaded as the outer document;
+ * `messagingEnabled` is on for hosts that dispatch the plain `onMessage` event.
+ * Only the constant trusted shell is loaded as the outer document;
  * it injects `window.ReactNativeWebView` into the shell frame. Report markup is
  * never outer HTML and stays in an opaque `allow-scripts` iframe, so it cannot
  * reach that bridge. Keep every other prop hardening unchanged.
@@ -401,7 +405,7 @@ export function nativeReadyTimeoutMessage(counters: NativeTransportCounters): st
   const stage = nativeTransportStage(counters);
   return [
     "The native HTML frame did not complete its ready handshake in time.",
-    `Stage: ${nativeTransportStageLabel(stage)}.`,
+    `Stage: ${nativeTransportStageLabel(stage)}. Build: ${NATIVE_DIAGNOSTIC_REVISION}.`,
     "Counters:",
     `onMessage ${counters.pageMessages},`,
     `fragment ${counters.fragments},`,
@@ -538,6 +542,24 @@ var queue=[],queueChars=0,sending=null,ackTimer=0,themeSeq=0,nextMessageId=1,fai
 var readyMessage=null,readyAcked=false,readyProbeAttempts=0,readyRetryTimer=0,readyRetryCount=0;
 var bridge=null;
 try{var rn=window.ReactNativeWebView;if(rn&&typeof rn.postMessage==="function")bridge=rn;}catch(_){bridge=null;}
+// Local-only evidence: this strip needs no working page->native channel. Never
+// put a URL, session, report text, error message or message payload in it.
+var diagnostic=document.getElementById("transport-diagnostic");
+var stats={loads:0,events:0,inner:0,ready:0,native:0,probes:0,bridge:0,bridgeErrors:0,fragments:0,navigationErrors:0,errors:0};
+function bump(k){stats[k]=Math.min(99999,stats[k]+1);}
+function paint(){
+  if(!diagnostic||diagnostic.hidden)return;
+  var scheme=location.protocol;
+  if(!/^(about:|data:|file:|https?:|blob:)$/.test(scheme))scheme="other";
+  diagnostic.textContent="Transport ${NATIVE_DIAGNOSTIC_REVISION} | page "+scheme+" "+location.href.length+" chars, hash "+location.hash.length+
+    " | iframe loads "+stats.loads+", events "+stats.events+", inner "+stats.inner+", ready "+stats.ready+
+    " | native "+stats.native+", probes received "+stats.probes+
+    " | bridge "+stats.bridge+", bridge errors "+stats.bridgeErrors+", fragments sent "+stats.fragments+
+    ", navigation errors "+stats.navigationErrors+", script errors "+stats.errors;
+}
+var diagnosticTimer=setTimeout(function(){if(!readyAcked&&diagnostic){diagnostic.hidden=false;paint();}},__DIAGMS__);
+f.addEventListener("load",function(){bump("loads");paint();});
+window.addEventListener("error",function(){bump("errors");paint();});
 function fail(code){if(failed)return;failed=true;if(ackTimer){clearTimeout(ackTimer);ackTimer=0;}if(readyRetryTimer){clearTimeout(readyRetryTimer);readyRetryTimer=0;}queue=[];queueChars=0;sending=null;location.replace("${NATIVE_ERROR_PREFIX}"+code);}
 function arm(){if(ackTimer)clearTimeout(ackTimer);ackTimer=setTimeout(function(){
   ackTimer=0;
@@ -552,15 +574,22 @@ function deliver(kind){
   var data=sending.encoded.slice(sending.sequence*CHUNK,sending.sequence*CHUNK+CHUNK);
   if(kind==="bridge"){
     if(!bridge)return false;
+    bump("bridge");
     try{bridge.postMessage(JSON.stringify({type:"${NATIVE_BRIDGE_TYPE}",session:SESSION,mid:sending.id,seq:sending.sequence,total:sending.total,data:data}));}
-    catch(_){bridge=null;return false;}
+    catch(_){bump("bridgeErrors");bridge=null;paint();return false;}
+    paint();
     sending.channels.bridge+=1;
     return true;
   }
   sending.channels.fragment+=1;
   // A repeated fragment for the same chunk needs a distinct URL to be delivered.
   var retry=sending.channels.fragment>1?";r="+(sending.channels.fragment-1):"";
-  location.replace("${NATIVE_P2N_PREFIX}"+SESSION+","+sending.id+","+sending.sequence+","+sending.total+","+data+retry);
+  bump("fragments");
+  try{location.replace("${NATIVE_P2N_PREFIX}"+SESSION+","+sending.id+","+sending.sequence+","+sending.total+","+data+retry);}
+  catch(_){bump("navigationErrors");paint();return false;}
+  // A blocked navigation can return without throwing. Observe hash length on
+  // the next turn instead of mistaking an attempted send for a committed one.
+  setTimeout(paint,0);
   return true;
 }
 function sendChunk(){
@@ -647,12 +676,13 @@ function sendNext(){
 document.addEventListener("message",function(e){
   if(failed||typeof e.data!=="string")return;
   var m;try{m=JSON.parse(e.data);}catch(_){return;}
-  if(m&&m.type==="paseo-ready-probe"&&m.session===SESSION){requestReady();return;}
+  if(m&&m.session===SESSION){bump("native");paint();}
+  if(m&&m.type==="paseo-ready-probe"&&m.session===SESSION){bump("probes");paint();requestReady();return;}
   if(m&&m.type==="paseo-ack"&&m.session===SESSION&&Number.isInteger(m.mid)&&m.mid===sending?.id&&Number.isInteger(m.seq)&&m.seq===sending.sequence){
     if(ackTimer){clearTimeout(ackTimer);ackTimer=0;}
     sending.sequence++;
     if(sending.sequence<sending.total)sendChunk();else{
-      if(sending.ready){readyAcked=true;clearReadyRetry();}
+      if(sending.ready){readyAcked=true;clearReadyRetry();clearTimeout(diagnosticTimer);if(diagnostic)diagnostic.hidden=true;}
       sending=null;sendNext();
     }
     return;
@@ -664,7 +694,9 @@ document.addEventListener("message",function(e){
   }
 },false);
 window.addEventListener("message",function(e){
+  bump("events");paint();
   if(failed||!f.contentWindow||e.source!==f.contentWindow)return;
+  bump("inner");paint();
   var d=e.data;
   if(!d||d.jsonrpc!=="2.0"||typeof d.method!=="string")return;
   var method=d.method;
@@ -672,6 +704,7 @@ window.addEventListener("message",function(e){
   if(method==="ui/notifications/ready"){
     // One ready transfer per session. Probe responses must not queue new
     // message ids behind an unacknowledged ready or restart its deadlines.
+    bump("ready");paint();
     if(readyMessage)return;
     readyMessage=d;
   }
@@ -699,7 +732,8 @@ export function buildNativeShellDocument(innerDocument: string, session: string)
     .replace("__MAXENC__", String(NATIVE_MAX_ENCODED_CHARS))
     .replace("__MAXQUEUE__", String(NATIVE_MAX_QUEUE))
     .replace("__ACKMS__", String(NATIVE_ACK_TIMEOUT_MS))
-    .replace("__TRANSFERMS__", String(NATIVE_TRANSFER_TIMEOUT_MS));
-  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${NATIVE_SHELL_CSP}"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Interactive HTML</title><style>html,body{margin:0;padding:0;height:100%;overflow:hidden;background:transparent}iframe{display:block;width:100%;height:100%;border:0;background:transparent}</style></head><body><iframe id="f" sandbox="allow-scripts" referrerpolicy="no-referrer" allow="fullscreen 'none'" title="Interactive HTML"></iframe><script type="application/json" id="p">${inertJson(innerDocument)}</script><script>${script}</script></body></html>`;
+    .replace("__TRANSFERMS__", String(NATIVE_TRANSFER_TIMEOUT_MS))
+    .replace("__DIAGMS__", String(NATIVE_READY_TIMEOUT_MS));
+  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${NATIVE_SHELL_CSP}"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Interactive HTML</title><style>html,body{margin:0;padding:0;height:100%;overflow:hidden;background:transparent}iframe{display:block;width:100%;height:100%;border:0;background:transparent}</style></head><body><div id="transport-diagnostic" role="status" hidden style="position:fixed;top:0;left:0;right:0;z-index:1;padding:8px;background:#241d0f;color:#ffe0a3;font:12px/1.5 monospace;overflow-wrap:anywhere;pointer-events:none"></div><iframe id="f" sandbox="allow-scripts" referrerpolicy="no-referrer" allow="fullscreen 'none'" title="Interactive HTML"></iframe><script type="application/json" id="p">${inertJson(innerDocument)}</script><script>${script}</script></body></html>`;
 }
 

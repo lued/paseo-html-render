@@ -9,6 +9,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { assertNoClientClasses } from "./client-syntax.ts";
+import { buildNativeShellDocument } from "../client/native-html-protocol.ts";
+import { buildLiveDocument } from "../shared/html-document.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const argument = process.argv.indexOf("--hermes");
@@ -67,7 +69,11 @@ const nativeCheck = `module.exports.__nativeCheck=function(nativeHost){
  if(NATIVE_WEBVIEW_SECURITY_PROPS.messagingEnabled!==true)throw Error("native security");
  return true;
 };
-module.exports.__capability=function(){return nativeHtmlCapability("android");};\n`;
+module.exports.__capability=function(){return nativeHtmlCapability("android");};
+module.exports.__nativeDocuments=function(){
+ var inner=buildLiveDocument({html:"<p>Transport probe 😀 漢字</p>",title:"Transport probe"});
+ return {inner:inner,shell:buildNativeShellDocument(inner,"hermes-fixture-session")};
+};\n`;
 const instrumented = delivered.replace(sentinel, nativeCheck + sentinel);
 const program = `
 function must(value,message){if(!value)throw Error(message);}
@@ -90,6 +96,7 @@ print("HERMES_ENTRY_OK");
 var inspected=setup(${JSON.stringify(instrumented)});
 must(inspected.__nativeCheck(native)===true,"native construction incomplete");
 print("HERMES_NATIVE_OK");
+print("HERMES_DOCUMENTS="+JSON.stringify(inspected.__nativeDocuments()));
 var modernUi=Object.assign({},legacyUi,legacyRn,{DocumentFrame:Dummy});
 modules["@getpaseo/plugin/client/ui"]=modernUi;
 modules["@getpaseo/plugin/client/react-native"]=modernUi;
@@ -117,8 +124,14 @@ try {
   assert.match(output, /^HERMES_ENTRY_OK$/m);
   assert.match(output, /^HERMES_NATIVE_OK$/m);
   assert.match(output, /^HERMES_HOST_MATRIX_OK$/m);
+  const documentLine = output.split("\n").find((line) => line.startsWith("HERMES_DOCUMENTS="));
+  assert.ok(documentLine, "Hermes must generate the actual native shell and report runtime");
+  const generated = JSON.parse(documentLine.slice("HERMES_DOCUMENTS=".length));
+  const inner = buildLiveDocument({ html: "<p>Transport probe 😀 漢字</p>", title: "Transport probe" });
+  assert.deepEqual(generated, { inner, shell: buildNativeShellDocument(inner, "hermes-fixture-session") },
+    "Hermes-generated native documents must match the documents exercised by browser tests");
   console.log(JSON.stringify({ result: "pass", clientSha256: createHash("sha256").update(delivered).digest("hex"),
-    clientBytes: Buffer.byteLength(delivered), engineVersion: version, entrySetup: true, nativeConstruction: true,
+    clientBytes: Buffer.byteLength(delivered), engineVersion: version, entrySetup: true, nativeConstruction: true, nativeDocuments: true,
     hostProfiles: ["legacy-separate-ui-no-DocumentFrame", "0.14-unified-ui"], hostNegativeCases: true,
     uiEvidence: "synthetic-unmounted; NOT Android/Fabric/WebView evidence" }, null, 2));
 } finally {

@@ -52,6 +52,13 @@ It also contains the never-published 2.2.0 candidate changes listed further down
   that only its `<WebView>` wrapper knows, so a raw RNCWebView mount never
   receives them. The earlier build trusted the bridge and sent the fragment copy
   only after a 5 s ack timeout, which left 3 s of the 8 s ready deadline.
+- Device re-testing after `bd8ec1e` still produced zero bridge and fragment
+  traffic. The `diag-1` build adds a timeout-only strip inside the trusted shell,
+  independent of native replies: scheme/lengths, iframe/message/ready counts,
+  actual probe receipt, send attempts and error counts, with no URLs, sessions
+  or payloads. Both the strip and native banner identify the build. This is a
+  diagnostic change, **not a verified device fix**. The native 8 s deadline,
+  sandbox and transport are unchanged. A genuine ready ack hides the strip.
 - Android diagnostics name the failed stage (`no page messages`, `chunks without
   ready`, `probe unanswered`) with numeric counters only.
 
