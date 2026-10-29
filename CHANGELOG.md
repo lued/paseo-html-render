@@ -4,7 +4,115 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — 2.2.0 candidate
+## [Unreleased] — 3.0.0 candidate
+
+Not published to npm or tagged as 3.0.0. Requires Paseo `>=0.14.0-beta.1 <0.15.0`.
+It also contains the never-published 2.2.0 candidate changes listed further down.
+
+### Breaking
+
+- The daemon must be Paseo `>=0.14.0-beta.1 <0.15.0`; 0.12 and 0.13 daemons get
+  no tools. The manifest range is `>=0.13.2 <0.15.0` because Paseo checks the
+  same range against the app, and mobile apps are still on 0.13.2 (the client
+  SDK is byte-identical between 0.13.2 and 0.14.0-beta.1). On an older daemon
+  the session-open hook passes the request through and logs
+  `skip=host-unsupported`. The SDK is pinned to `@getpaseo/plugin` 0.14.0-beta.1
+  and the peer range is `>=0.14.0-beta.1 <0.15.0`.
+- The MCP server is contributed at `agent.session_open`, not written into an
+  agent's saved configuration at `agent.create`. The `agent.create` hook is gone.
+  The contribution is launch-only, so it reaches new, resumed, refreshed and
+  imported interactive sessions, and a plugin install, reload or disable reaches
+  an idle agent on its next prompt. No new agent is needed after an upgrade.
+- The MCP server key is now `html-render-v3`. A 2.x agent still carries a saved
+  `html-render` entry that the plugin cannot see or remove; reusing that name
+  would make Paseo 0.14 reject every open of that agent with a collision. The two
+  keys coexist instead. Recreate an old agent, or remove its saved entry, to drop
+  the legacy entry.
+- Transport files are versioned: `mcp-adapter-v3.mjs`, `bridge-v3.sock` and
+  `bridge-v3.token`. The retired `mcp-adapter-v1.mjs` is overwritten with an
+  inert tombstone: it completes `initialize`, lists no tools, answers tool calls
+  with a migration message, and never opens the bridge socket.
+
+### Added
+
+- Per-agent opt-out: an agent labelled `html-render/disabled: "true"` gets no
+  server. History opens never get one.
+- One sanitized `session-open` log line per open (result, server, transport,
+  alwaysLoad, agent id, provider, reason, purpose). It never contains the bridge
+  token, the launch environment or a workspace path. Package smoke and the e2e
+  fixture use it as injection evidence instead of the saved agent record.
+- Android transport v2: every page-to-native chunk goes out on three carriers:
+  the RNCWebView `onMessage` bridge (`messagingEnabled: true` on the trusted
+  shell only), the fragment URL and a prefixed document title set before that
+  navigation. All feed one ordered, deduplicating assembler with the same size
+  and session checks. An unacknowledged chunk is resent once on all carriers,
+  then the transfer fails. This is the `diag-2` candidate, not device acceptance.
+  The first 3.0 device run timed out with `onMessage 0, fragment 0, probes 1`.
+  Cause, from the `react-native-webview` 13.16.1 source: on Android, bridge
+  messages go to the library's own JS router, keyed by a `messagingModuleName`
+  that only its `<WebView>` wrapper knows, so a raw RNCWebView mount never
+  receives them. The earlier build trusted the bridge and sent the fragment copy
+  only after a 5 s ack timeout, which left 3 s of the 8 s ready deadline.
+- Device re-testing after `bd8ec1e` still produced zero bridge and fragment
+  traffic. The `diag-1` build adds a timeout-only strip inside the trusted shell,
+  independent of native replies: scheme/lengths, iframe/message/ready counts,
+  actual probe receipt, send attempts and error counts, with no URLs, sessions
+  or payloads. Both the strip and native banner identify the build. This is a
+  diagnostic change, **not a verified device fix**. The native 8 s deadline,
+  sandbox and transport are unchanged. A genuine ready ack hides the strip.
+- The physical `diag-1` screenshot proves inner ready, actual probe receipt and
+  local hash updates succeed while the app receives zero bridge/fragment chunks.
+  Chromium's `MaybeGetOverriddenURL` reports the original loadDataWithBaseURL
+  source even after same-document navigation, losing the updated fragment.
+  `diag-2` reads the chunk from `nativeEvent.title` independently of the URL.
+  Titles are bounded before assignment at 4,000 characters (below Chromium's
+  4,096 limit); chunk data is 3,000 characters. Full message/image budgets and
+  all deadlines are unchanged. Large unrelated load URLs no longer trigger a
+  false oversized-transport error. Tests cover title-only ready/interaction,
+  multi-chunk images, duplicate carriers, rejected titles and real-shell order.
+- Android diagnostics name the failed stage (`no page messages`, `chunks without
+  ready`, `probe unanswered`, `titles without bridge or fragment`) with numeric
+  counters only. `diag-2` adds title send/receive counts, native event/hash counts
+  and title lengths; no diagnostic echoes title contents or payloads.
+
+### Changed
+
+- A control-channel failure (ready deadline, rejected chunk, theme acknowledgement)
+  keeps an already-rendered report mounted behind a banner with Retry, instead of
+  replacing the card with an error box. Build, mount, load and render-process
+  failures still replace the frame. The 8 s ready deadline is unchanged.
+- The bridge token stays in the owner-only `bridge-v3.token` file, read on every
+  call so a running adapter survives a plugin reload. It is never written into a
+  saved agent record.
+- Bundle checks mirror the 0.14 host compiler: client `es2020`, server `node20`,
+  explicit SDK externals, no Node builtins or private `client/host` import in the
+  client bundle.
+
+### Known limits
+
+- Paseo 0.14 folds a finished turn's tool rows by default ("collapse turns" on new
+  installs), and the card sits on the `html_render` tool row, so it is hidden
+  until the turn is expanded. A plugin cannot opt out. The
+  `[Open interactive report](...)` link in the final reply stays visible.
+- Paseo 0.14.0-beta.1/beta.2 host defect: with `daemon.mcp.injectIntoAgents` off
+  (the default), an idle Pi agent whose session opened with no MCP server fails its
+  next prompt after html-render is installed or re-enabled, with `Provider 'pi'
+  does not support MCP servers (plugin html-render)`. The daemon checks the old
+  session's capability before the refresh, and Pi reports MCP support only when a
+  session launched with an MCP server. Restart the daemon once; resumed sessions
+  are not affected. Hosts with `injectIntoAgents: true` are not affected.
+- `alwaysLoad` is honored only by the Claude provider; Pi and Codex load the
+  server normally.
+- On Android the `onMessage` bridge never delivers to a raw mount; it is kept for
+  hosts that dispatch the plain event. The user reports the fresh `diag-2` phone
+  card works without errors. Timed lifecycle checks, title/event ordering under
+  sustained interaction and large-image throughput remain unverified; full
+  physical acceptance is still open. Smaller chunks increase native round trips
+  without extending deadlines.
+  A host exposing raw WebView titles could display chunk content; native titles
+  must not be logged.
+
+## 2.2.0 candidate (never published; folded into 3.0.0)
 
 Not published to npm or tagged as 2.2.0. The turn guard is an in-memory nudge, not a
 permanent duplicate database or a semantic HTML diff.

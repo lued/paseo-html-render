@@ -1,18 +1,29 @@
 # Releasing
 
-Target: the first npm release, **2.2.0**. The reference tarball is verified
-locally; registry availability and npm-source acceptance are recorded at
-publication time. Existing tag `v2.1.0` is historical and must not be moved.
+Target: the first npm release, **3.0.0**. 2.2.0 was a candidate that was never
+published; its changes ship in 3.0.0. The reference tarball is verified locally;
+registry availability and npm-source acceptance are recorded at publication time.
+Existing tag `v2.1.0` is historical and must not be moved.
 
 ## Support matrix
 
-The release claims Node `>=22.18.0` and Paseo `>=0.12.0 <0.14.0`. Validate the
+The release claims Node `>=22.18.0`, a Paseo daemon `>=0.14.0-beta.1 <0.15.0`
+and a Paseo app `>=0.13.2`. 3.0 contributes its MCP server through the 0.14
+`agent.session_open` hook, so 0.12 and 0.13 daemons are not supported. Paseo
+checks `requirements.paseo` against both the daemon and the app, and mobile apps
+are still on 0.13.2, so the manifest range is `>=0.13.2 <0.15.0`; an older daemon
+loads the plugin but gets no tools and logs `skip=host-unsupported`. The client
+SDK `dist` is byte-identical between 0.13.2 and 0.14.0-beta.1. Validate the
 minimum and current host before publication:
 
 | Node | Paseo daemon | Paseo CLI | `@getpaseo/plugin` SDK | Evidence |
 | --- | --- | --- | --- | --- |
-| 22.18.0 | 0.12.0 | 0.12.0 | 0.12.0 | isolated reference-tarball smoke |
-| 26.12.1 (current) | 0.13.0-beta.2 (current) | 0.13.0-beta.2 (current) | 0.13.0-beta.2 (current) | isolated reference-tarball smoke |
+| 22.18.0 | 0.14.0-beta.1 | 0.14.0-beta.1 | 0.14.0-beta.1 | CI isolated reference-tarball smoke |
+| 22.18.0 | 0.14.0-beta.2 | 0.14.0-beta.2 | 0.14.0-beta.1 | CI isolated reference-tarball smoke |
+| 26.12.1 | 0.14.0-beta.2 | 0.14.0-beta.2 | 0.14.0-beta.1 | local isolated smoke; see `docs/verification.md` |
+
+The 0.14.0-beta.1 and 0.14.0-beta.2 SDK `dist` trees are byte-identical, so the
+package pins the floor.
 
 The daemon/CLI version and the `@getpaseo/plugin` SDK version are separate
 contracts. Record both in `smoke-result.json`; do not infer the SDK version from
@@ -53,7 +64,7 @@ Then test that exact tarball in an isolated production tree and real daemon:
 
 ```sh
 npm run smoke:package -- \
-  --tarball /tmp/hr-package/paseo-html-render-2.2.0.tgz \
+  --tarball /tmp/hr-package/paseo-html-render-3.0.0.tgz \
   --paseo "$(command -v paseo)" \
   --out /tmp/hr-smoke
 ```
@@ -65,7 +76,10 @@ The smoke script:
    the resolution path), then starts a real isolated Paseo home on a free loopback
    port and installs the packed plugin;
 2. creates a disposable workspace and idle agent in that home (no model prompt),
-   reads the injected MCP server config, and calls the real generated adapter;
+   proves injection from the sanitized `session-open` plugin log line (server
+   `html-render-v3`, `stdio`, `alwaysLoad=true`), fails if the saved agent record
+   contains the v3 key or the bridge credential, checks the owner-only token file
+   and the retired-adapter tombstone, and calls the real generated adapter;
 3. proves `initialize`, `tools/list`, `html_preview`, `html_render`, and an
    artifact readback through the plugin RPC/authority path;
 4. clears inherited `PASEO_HTML_RENDER_CHROMIUM`, starts a second isolated home
@@ -96,19 +110,19 @@ new `npm pack` of the repository, so registry integrity can be compared to the
 reference:
 
 ```sh
-npm publish /tmp/hr-package/paseo-html-render-2.2.0.tgz --tag next
-npm view paseo-html-render@2.2.0 version dist.integrity dist.tarball
+npm publish /tmp/hr-package/paseo-html-render-3.0.0.tgz --tag next
+npm view paseo-html-render@3.0.0 version dist.integrity dist.tarball
 ```
 
 Then run the same smoke with the opt-in npm-source mode. It checks the registry
 version/integrity against the reference tarball, has the real isolated Paseo CLI
-acquire `npm:paseo-html-render@2.2.0` (not a directory), and exercises the same
+acquire `npm:paseo-html-render@3.0.0` (not a directory), and exercises the same
 adapter/readback path:
 
 ```sh
 npm run smoke:package -- \
-  --tarball /tmp/hr-package/paseo-html-render-2.2.0.tgz \
-  --npm-source npm:paseo-html-render@2.2.0 \
+  --tarball /tmp/hr-package/paseo-html-render-3.0.0.tgz \
+  --npm-source npm:paseo-html-render@3.0.0 \
   --paseo "$(command -v paseo)" \
   --out /tmp/hr-smoke-npm
 ```

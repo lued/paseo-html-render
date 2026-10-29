@@ -1,5 +1,12 @@
 # T3 inline HTML → Paseo implementation quality
 
+> **3.0 note (2026-10-27).** The ratings below were taken on 2.1.0 with Paseo
+> 0.12. 3.0 keeps the same stdio adapter and bridge, but injects them at
+> `agent.session_open` under the key `html-render-v3` with versioned transport
+> files (`mcp-adapter-v3.mjs`, `bridge-v3.sock`, `bridge-v3.token`). Rows that
+> cite adapter freshness, `bridge.sock` or saved MCP config are historical until
+> re-verified; 3.0 evidence is in `docs/verification.md`.
+
 Inspected and re-verified 2026-10-21. This rates the **installed `html-render`
 plugin 2.1.0** built from this directory. **V1 is permanently retired and
 unregistered at user request.** The five-workspace canary methodology was retired

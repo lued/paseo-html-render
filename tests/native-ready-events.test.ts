@@ -91,6 +91,9 @@ test("native ready accepts complete transport from public progress/finish events
               missing: missing.el.textContent,
               progressMounted: !!progress.el.querySelector('[data-native-fixture]'),
               finishMounted: !!finish.el.querySelector('[data-native-fixture]'),
+              // A control-channel timeout must not tear down a frame that may
+              // already be showing the report, so the view stays mounted.
+              missingMounted: !!missing.el.querySelector('[data-native-fixture]'),
               acknowledgements: commands.filter(c => c.message.type === 'paseo-ack').map(c => ({
                 session: c.message.session, mid: c.message.mid, seq: c.message.seq
               })),
@@ -119,6 +122,9 @@ test("native ready accepts complete transport from public progress/finish events
   assert.equal(result.finishMounted, true);
   assert.doesNotMatch(result.progress + result.finish, /unavailable|Loading interactive report|handshake/i);
   assert.match(result.missing, /did not complete its ready handshake in time/);
+  assert.match(result.missing, /Stage: no page messages/, "the timeout names the failed transport stage");
+  assert.match(result.missing, /Counters: onMessage 0, fragment 0/, "the timeout reports safe transport counters");
+  assert.equal(result.missingMounted, true, "a timeout keeps the WebView mounted behind the banner");
   assert.deepEqual(result.probes, [result.missingSession], "shell load requests ready at most once and never substitutes for it");
   assert.deepEqual(result.acknowledgements.map((ack: any) => [ack.mid, ack.seq]), [[1, 0], [1, 0], [1, 0]]);
   assert.deepEqual(result.acknowledgements.map((ack: any) => ack.session), [...result.expectedSessions, result.expectedSessions[0]]);

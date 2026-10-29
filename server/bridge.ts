@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { BRIDGE_TOKEN_FILE, type PluginIdentity } from "../shared/identity.ts";
 import { BRIDGE_MAX_MESSAGE_BYTES } from "../shared/limits.ts";
 import { SELECTED_IDENTITY } from "../shared/selected-identity.ts";
-import { buildAdapterSource } from "./adapter-source.ts";
+import { buildAdapterSource, buildLegacyAdapterTombstone } from "./adapter-source.ts";
 import type { Authority } from "./authority.ts";
 import type { HtmlTools } from "./tools.ts";
 import { ToolError } from "./tools.ts";
@@ -131,18 +131,15 @@ export async function loadOrCreateBridgeToken(path: string): Promise<string> {
 
 /**
  * Local bridge between the per-agent MCP adapter process and the plugin daemon.
- * Authority comes from the adapter's cwd configured by the daemon at injection
- * time; a request can never name its own workspace.
+ * Authority comes from the adapter's cwd, which `agent.session_open` sets from
+ * the session it is opening; a request can never name its own workspace.
  *
- * The token is a durable per-install credential in the private data root, not a
- * per-process value. Paseo injects the token into an agent's MCP server
- * environment when that agent is created, and a plugin reload cannot rewrite
- * those environments. Persisting the token means adapters continue to
- * authenticate after a reload instead of failing with `Invalid bridge token`.
+ * The token remains in an owner-only file inside the private data root, so an
+ * adapter in a busy session can continue across plugin reloads. Session-open
+ * injection is launch-only: the credential never enters saved agent config.
  *
- * An explicit token is still accepted for tests and for a deliberate rotation.
- * The effective token is always written to the shared file so adapters that
- * re-read it cannot get out of sync with the running bridge.
+ * An explicit token is accepted for tests and deliberate rotation. The effective
+ * token is always written to the shared file, which adapters reread per call.
  */
 export async function startBridge(options: BridgeOptions, token?: string): Promise<Bridge> {
   const identity = options.identity ?? SELECTED_IDENTITY;
@@ -150,6 +147,7 @@ export async function startBridge(options: BridgeOptions, token?: string): Promi
   await fs.chmod(options.dataRoot, 0o700).catch(() => {});
   const socketPath = join(options.dataRoot, identity.socketFileName);
   const adapterPath = join(options.dataRoot, identity.adapterFileName);
+  const legacyAdapterPath = join(options.dataRoot, identity.legacyAdapterFileName);
   const tokenPath = join(options.dataRoot, BRIDGE_TOKEN_FILE);
   const bridgeToken = token ?? await loadOrCreateBridgeToken(tokenPath);
   if (token !== undefined) await writeBridgeToken(tokenPath, bridgeToken);
@@ -158,6 +156,9 @@ export async function startBridge(options: BridgeOptions, token?: string): Promi
   const adapterSource = buildAdapterSource(identity);
   const adapterHash = createHash("sha256").update(adapterSource).digest("hex");
   await writeAdapterSource(adapterPath, adapterSource);
+  // The retired 2.x adapter is replaced by a tombstone: a legacy agent record that
+  // still points at it must never reach this bridge with the old protocol.
+  await writeAdapterSource(legacyAdapterPath, buildLegacyAdapterTombstone(identity));
 
   const sockets = new Set<Socket>();
   const staleAdaptersLogged = new Set<string>();

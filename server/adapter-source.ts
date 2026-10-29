@@ -17,10 +17,12 @@ properties.graph.description += " Node ids must be unique; edge endpoints and de
 
 /**
  * Standalone MCP stdio adapter. The daemon writes this exact source into its
- * private data directory and injects it into newly created agents as a stdio
- * MCP server. It is deliberately dependency-free and does no rendering itself:
- * every tool call is forwarded to the daemon bridge over a unix socket, which
- * owns workspace authority, sandboxed rendering, and the artifact store.
+ * private data directory and contributes it at `agent.session_open` as a stdio
+ * MCP server for interactive sessions. The contribution is launch-only: Paseo
+ * never persists it into an agent record. The adapter is deliberately
+ * dependency-free and does no rendering itself: every tool call is forwarded to
+ * the daemon bridge over a unix socket, which owns workspace authority,
+ * sandboxed rendering, and the artifact store.
  *
  * Identity (marker, MCP server name, adapter env names, log tag) is injected as
  * explicit placeholders so the production and QA adapters cannot share tokens,
@@ -49,9 +51,9 @@ const bridgeToken = process.env[BRIDGE_ENV.token] || "";
 const callerCwd = process.env[BRIDGE_ENV.cwd] || "";
 const bridgeTokenFile = bridgePath ? join(dirname(bridgePath), BRIDGE_TOKEN_FILE) : "";
 
-// The token file is the source of truth so a plugin reload can rotate the
-// credential without stranding MCP adapters that were injected earlier. The
-// environment token remains the fallback for older installs and isolated tests.
+// The private token file is the source of truth so reload/rotation does not
+// strand an adapter in a busy session. Launch-only injection never saves this
+// credential in agent config; the environment is a fallback for isolated tests.
 function currentBridgeToken() {
   if (bridgeTokenFile) {
     try {
@@ -426,5 +428,106 @@ process.stdin.on("end", function () {
     .replace("__PASEO_SERVER_NAME__", () => JSON.stringify(identity.mcpServerName));
 }
 
-/** Production adapter source, unchanged for existing installs and tests. */
+/** Production adapter source, written by every bridge for the production identity. */
 export const ADAPTER_SOURCE = buildAdapterSource(PRODUCTION_IDENTITY);
+
+/**
+ * Retired 2.x adapter, written beside the current one so a legacy agent record
+ * that still points at `mcp-adapter-v1.mjs` cannot reach the 3.x bridge.
+ *
+ * A 2.x install left that file as a live bridge client speaking the old
+ * protocol. The daemon now overwrites it with this tombstone, which
+ *
+ * - names the retirement on stderr when a legacy agent spawns it,
+ * - completes `initialize` so the legacy agent still opens, and advertises no
+ *   tools, so a stale entry cannot shadow `html-render-v3`,
+ * - answers `tools/call` with an explicit migration error instead of a timeout.
+ *
+ * It imports nothing, reads no environment variable, opens no socket and cannot
+ * authenticate against the bridge. Keep this template free of backticks and
+ * `${` sequences.
+ */
+export function buildLegacyAdapterTombstone(identity: PluginIdentity): string {
+  return String.raw`const VERSION = __PASEO_ADAPTER_VERSION__;
+const SERVER_NAME = __PASEO_SERVER_NAME__;
+const LOG_TAG = __PASEO_LOG_TAG__;
+const RETIRED_FILE = __PASEO_LEGACY_FILE__;
+const MESSAGE =
+  "This agent still has the retired HTML Render 2.x MCP server in its saved configuration (" +
+  RETIRED_FILE + "), which cannot talk to the 3.x bridge. HTML Render 3.0 contributes server " +
+  SERVER_NAME + " at agent session open and never writes saved MCP configuration. Remove the saved " +
+  "\"html-render\" entry from this agent, or create a new agent, to get the current tools.";
+
+// stderr, once: daemon logs and device logcat show why this process is inert.
+process.stderr.write(LOG_TAG + " tombstone: " + MESSAGE + "\n");
+
+function send(message) {
+  process.stdout.write(JSON.stringify(message) + "\n");
+}
+
+async function handle(message) {
+  const id = message.id === undefined ? null : message.id;
+  if (message.method === "initialize") {
+    const requested = message.params && message.params.protocolVersion;
+    send({
+      jsonrpc: "2.0",
+      id: id,
+      result: {
+        protocolVersion: typeof requested === "string" ? requested : "2024-11-05",
+        capabilities: { tools: {} },
+        serverInfo: { name: "html-render-legacy-tombstone", version: VERSION },
+        instructions: MESSAGE,
+      },
+    });
+    return;
+  }
+  if (message.method === "ping") {
+    send({ jsonrpc: "2.0", id: id, result: {} });
+    return;
+  }
+  if (message.method === "tools/list") {
+    send({ jsonrpc: "2.0", id: id, result: { tools: [] } });
+    return;
+  }
+  if (message.method === "tools/call") {
+    send({ jsonrpc: "2.0", id: id, error: { code: -32603, message: MESSAGE } });
+    return;
+  }
+  if (typeof message.method === "string" && message.method.startsWith("notifications/")) {
+    return;
+  }
+  if (message.method === undefined) return;
+  send({ jsonrpc: "2.0", id: id, error: { code: -32601, message: "Method not found: " + message.method } });
+}
+
+let pending = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", function (chunk) {
+  pending += chunk;
+  let newline = pending.indexOf("\n");
+  while (newline !== -1) {
+    const line = pending.slice(0, newline).trim();
+    pending = pending.slice(newline + 1);
+    if (line) {
+      try {
+        const message = JSON.parse(line);
+        void handle(message);
+      } catch {
+        send({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } });
+      }
+    }
+    newline = pending.indexOf("\n");
+  }
+});
+process.stdin.on("end", function () {
+  process.exit(0);
+});
+`
+    .replace("__PASEO_ADAPTER_VERSION__", () => JSON.stringify(identity.adapterVersion))
+    .replace("__PASEO_SERVER_NAME__", () => JSON.stringify(identity.mcpServerName))
+    .replace("__PASEO_LOG_TAG__", () => JSON.stringify(identity.logTag))
+    .replace("__PASEO_LEGACY_FILE__", () => JSON.stringify(identity.legacyAdapterFileName));
+}
+
+/** Production tombstone source, written by every production bridge. */
+export const LEGACY_ADAPTER_TOMBSTONE = buildLegacyAdapterTombstone(PRODUCTION_IDENTITY);

@@ -34,6 +34,7 @@ import {
   isHtmlRenderToolName,
   isRenderToolRow,
 } from "../shared/recognize.ts";
+import { BRIDGE_TOKEN_FILE } from "../shared/identity.ts";
 import { SELECTED_IDENTITY } from "../shared/selected-identity.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -198,12 +199,19 @@ const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 
 const isObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** Only safe key names/booleans from the owned agent record. */
+/**
+ * Only safe key names/booleans from the owned agent record.
+ *
+ * 3.0 contributes the MCP server at `agent.session_open`, which is launch-only.
+ * The saved record must never contain the new key; a leftover 2.x `html-render`
+ * entry is reported, but it is historical state, not injection evidence.
+ */
 export function recordFacts(record, workspaceId, workspace, readError = null) {
   const config = isObject(record?.config) ? record.config : null;
   const mcp = isObject(config?.mcpServers) ? config.mcpServers : null;
   const names = mcp ? Object.keys(mcp).sort() : [];
   const entry = mcp?.[SELECTED_IDENTITY.mcpServerName];
+  const legacy = mcp?.["html-render"];
   return {
     found: Boolean(record),
     readError,
@@ -212,10 +220,62 @@ export function recordFacts(record, workspaceId, workspace, readError = null) {
     configKeys: record && config ? Object.keys(config).sort() : [],
     mcpServersKey: record ? Boolean(mcp) : null,
     mcpServerNames: names,
+    /** The launch-only 3.0 key: must stay false. */
     htmlRenderEntryObserved: record ? Boolean(entry) : null,
+    newKeyPersisted: record ? Boolean(entry) : null,
     htmlRenderType: typeof entry?.type === "string" ? entry.type : null,
     alwaysLoadObserved: entry ? entry.alwaysLoad === true : null,
-    injectionEvidence: entry ? "persisted-config" : "not-observed",
+    legacyKeyObserved: record ? Boolean(legacy) : null,
+    legacyKeyType: typeof legacy?.type === "string" ? legacy.type : null,
+    injectionEvidence: entry ? "persisted-config" : "not-persisted",
+  };
+}
+
+/**
+ * Parses the sanitized `session-open` log lines that are the only 3.0 injection
+ * evidence. Saved configuration cannot show a launch-only server, so this line
+ * is the proof; it must never contain the bridge token or a workspace path.
+ */
+const SESSION_OPEN_LINE =
+  /session-open result=(\S+) server=(\S+) transport=(\S+) alwaysLoad=(\S+) agent=(\S+) provider=(\S+) reason=(\S+) purpose=(\S+)/;
+
+export function sessionOpenFacts(entries, agentId, { token = "", workspace = "" } = {}) {
+  const lines = [];
+  let raw = "";
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    const message = String(entry?.message ?? entry?.text ?? "");
+    const match = SESSION_OPEN_LINE.exec(message);
+    if (!match) continue;
+    raw += message + "\n";
+    lines.push({
+      result: match[1],
+      server: match[2],
+      transport: match[3],
+      alwaysLoad: match[4] === "true",
+      agent: match[5],
+      provider: match[6],
+      reason: match[7],
+      purpose: match[8],
+    });
+  }
+  const injected = lines.find((line) => line.result === "injected" && line.agent === agentId);
+  return {
+    observed: Boolean(injected),
+    lineCount: lines.length,
+    server: injected?.server ?? null,
+    transport: injected?.transport ?? null,
+    alwaysLoad: injected?.alwaysLoad === true,
+    agentMatches: Boolean(injected),
+    provider: injected?.provider ?? null,
+    reason: injected?.reason ?? null,
+    purpose: injected?.purpose ?? null,
+    // A single sanitized line must not leak the credential, the token variable
+    // name, the private token file or the workspace path.
+    sanitized: lines.length > 0 &&
+      !raw.includes("PASEO_HTML_RENDER_TOKEN") &&
+      !raw.includes(BRIDGE_TOKEN_FILE) &&
+      !(token && raw.includes(token)) &&
+      !(workspace && raw.includes(workspace)),
   };
 }
 
@@ -513,6 +573,8 @@ export async function runProtectedAcceptance(options = {}) {
   const dataRoot = join(home, "plugin-data", SELECTED_IDENTITY.dataDirName);
   const socketPath = join(dataRoot, SELECTED_IDENTITY.socketFileName);
   const adapterPath = join(dataRoot, SELECTED_IDENTITY.adapterFileName);
+  const legacyAdapterPath = join(dataRoot, SELECTED_IDENTITY.legacyAdapterFileName);
+  const tokenPath = join(dataRoot, BRIDGE_TOKEN_FILE);
   const socketBudget = unixSocketPathBudget(socketPath);
   const offerPath = join(workRoot, "offer.txt");
   const authLinksPath = join(workRoot, "auth-links.json");
@@ -559,6 +621,7 @@ export async function runProtectedAcceptance(options = {}) {
       socketPathLimit: socketBudget.maxBytes,
     },
     bridge: {},
+    sessionOpen: {},
     agentRuntime: {},
     toolCall: {},
     artifact: {},
@@ -652,7 +715,7 @@ export async function runProtectedAcceptance(options = {}) {
 
     result.stage = "bridge_ready";
     const bridgeFailureLogged = installed.logs.some((entry) =>
-      /bridge failed to start|bridge\.sock.*(?:EINVAL|ENAMETOOLONG|EADDRINUSE)|EINVAL.*bridge/i
+      /bridge failed to start|bridge-v3\.sock.*(?:EINVAL|ENAMETOOLONG|EADDRINUSE)|EINVAL.*bridge/i
         .test(String(entry.message ?? entry.text ?? "")));
     let socketPresent = false;
     let socketIsSocket = false;
@@ -677,6 +740,25 @@ export async function runProtectedAcceptance(options = {}) {
       adapterHash = createHash("sha256").update(actual).digest("hex");
     } catch { /* facts below fail closed */ }
     const adapterHashMatches = Boolean(adapterHash && expectedAdapterHash && adapterHash === expectedAdapterHash);
+    // The private credential file remains part of the transport contract; it is
+    // owner-only and never part of saved agent configuration.
+    let tokenFilePresent = false;
+    let tokenFileMode = null;
+    let tokenFileBytes = null;
+    let token = "";
+    try {
+      const info = await fs.stat(tokenPath);
+      tokenFilePresent = info.isFile();
+      tokenFileMode = (info.mode & 0o777).toString(8).padStart(3, "0");
+      token = (await fs.readFile(tokenPath, "utf8")).trim();
+      tokenFileBytes = Buffer.byteLength(token, "utf8");
+    } catch { /* facts below fail closed */ }
+    let legacyTombstonePresent = false;
+    try {
+      const legacy = await fs.readFile(legacyAdapterPath, "utf8");
+      legacyTombstonePresent = legacy.includes("html-render-legacy-tombstone") && !legacy.includes("node:net");
+    } catch { /* facts below fail closed */ }
+    const tokenFileHealthy = tokenFilePresent && tokenFileMode === "0600" && /^[0-9a-f]{64}$/.test(token);
     result.bridge = {
       pluginReady: true,
       bridgeFailureLogged,
@@ -689,7 +771,14 @@ export async function runProtectedAcceptance(options = {}) {
       adapterHash,
       expectedAdapterHash,
       adapterVersion: SELECTED_IDENTITY.adapterVersion,
-      ready: !bridgeFailureLogged && socketPresent && socketIsSocket && adapterPresent && adapterHashMatches,
+      fileName: SELECTED_IDENTITY.adapterFileName,
+      legacyAdapterFileName: SELECTED_IDENTITY.legacyAdapterFileName,
+      legacyTombstonePresent,
+      tokenFilePresent,
+      tokenFileMode,
+      tokenFileBytes,
+      ready: !bridgeFailureLogged && socketPresent && socketIsSocket && adapterPresent &&
+        adapterHashMatches && legacyTombstonePresent && tokenFileHealthy,
     };
     await writePrivateJson(join(outDir, "bridge-facts.json"), result.bridge);
     if (bridgeFailureLogged) {
@@ -700,6 +789,12 @@ export async function runProtectedAcceptance(options = {}) {
     }
     if (!adapterPresent || !adapterHashMatches) {
       throw new Error("fixture MCP adapter source is missing or does not match the current build; refusing to run a paid agent");
+    }
+    if (!legacyTombstonePresent) {
+      throw new Error("fixture retired 2.x adapter is not a tombstone; a legacy agent could reach the 3.x bridge");
+    }
+    if (!tokenFileHealthy) {
+      throw new Error(`fixture private bridge token file is unhealthy (present=${tokenFilePresent}, mode=${tokenFileMode}, bytes=${tokenFileBytes})`);
     }
     await writePrivateJson(join(outDir, "bridge-facts.json"), result.bridge);
 
@@ -749,6 +844,26 @@ export async function runProtectedAcceptance(options = {}) {
     result.stage = "agent_runtime_facts";
     const recordRead = await readAgentRecord(home, agentId, workspace);
     const facts = recordFacts(recordRead.record, workspaceId, workspace, recordRead.error);
+    const recordText = JSON.stringify(recordRead.record ?? null);
+    const recordTokenLeak = Boolean(
+      (token && recordText.includes(token)) ||
+      recordText.includes(SELECTED_IDENTITY.bridgeEnv.token) ||
+      recordText.includes(BRIDGE_TOKEN_FILE)
+    );
+    // The launch-only contribution must never reach saved configuration. This
+    // check runs before the session-open evidence so a regression names the leak.
+    if (facts.newKeyPersisted) {
+      throw new Error(`saved agent record contains the launch-only MCP key ${SELECTED_IDENTITY.mcpServerName}`);
+    }
+    if (recordTokenLeak) {
+      throw new Error("saved agent record contains the private bridge credential or its launch environment");
+    }
+    const runtimeLogs = await paseo(
+      paseoBin, home, ["plugin", "--home", home, "logs", "html-render", "--json"], env, 30_000,
+    );
+    if (runtimeLogs.code !== 0) throw new Error("fixture could not read plugin logs for session-open evidence");
+    const sessionOpen = sessionOpenFacts(JSON.parse(runtimeLogs.stdout), agentId, { token, workspace });
+    result.sessionOpen = sessionOpen;
     result.agentRuntime = {
       serverId: result.serverId,
       agentId,
@@ -757,8 +872,20 @@ export async function runProtectedAcceptance(options = {}) {
       daemonVersion: result.daemonVersion,
       authPreflight: result.authPreflight,
       record: facts,
+      recordTokenLeak,
+      sessionOpen,
     };
     await writePrivateJson(join(outDir, "agent-runtime-facts.json"), result.agentRuntime);
+    if (!sessionOpen.observed) {
+      throw new Error("no sanitized session-open injection line for the fixture agent; the launch-only server was not observed");
+    }
+    if (sessionOpen.server !== SELECTED_IDENTITY.mcpServerName ||
+        sessionOpen.transport !== "stdio" || sessionOpen.alwaysLoad !== true) {
+      throw new Error(`unexpected session-open evidence: ${JSON.stringify(sessionOpen)}`);
+    }
+    if (!sessionOpen.sanitized) {
+      throw new Error("session-open evidence leaked the credential, token file or workspace path");
+    }
 
     result.stage = "tool_evidence";
     const timelineItems = await mods.fetchAgentTimelineItems(client, agentId, { timeoutMs: 30_000 });

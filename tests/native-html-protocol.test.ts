@@ -7,13 +7,25 @@ import {
   NATIVE_MAX_CHUNK_CHARS,
   NATIVE_MAX_CHUNKS,
   NATIVE_MAX_ENCODED_CHARS,
+  NATIVE_MAX_BRIDGE_CHARS,
+  NATIVE_MAX_TITLE_CHARS,
+  NATIVE_MAX_URL_CHARS,
   NATIVE_P2N_PREFIX,
   NATIVE_SHELL_CSP,
+  NATIVE_TITLE_ERROR_PREFIX,
+  NATIVE_TITLE_PREFIX,
+  NATIVE_TRANSPORT_COUNTERS,
   NATIVE_WEBVIEW_SECURITY_PROPS,
   NativeChunkAssembler,
   buildNativeShellDocument,
   decodeNativeTransportMessage,
+  nativeReadyTimeoutMessage,
+  nativeTransportStage,
+  nativeTransportStageLabel,
+  parseNativeBridgeMessage,
+  parseNativeErrorTitle,
   parseNativeErrorUrl,
+  parseNativeTitle,
   isUsableDocumentFrame,
   nativeDocumentKey,
   parseNativeTransportUrl,
@@ -24,12 +36,20 @@ import {
   nativeMountErrorMessage,
 } from "../client/native-html-protocol.ts";
 import { MAX_INTERACTIVE_HTML_BYTES } from "../shared/limits.ts";
+import {
+  DEFAULT_HTML_DOCUMENT_COLORS,
+  buildDocumentTheme,
+  buildLiveDocument,
+  readReadyMessage,
+} from "../shared/html-document.ts";
 
 const SESSION = "0123456789abcdef";
 const URL_BASE = "about:blank";
 
 test("raw WebView security invariants reject bridge/cache/cookie clearing", () => {
-  assert.equal(NATIVE_WEBVIEW_SECURITY_PROPS.messagingEnabled, false);
+  // onMessage is the primary page->native channel, so the bridge must be on for
+  // the constant trusted shell, and nothing else may be loosened.
+  assert.equal(NATIVE_WEBVIEW_SECURITY_PROPS.messagingEnabled, true);
   assert.equal(NATIVE_WEBVIEW_SECURITY_PROPS.javaScriptEnabled, true);
   for (const forbidden of [
     "incognito",
@@ -44,9 +64,12 @@ test("raw WebView security invariants reject bridge/cache/cookie clearing", () =
     assert.equal(forbidden in NATIVE_WEBVIEW_SECURITY_PROPS, false, `${forbidden} must not be set on the WebView`);
   }
   const source = readFileSync(join(process.cwd(), "client", "native-html-frame.tsx"), "utf8");
-  for (const forbidden of ["incognito", "cacheEnabled", "clearCache", "clearHistory", "CookieManager", "removeAllCookies", "onMessage:", "onShouldStartLoadWithRequest"]) {
+  for (const forbidden of ["incognito", "cacheEnabled", "clearCache", "clearHistory", "CookieManager", "removeAllCookies", "onShouldStartLoadWithRequest"]) {
     assert.equal(source.includes(forbidden), false, `${forbidden} must not appear in the native frame`);
   }
+  // The bridge is wired exactly once, to the strict receiver, for the trusted shell.
+  assert.equal(source.match(/onMessage:/g)?.length, 1, "the frame wires one onMessage handler");
+  assert.match(source, /onMessage: handleBridgeMessage/);
   assert.equal(isUsableDocumentFrame(null), false);
   assert.equal(isUsableDocumentFrame({}), false);
   assert.equal(isUsableDocumentFrame(() => null), true);
@@ -292,4 +315,257 @@ test("complete fragment URL stays below the 65,536-char cap", () => {
   assert.equal(chunks[0]!.length, NATIVE_MAX_CHUNK_CHARS);
   const url = chunkUrl(0, chunks.length, chunks[0]!, SESSION, 1);
   assert.ok(url.length <= 65_536, `fragment URL is ${url.length} chars`);
+});
+
+function bridgePayload(input: {
+  mid?: unknown;
+  seq?: unknown;
+  total?: unknown;
+  data?: unknown;
+  session?: unknown;
+  type?: unknown;
+} = {}): string {
+  return JSON.stringify({
+    type: "paseo-p2n",
+    session: SESSION,
+    mid: 1,
+    seq: 0,
+    total: 1,
+    data: encodeURIComponent(JSON.stringify({ jsonrpc: "2.0", method: "ui/notifications/ready", params: { version: 1 } })),
+    ...input,
+  });
+}
+
+test("onMessage bridge payloads parse with the same strict bounds as fragments", () => {
+  const ok = parseNativeBridgeMessage(bridgePayload(), SESSION);
+  assert.equal(ok?.ok, true);
+  const data = encodeURIComponent(JSON.stringify({ value: 1 }));
+  const parsed = parseNativeBridgeMessage(bridgePayload({ data }), SESSION);
+  assert.deepEqual(parsed?.chunk, { messageId: 1, sequence: 0, total: 1, data }, "bridge and fragment share one chunk shape");
+
+  // Non-envelopes are ignored, never treated as transport failures.
+  assert.equal(parseNativeBridgeMessage(undefined, SESSION), undefined);
+  assert.equal(parseNativeBridgeMessage({ type: "paseo-p2n" }, SESSION), undefined);
+  assert.equal(parseNativeBridgeMessage("", SESSION), undefined);
+  assert.equal(parseNativeBridgeMessage("not json", SESSION), undefined);
+  assert.equal(parseNativeBridgeMessage("null", SESSION), undefined);
+  assert.equal(parseNativeBridgeMessage("[]", SESSION), undefined);
+  assert.equal(parseNativeBridgeMessage(JSON.stringify({ type: "other" }), SESSION), undefined);
+  assert.equal(parseNativeBridgeMessage(bridgePayload({ type: "paseo-ack" }), SESSION), undefined);
+  // Another mount's session is stale, not a failure.
+  const stale = parseNativeBridgeMessage(bridgePayload({ session: "other" }), SESSION);
+  assert.equal(stale?.ok, false);
+  assert.equal(stale?.stale, true);
+
+  // Envelopes that claim the type but violate bounds are rejected.
+  assert.equal(parseNativeBridgeMessage(bridgePayload({ mid: 0 }), SESSION)?.ok, false);
+  assert.equal(parseNativeBridgeMessage(bridgePayload({ mid: "1" }), SESSION)?.ok, true, "numeric strings stay canonical");
+  assert.equal(parseNativeBridgeMessage(bridgePayload({ mid: "01" }), SESSION)?.ok, false);
+  assert.equal(parseNativeBridgeMessage(bridgePayload({ mid: 1.5 }), SESSION)?.ok, false);
+  assert.equal(parseNativeBridgeMessage(bridgePayload({ total: 0 }), SESSION)?.ok, false);
+  assert.equal(parseNativeBridgeMessage(bridgePayload({ total: NATIVE_MAX_CHUNKS + 1 }), SESSION)?.ok, false);
+  assert.equal(parseNativeBridgeMessage(bridgePayload({ seq: 1 }), SESSION)?.ok, false);
+  assert.equal(parseNativeBridgeMessage(bridgePayload({ seq: "0" }), SESSION)?.ok, true);
+  assert.equal(parseNativeBridgeMessage(bridgePayload({ data: undefined }), SESSION)?.ok, false);
+  assert.equal(parseNativeBridgeMessage(bridgePayload({ data: "x".repeat(NATIVE_MAX_CHUNK_CHARS + 1) }), SESSION)?.ok, false);
+  assert.equal(parseNativeBridgeMessage(bridgePayload({ data: "<bad>" }), SESSION)?.ok, false);
+  assert.equal(parseNativeBridgeMessage(bridgePayload({ data: "a%2Fb%2Bc%3D" }), SESSION)?.ok, true, "encoded base64 padding stays valid");
+});
+
+test("oversized bridge look-alikes are rejected and foreign junk is ignored", () => {
+  const oversized = bridgePayload({ data: "A".repeat(NATIVE_MAX_BRIDGE_CHARS) });
+  assert.ok(oversized.length > NATIVE_MAX_BRIDGE_CHARS);
+  const rejected = parseNativeBridgeMessage(oversized, SESSION);
+  assert.equal(rejected?.ok, false);
+  assert.match(String(rejected?.error), /too long/);
+  const foreign = "x".repeat(NATIVE_MAX_BRIDGE_CHARS + 10);
+  assert.equal(parseNativeBridgeMessage(foreign, SESSION), undefined);
+});
+
+test("a bridge chunk and its fragment fallback complete exactly one message", () => {
+  const message = { jsonrpc: "2.0", method: "ui/notifications/ready", params: { version: 1 } };
+  const encoded = encodeURIComponent(JSON.stringify(message));
+  const bridge = parseNativeBridgeMessage(bridgePayload({ data: encoded }), SESSION);
+  const fragment = parseNativeTransportUrl(chunkUrl(0, 1, encoded), SESSION);
+  assert.ok(bridge?.chunk && fragment?.chunk);
+  assert.deepEqual(bridge.chunk, fragment.chunk, "both channels carry the same chunk identity");
+
+  const assembler = new NativeChunkAssembler(SESSION);
+  assert.equal(assembler.push(bridge.chunk).ok, true);
+  const duplicate = assembler.push(fragment.chunk);
+  assert.equal(duplicate.ok && duplicate.duplicate === true, true, "cross-channel duplicate is acked, not reapplied");
+  assert.equal(assembler.complete, true);
+  const decoded = decodeNativeTransportMessage(assembler.takeEncoded()!);
+  assert.equal(decoded.ok, true);
+  assert.equal(readReadyMessage(decoded.value), true);
+});
+
+test("ready timeout diagnostics name the failed stage with safe counters only", () => {
+  const zero = NATIVE_TRANSPORT_COUNTERS;
+  assert.equal(nativeTransportStage(zero), "no-page-messages");
+  assert.equal(nativeTransportStageLabel("no-page-messages"), "no page messages");
+  const noMessages = nativeReadyTimeoutMessage(zero);
+  assert.match(noMessages, /did not complete its ready handshake in time/);
+  assert.match(noMessages, /Stage: no page messages/);
+  assert.match(noMessages, /onMessage 0, fragment 0, chunks 0, messages 0, probes 0, rejected 0/);
+
+  assert.equal(
+    nativeTransportStage({ ...zero, fragments: 4, chunks: 4, messages: 3, probes: 1 }),
+    "chunks-without-ready",
+    "decoded messages that never included ready point at the ready path",
+  );
+  assert.equal(
+    nativeTransportStage({ ...zero, pageMessages: 2, chunks: 2, probes: 1, messagesSinceProbe: 0 }),
+    "probe-unanswered",
+    "traffic that stopped answering the probe points at page->native delivery",
+  );
+  assert.equal(
+    nativeTransportStage({ ...zero, pageMessages: 3, chunks: 3, messagesSinceProbe: 2, probes: 1 }),
+    "no-ready-handshake",
+    "partial chunks with no completed message stay generic",
+  );
+  const labelled = nativeReadyTimeoutMessage({
+    ...zero,
+    pageMessages: 9,
+    fragments: 2,
+    chunks: 11,
+    messages: 4,
+    probes: 1,
+    messagesSinceProbe: 0,
+    rejected: 1,
+  });
+  assert.match(labelled, /Stage: chunks without ready/);
+  assert.match(labelled, /onMessage 9, fragment 2, chunks 11, messages 4, probes 1, rejected 1/);
+  assert.equal(/https?:|data:|#paseo|session/i.test(labelled), false, "diagnostics never echo URLs, payloads or sessions");
+});
+
+test("the trusted shell sends every chunk on the bridge, as a fragment URL and as the document title", () => {
+  const shell = buildNativeShellDocument(buildLiveDocument({
+    html: "<p>bridge</p>",
+    title: "Bridge",
+    theme: buildDocumentTheme(DEFAULT_HTML_DOCUMENT_COLORS.dark, "dark"),
+  }), SESSION);
+  assert.match(shell, /window\.ReactNativeWebView/);
+  assert.match(shell, /type:"paseo-p2n"/);
+  assert.match(shell, /bridge\.postMessage/);
+  // Android's RNCWebView routes bridge messages to its own JS router, which a
+  // raw mount never hears, so the bridge is never the only copy of a chunk.
+  assert.match(
+    shell,
+    /deliver\("bridge"\);\s*deliverTitle\(\);\s*deliver\("fragment"\);/,
+    "every carrier gets every chunk, with the title set immediately before the navigation",
+  );
+  assert.match(shell, /deliver\("bridge"\);deliverTitle\(\);deliver\("fragment"\);/, "the ack retry resends all carriers");
+  assert.match(shell, /document\.title=value/, "the title carrier assigns the bounded payload");
+  assert.match(shell, /if\(value\.length>TITLEMAX\)/, "the title is bounds-checked before assignment");
+  assert.match(shell, /TITLEMAX=4000/, "the shell knows the conservative title budget");
+  assert.match(shell, /"paseo-p2n-title:"/, "the title payload is transport-prefixed");
+  assert.match(shell, /paseo-error-title:/, "failure markers travel on the title too");
+  // Android WebView reports a committed same-document replace through
+  // doUpdateVisitedHistory, so the fragment needs no growing history.
+  assert.match(shell, /location\.replace\("#paseo-p2n="/, "the fragment channel is built");
+  assert.doesNotMatch(shell, /pushState/);
+  assert.doesNotMatch(shell, /bridgePreferred/);
+  assert.doesNotMatch(shell, /allow-same-origin/);
+});
+
+test("title carrier shares the strict chunk identity, bounds and stale handling", () => {
+  const message = { jsonrpc: "2.0", method: "ui/notifications/ready", params: { version: 1 } };
+  const data = encodeURIComponent(JSON.stringify(message));
+  const title = `${NATIVE_TITLE_PREFIX}${SESSION},1,0,1,${data}`;
+  const parsed = parseNativeTitle(title, SESSION);
+  assert.equal(parsed?.ok, true);
+  const fromUrl = parseNativeTransportUrl(chunkUrl(0, 1, data), SESSION);
+  assert.deepEqual(parsed!.chunk, fromUrl!.chunk, "both carriers describe the same chunk");
+  assert.equal(parseNativeTitle(`${title};r=2`, SESSION)?.ok, true, "a bounded retry suffix is not message data");
+  assert.equal(parseNativeTitle(`${title};r=0`, SESSION)?.ok, false);
+
+  // Unrelated titles are ignored, never rejected.
+  for (const unrelated of ["Interactive HTML", "", "Paseo", 42, null, undefined, { title: "x" }]) {
+    assert.equal(parseNativeTitle(unrelated, SESSION), undefined);
+  }
+  assert.equal(parseNativeTitle(`${NATIVE_TITLE_PREFIX}x`, SESSION)?.ok, false);
+  assert.equal(parseNativeTitle(`${NATIVE_TITLE_PREFIX}${SESSION},0,0,1,${data}`, SESSION)?.ok, false);
+  assert.equal(parseNativeTitle(`${NATIVE_TITLE_PREFIX}${SESSION},1,0,1,<bad>`, SESSION)?.ok, false);
+  assert.equal(parseNativeTitle(`${NATIVE_TITLE_PREFIX}${SESSION},1,0,1,${data}`, "other-session-0001")?.stale, true);
+
+  // Over-budget titles: ours is rejected, someone else's is ignored.
+  const overBudget = `${NATIVE_TITLE_PREFIX}${SESSION},1,0,1,${"A".repeat(NATIVE_MAX_TITLE_CHARS)}`;
+  assert.ok(overBudget.length > NATIVE_MAX_TITLE_CHARS);
+  assert.equal(parseNativeTitle(overBudget, SESSION)?.ok, false);
+  assert.match(parseNativeTitle(overBudget, SESSION)?.error ?? "", /too long/);
+  assert.equal(parseNativeTitle("A".repeat(NATIVE_MAX_TITLE_CHARS + 1), SESSION), undefined);
+
+  assert.equal(parseNativeErrorTitle(`${NATIVE_TITLE_ERROR_PREFIX}ack-timeout`), "ack-timeout");
+  assert.equal(parseNativeErrorTitle(`${NATIVE_TITLE_ERROR_PREFIX}${"x".repeat(41)}`), "invalid");
+  assert.equal(parseNativeErrorTitle("Interactive HTML"), undefined);
+  assert.equal(parseNativeErrorTitle(undefined), undefined);
+});
+
+test("one title chunk plus the worst-case header fits under the Chromium title cap", () => {
+  const maxSession = "a".repeat(64);
+  // The shell allows message ids up to 1e9 and chunk counts up to NATIVE_MAX_CHUNKS.
+  const worst = `${NATIVE_TITLE_PREFIX}${maxSession},1000000000,${NATIVE_MAX_CHUNKS - 1},${NATIVE_MAX_CHUNKS},${ "A".repeat(NATIVE_MAX_CHUNK_CHARS)};r=9999`;
+  assert.ok(worst.length < NATIVE_MAX_TITLE_CHARS, `${worst.length} chars must stay under ${NATIVE_MAX_TITLE_CHARS}`);
+  assert.ok(worst.length < 4096, "Chromium kills the renderer above kMaxTitleChars");
+  // A canonical nine-digit id still parses at that length.
+  const canonical = `${NATIVE_TITLE_PREFIX}${maxSession},999999999,${NATIVE_MAX_CHUNKS - 1},${NATIVE_MAX_CHUNKS},${ "A".repeat(NATIVE_MAX_CHUNK_CHARS)};r=9999`;
+  assert.equal(parseNativeTitle(canonical, "a".repeat(64))?.ok, true);
+});
+
+test("multi-chunk images reassemble through titles that each stay under the title cap", () => {
+  const message = {
+    jsonrpc: "2.0",
+    method: "ui/open-image",
+    params: { src: `data:image/png;base64,${"B".repeat(NATIVE_MAX_CHUNK_CHARS * 2 + 500)}`, name: "shot" },
+  };
+  const encoded = encodeURIComponent(JSON.stringify(message));
+  const total = Math.ceil(encoded.length / NATIVE_MAX_CHUNK_CHARS);
+  assert.ok(total > 2, "the fixture spans several titles");
+  const assembler = new NativeChunkAssembler(SESSION);
+  for (let index = 0; index < total; index += 1) {
+    const title = `${NATIVE_TITLE_PREFIX}${SESSION},1,${index},${total},${encoded.slice(index * NATIVE_MAX_CHUNK_CHARS, (index + 1) * NATIVE_MAX_CHUNK_CHARS)}`;
+    assert.ok(title.length <= NATIVE_MAX_TITLE_CHARS, "title " + index + " is " + title.length + " chars");
+    const parsed = parseNativeTitle(title, SESSION);
+    assert.equal(parsed?.ok, true);
+    assert.equal(assembler.push(parsed!.chunk!).ok, true);
+  }
+  assert.equal(assembler.complete, true);
+  const decoded = decodeNativeTransportMessage(assembler.takeEncoded()!);
+  assert.equal(decoded.ok, true);
+  assert.deepEqual(decoded.value, message);
+});
+
+test("oversized unrelated navigation URLs are ignored while transport envelopes stay rejected", () => {
+  // The original data: URL of an html source is the URL Android reports for
+  // every commit in a loadDataWithBaseURL document, so it must never fail the
+  // control channel even when it is larger than the URL cap.
+  const originalDataUrl = `data:text/html;charset=utf-8;base64,${Buffer.from("x".repeat(NATIVE_MAX_URL_CHARS)).toString("base64")}`;
+  assert.ok(originalDataUrl.length > NATIVE_MAX_URL_CHARS);
+  assert.equal(parseNativeTransportUrl(originalDataUrl, SESSION), undefined);
+  assert.equal(parseNativeTransportUrl(`https://example.test/${ "a".repeat(NATIVE_MAX_URL_CHARS)}`, SESSION), undefined);
+  assert.equal(parseNativeTransportUrl(undefined, SESSION), undefined);
+
+  const oversizeEnvelope = `${originalDataUrl}${NATIVE_P2N_PREFIX}${SESSION},1,0,1,AAAA`;
+  assert.equal(parseNativeTransportUrl(oversizeEnvelope, SESSION)?.ok, false);
+  assert.match(parseNativeTransportUrl(oversizeEnvelope, SESSION)?.error ?? "", /too long/);
+});
+
+test("title-only traffic names its own stage and still reports safe counters", () => {
+  const zero = NATIVE_TRANSPORT_COUNTERS;
+  assert.equal(nativeTransportStage({ ...zero, titles: 3, chunks: 3, probes: 1 }), "title-only");
+  assert.equal(nativeTransportStageLabel("title-only"), "titles without bridge or fragment");
+  assert.equal(
+    nativeTransportStage({ ...zero, titles: 1, fragments: 2, chunks: 3, messages: 1 }),
+    "chunks-without-ready",
+    "a decoded message still wins over carrier naming",
+  );
+  const message = nativeReadyTimeoutMessage({
+    ...zero, titles: 4, chunks: 4, probes: 1,
+    navigationEvents: 7, navigationHashEvents: 0, lastTitleChars: 205,
+  });
+  assert.match(message, /Stage: titles without bridge or fragment/);
+  assert.match(message, /Counters: onMessage 0, fragment 0, chunks 4, messages 0, probes 1, rejected 0, titles 4\./);
+  assert.match(message, /Native events 7, URL hash events 0, last title chars 205\./);
+  assert.equal(/https?:|data:|#paseo|paseo-p2n-title|session/i.test(message), false, "no URL, title or payload is echoed");
 });

@@ -12,7 +12,8 @@ import { loadOrCreateBridgeToken, startBridge, type Bridge } from "../server/bri
 import { createRenderer } from "../server/renderer.ts";
 import { createHtmlTools } from "../server/tools.ts";
 import { createTurnGuard, GUARD_UNATTRIBUTED_WARNING } from "../server/turn-guard.ts";
-import { ADAPTER_SOURCE } from "../server/adapter-source.ts";
+import { ADAPTER_SOURCE, LEGACY_ADAPTER_TOMBSTONE } from "../server/adapter-source.ts";
+import { BRIDGE_TOKEN_FILE, PRODUCTION_IDENTITY } from "../shared/identity.ts";
 import { POLICY_SUMMARY, POLICY_SUMMARY_MAX_CHARS } from "../shared/policy.ts";
 import { decodeReportReference } from "../shared/recognize.ts";
 
@@ -43,7 +44,7 @@ class Adapter {
   private nextId = 1;
   private readonly pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void }>();
 
-  constructor(env: Record<string, string>, adapterPath = join(dataRoot, "mcp-adapter-v1.mjs")) {
+  constructor(env: Record<string, string>, adapterPath = join(dataRoot, PRODUCTION_IDENTITY.adapterFileName)) {
     this.child = spawn(process.execPath, [adapterPath], {
       env: { ...process.env, ...env },
       stdio: ["pipe", "pipe", "pipe"],
@@ -131,7 +132,7 @@ test("adapter initializes and advertises the T3-shaped render tools", async () =
       clientInfo: { name: "test", version: "1" },
     })) as { protocolVersion: string; serverInfo: { name: string; version?: string }; instructions?: string };
     assert.equal(init.protocolVersion, "2024-11-05");
-    assert.equal(init.serverInfo.name, "html-render");
+    assert.equal(init.serverInfo.name, PRODUCTION_IDENTITY.mcpServerName);
     assert.equal(init.serverInfo.version, bridge.adapterVersion);
     // pi keeps only the first line of the instructions and caps it at 250
     // characters, so the adapter must expose the shared summary verbatim.
@@ -364,7 +365,7 @@ test("the bridge token persists across reloads and stale adapters recover from t
 
 test("a malformed shared token file is replaced with a valid 0600 token", async () => {
   const root = await fs.mkdtemp(join(tmpdir(), "hr-token-bad-"));
-  const tokenPath = join(root, "bridge.token");
+  const tokenPath = join(root, BRIDGE_TOKEN_FILE);
   try {
     await fs.writeFile(tokenPath, "not-a-token\n", { mode: 0o600 });
     const token = await loadOrCreateBridgeToken(tokenPath);
@@ -585,5 +586,41 @@ test("adapter writes are atomic and unchanged source keeps its inode", async () 
     if (first) await first.close().catch(() => {});
     if (second) await second.close().catch(() => {});
     await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("the retired 2.x adapter is a tombstone that cannot reach the bridge", async () => {
+  const legacyPath = join(dataRoot, PRODUCTION_IDENTITY.legacyAdapterFileName);
+  assert.notEqual(legacyPath, bridge.adapterPath);
+  assert.equal((await fs.stat(legacyPath)).mode & 0o777, 0o600);
+  assert.equal(await fs.readFile(legacyPath, "utf8"), LEGACY_ADAPTER_TOMBSTONE);
+
+  // A legacy agent record still spawns this file. It must open (so the agent is
+  // not stuck) while advertising no tools that could shadow html-render-v3.
+  const retired = new Adapter(
+    {
+      PASEO_HTML_RENDER_BRIDGE: bridge.socketPath,
+      PASEO_HTML_RENDER_TOKEN: bridge.token,
+      PASEO_HTML_RENDER_CWD: workspace,
+    },
+    legacyPath,
+  );
+  try {
+    const init = (await retired.request("initialize", {
+      protocolVersion: "2024-11-05",
+      capabilities: {},
+      clientInfo: { name: "legacy", version: "2.2.0" },
+    })) as { serverInfo: { name: string; version: string }; instructions: string };
+    assert.equal(init.serverInfo.name, "html-render-legacy-tombstone");
+    assert.equal(init.serverInfo.version, PRODUCTION_IDENTITY.adapterVersion);
+    assert.match(init.instructions, /retired HTML Render 2\.x MCP server/);
+    assert.match(init.instructions, new RegExp(PRODUCTION_IDENTITY.legacyAdapterFileName.replace(/\./g, "\\.")));
+    assert.deepEqual((await retired.request("tools/list", {})) as { tools: unknown[] }, { tools: [] });
+    await assert.rejects(
+      () => retired.request("tools/call", { name: "html_render", arguments: {} }),
+      /retired HTML Render 2\.x MCP server/,
+    );
+  } finally {
+    retired.close();
   }
 });

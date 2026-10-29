@@ -1,8 +1,151 @@
 # Verification and release evidence
 
-Updated: 2026-10-27. Candidate: **paseo-html-render 2.2.0**, plugin id
-`html-render`. This is a staged release record, not a claim that npm publication
-or live client acceptance has finished. Historical `v2.1.0` stays unchanged.
+Updated: 2026-10-29. Candidate: **paseo-html-render 3.0.0**, plugin id
+`html-render`, MCP key `html-render-v3`. This is a staged release record, not a
+claim that npm publication or live client acceptance has finished. Historical
+`v2.1.0` stays unchanged. Everything after the 3.0 section is **pre-0.14
+historical evidence** for the unpublished 2.2.0 candidate (Paseo 0.12/0.13,
+`agent.create` injection, `bridge.sock`); it does not describe 3.0.
+
+## 3.0.0 on Paseo 0.14 (2026-10-28)
+
+Local gates on branch `feat/v0.14-migration`, Node 26.13.0, each bounded by
+`timeout 600`:
+
+| Gate | Result |
+| --- | --- |
+| `npm run typecheck` | pass |
+| `npm test` | 310/310 pass, 104 s |
+| `npm run check:bundles` | pass: client `es2020`, server `node20`, explicit SDK externals, Pele server-only |
+| `npm run check:package` | pass: 74 entries, 43 required files, 0 forbidden; sha256 `1c4baf58…7997` (commit `1546ca7`) |
+| `npm run smoke:package` (CLI/daemon 0.14.0-beta.2, isolated home) | pass: session-open line `injected server=html-render-v3 transport=stdio alwaysLoad=true reason=create purpose=interactive`; saved record without the v3 key or token; token file 0600; tombstone present; adapter `initialize`/`tools/list`/`html_preview`/`html_render`/RPC readback; both missing-browser negatives |
+| native tests (`tests/native-*`) | 29/29 pass; emulated, not device evidence |
+
+Real-daemon lifecycle, 0.14.0-beta.2, isolated `PASEO_HOME` on this machine (no
+user agents involved), Pi provider with `ocx/opencode-go/deepseek-v4.1-flash`:
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| Install | plugin `running`, 3.0.0; data root holds `mcp-adapter-v3.mjs`, `mcp-adapter-v1.mjs` (tombstone), `bridge-v3.sock`, `bridge-v3.token` | pass |
+| Legacy 2.x-shaped agent (saved `html-render` → `mcp-adapter-v1.mjs`) opens and prompts | prompt completed; `injected server=html-render-v3 reason=create`; processes: tombstone and v3 adapter | pass, no collision |
+| New agent is launch-only | saved `mcpServers` empty, token absent from the record; v3 adapter process for the agent | pass |
+| Opt-out label `html-render/disabled=true` | `skipped skip=label`; no adapter process | pass |
+| Reload reaches an idle agent | after `plugin reload`, next prompt logs `injected reason=refresh` | pass |
+| Disable reaches an idle agent | adapter process present before, gone after the next prompt | pass |
+| Re-enable reaches an idle agent (`injectIntoAgents: true`) | next prompt completed, `injected reason=refresh`, adapter back | pass |
+| Resume re-injects (daemon restart, same path as the 60 min idle release) | `injected reason=resume`, adapter back | pass |
+| History open of an archived agent | `skipped skip=history`; no v3 adapter. Its saved legacy entry still launched the inert tombstone | pass |
+| Real card from a model | agent `44f514e1-2368-46d3-be7c-8370a3fbec96`, artifact `d1e98151c32ea1ccd0a65fee90418eae`, rows `mcp__html_render_v3__html_preview` / `…__html_render`, PNG preview 24,324 bytes read back through the plugin RPC, report link in the reply | pass |
+| Install/re-enable with `injectIntoAgents` off (default) | idle Pi agent opened without MCP fails its next prompt with `Provider 'pi' does not support MCP servers (plugin html-render)`; a daemon restart fixes it | **host defect**, documented in `docs/compatibility.md` |
+
+Real daemon on slydio, Paseo 0.14.0-beta.1 (upgraded outside this work; no
+pre-upgrade config backup exists, the current one is
+`~/.paseo/config.json.at-0.14-beta.1`):
+
+- 3.0.0 installed from a worktree at `a41ceec`; plugin `running`, log `Plugin
+  ready`. Its data root holds the v3 adapter, the v1 tombstone (2,528 bytes), the
+  socket and the 0600 token file.
+- 35 saved agent records still carry the 2.x `html-render` entry. Two of them
+  (`3d113c1d…`, created for this check, and one existing user agent `e48168a0…`)
+  were reloaded and prompted on 0.14 without a collision.
+- No card was produced on slydio; the card evidence above comes from the
+  isolated 0.14.0-beta.2 daemon.
+
+Dogfood on the user's daemon (0.14.0-beta.2, plugin installed from this
+worktree, 2026-10-29): the existing chat reopened with `injected
+server=html-render-v3 reason=resume` and published artifact
+`16a012fb1d084d84934fbff8c053b866` from a nested codemode call. The Android app
+(0.13.2; no 0.14 mobile release yet) then showed the plugin as failed: `requires
+Paseo >=0.14.0-beta.1 <0.15.0. Your app is 0.13.2`. Paseo checks the same range
+against the app. The range is now `>=0.13.2 <0.15.0`, and a 0.13 daemon is
+handled at session open (`skip=host-unsupported`).
+
+**Android device failure, 2026-10-29:** the report renders and stays mounted
+behind the non-destructive banner, but the ready handshake consistently times
+out, including after app restart on `bd8ec1e`. Screenshot: `onMessage 0,
+fragment 0, chunks 0, messages 0, probes 1, rejected 0`. Dual-channel immediate
+sends did not fix it. `probes 1` counts an attempted command, not receipt in the
+page. Physical Android acceptance is **failing**, not passed by the local gates.
+
+The `diag-1` candidate adds independent page-local evidence without changing
+the transport or 8 s deadline. It reports scheme and lengths (no URL), iframe
+loads, raw/source-accepted/ready messages, actual native-probe receipt and send/error
+counts, then hides after a real ready ack. The native timeout text identifies
+`diag-1` too. The phone screenshot with both diagnostic blocks was received
+(see below). This was an instrumented build, not a claimed fix. Local diagnostic
+gates: typecheck; 312/312 tests (123 s); bundle check; real Hermes entry,
+constructor, host-matrix and generated-document equality checks; package check
+(74 entries, 43 required files, 0 forbidden) all pass. These do not supersede the
+failing phone result.
+
+The Hermes check now compares the actual generated inner document and shell
+byte-for-byte with Node's builders. The browser helper now has a real `data-url`
+mode; its old `data` mode is actually about:blank/setContent. Chromium reproduces
+blocked fragment navigation on true data URLs, but WebView's
+`loadDataWithBaseURL` substitutes the base URL as the document URL in
+`content/renderer/render_frame_impl.cc`. Therefore that reproduction alone does
+not prove the phone uses a data: document.
+
+**Physical `diag-1` follow-up:** screenshot shows page `about:`, URL length 187,
+hash length 176; iframe loads 1, events 2, inner 2, ready 1; native messages 1,
+probes received 1; bridge and fragment sends 5 each; navigation, bridge and script
+errors 0. App-side counters remain `onMessage 0, fragment 0, chunks 0, messages 0,
+probes 1, rejected 0`. This establishes that rendering, the inner ready message,
+actual probe receipt and the renderer's hash update succeed, while the return
+hop fails. Chromium's `MaybeGetOverriddenURL` explicitly returns the stored
+original URL for loadDataWithBaseURL documents even after same-document commits
+(crbug.com/40187600); the native event need not contain the renderer's fragment.
+
+**`diag-2` candidate:** every chunk is written to a prefixed document title
+before fragment navigation. The adapter reads `nativeEvent.title` independently
+of the event URL; the bridge and fragment carriers remain, all feeding the same
+strict validator and assembler. Chunk data is 3,000 encoded characters; a full
+title is bounded before assignment at 4,000 characters (Chromium limit 4,096).
+The message/image budgets, 8 s ready deadline, 120 s transfer deadline, sandbox
+and security props are unchanged. No raw native title is logged or shown in the
+failure diagnostics. Larger unrelated original load URLs are ignored rather
+than rejected as oversized transport envelopes.
+
+Local candidate gates: 322/322 tests (136 s), typecheck, bundle check, package
+check (74 entries, 43 required files, 0 forbidden) and real Hermes
+generated-document/entry/constructor/host-matrix checks pass. In addition
+to adapter tests with rewritten fragment-free event URLs, the full real-browser
+interaction case now runs using **only title reads** for ready, height, real
+link clicks, two identical multi-chunk image opens and a theme change during an
+image transfer. Parent/access/storage/network sandbox negatives still pass.
+These are browser/shim/VM results and do not themselves establish Android
+success. Smaller chunks increase native round trips without extending the
+transfer deadline.
+
+**Positive physical `diag-2` result:** after publishing the fresh test artifact
+`ea4c955e03c5c4f4060fd756ce119f7f` with `9df7f33` running from this worktree,
+the user reported **“works and no errors”**. The card includes local counter
+and expand controls, an image-zoom target and an external link. This is basic
+phone success, not a claim that each action was separately checked or that
+elapsed time, title/event ordering or throughput was measured. It supersedes
+“no successful phone result” status but not the remaining acceptance gates.
+
+**Main-readiness package follow-up:** code `9df7f33` plus the basic-phone-result
+documentation refresh was packed and smoke-tested as one exact tarball:
+SHA-256 `030627840c696c5a6749dc627657d6abe1b48742da6986f167712996a26cbf21`,
+74 entries, 43 required files, 0 forbidden. The isolated production-tree smoke
+passes on Node 26.13.0, npm 11.20.0, CLI/daemon 0.14.0-beta.2 and host SDK
+0.14.0-beta.2 (project SDK remains pinned at beta.1). It proves session-open
+injection, saved record without the v3 key/launch env, 0600 private token,
+initialize/tools-list/PNG preview/publish/readback and both missing-browser
+negatives. No model prompts or user agents are involved. Evidence:
+`/tmp/hr-v3-evidence/main-readiness-9df7f33/` (tarball, package check, smoke
+results and sanitized log copies). The first run failed because the long
+evidence path exceeded the Unix socket pathname limit; the **same tarball**
+passed with a short throwaway fixture home. Both results are retained, and the
+short fixture/home processes were cleaned up. This is not an npm-source install
+or registry publication. GitHub `main` was checked read-only and still points
+to base `4318e1b`; no branch push, merge, tag or publication was performed.
+
+Not verified: timed cold start, 120 s dwell, two cold reopens, background/resume,
+theme round-trip, separately confirmed links and image zoom, large-image
+throughput, Chrome and PWA parity, the
+turn-collapse display, Claude/Codex providers, and npm publication.
 
 **Live acceptance resumed 2026-10-26; not production-accepted.** The user has
 authorized completing the remaining live cases with OpenCode Go DeepSeek max

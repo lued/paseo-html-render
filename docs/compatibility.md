@@ -43,6 +43,42 @@ The file path is a compatibility adapter into Paseo's existing HTML file preview
 not a plugin route or guaranteed public navigation API. The card can copy the
 link/path; copying is not represented as opening a file tab.
 
+## Session-open injection (Paseo 0.14)
+
+**Versions.** The daemon must be 0.14.0-beta.1 or newer. The app may be 0.13.2
+(the current mobile release) or newer. Paseo checks the single
+`requirements.paseo` range (`>=0.13.2 <0.15.0`) against both, so the range also
+admits a 0.13 daemon. That daemon passes no `mcpServers` map to the hook, so
+the plugin passes the request through, gets no tools, and logs
+`skip=host-unsupported` with one explanation line. The client SDK `dist` is
+byte-identical between 0.13.2 and 0.14.0-beta.1.
+
+The MCP server `html-render-v3` is contributed at `agent.session_open` for
+interactive sessions only. It is launch-only: never in a saved agent record, and
+re-derived on create, resume, refresh and import. History opens and agents
+labelled `html-render/disabled: "true"` get no server. An install, reload or
+disable reaches an idle agent on its next prompt and a busy agent at its next
+idle prompt.
+
+A 2.x agent keeps its saved `html-render` entry. Paseo still launches it,
+including for history opens, but the file it points at (`mcp-adapter-v1.mjs`) is
+now a tombstone: it lists no tools and never opens the bridge.
+
+**Host defect, Pi with default MCP settings.** With `daemon.mcp.injectIntoAgents`
+off (the 0.14 default), Pi reports MCP support only for a session launched with an
+MCP server, and the daemon checks the *old* session before a refresh. An idle Pi
+agent that opened with no MCP server, because the plugin was not installed yet or
+was disabled, then fails its next prompt after install or re-enable with
+`Provider 'pi' does not support MCP servers (plugin html-render)`. Restart the
+daemon once; the resume path does not make that check. Hosts with
+`injectIntoAgents: true` always launch Pi with Paseo's own MCP server and are not
+affected. The plugin cannot see the old session's capabilities, so it cannot
+work around this.
+
+Paseo 0.14 also folds a finished turn's tool rows by default, and the card is
+attached to the `html_render` row, so it is hidden until the turn is expanded.
+The final reply's `Open interactive report` link stays visible.
+
 ## Turn guard
 
 `html_render` defaults to one card per counted agent turn. The comparison is an
@@ -59,10 +95,71 @@ the turn slot consumed. Do not describe this as permanent or semantic deduplicat
 
 ## Display parity
 
-**Android device status:** local inline interaction has been user-confirmed,
-followed by a native ready timeout. Bounded recovery and additional public event
-receivers do not yet establish sustained native readiness or lifecycle parity.
-Browser, shim and Hermes checks are separate evidence layers.
+**Android device status:** under 2.2.0, local inline interaction was
+user-confirmed, followed by a native ready timeout on cold reopen. On the 3.0
+first device run (app 0.13.2), the report rendered behind the banner with
+`no page messages; onMessage 0, fragment 0, probes 1`. A verified limitation,
+from `react-native-webview` 13.16.1: on Android, bridge messages go to the library's
+own JS router, keyed by a `messagingModuleName` only its `<WebView>` wrapper
+knows, so a raw RNCWebView mount never receives them. That build trusted the
+bridge and sent the fragment copy only after a 5 s ack timeout, leaving 3 s of
+the 8 s ready deadline. 3.0 now sends every chunk on both channels at once. The
+fragment path is the 2.x one: Chromium's WebView posts `doUpdateVisitedHistory`
+for every committed same-document navigation, including `location.replace`, and
+RNCWebView reports that as a loading-start event with the URL. This passes
+browser, shim and Hermes checks; physical-device acceptance is still open. The
+2.2.0 cold-reopen timeout used the fragment path alone and is not explained by
+this limitation. The user re-tested `bd8ec1e` after restart: the same zero-traffic
+banner persists. Dual sends did **not** fix the device failure. `probes 1` alone
+is an attempted command, not proof of page receipt.
+
+The `diag-1` build adds a timeout-only, page-local strip that does not rely on
+native callbacks. It reports only the document scheme/URL and hash lengths,
+iframe loads, message/source-filter/ready counts, probes actually received by
+the shell, send attempts and error counts. It never includes the URL, session,
+report text or payload. A genuine ready acknowledgement hides it again. The
+native timeout banner carries the same build ID so a screenshot can distinguish
+a stale client bundle.
+
+A true `data:` Chromium document reproduces blocked `location.replace` fragment
+sends, but this alone does **not** establish the WebView's document scheme:
+Chromium `content/renderer/render_frame_impl.cc` explicitly substitutes
+`base_url_for_data_url` as the **document URL** for `loadDataWithBaseURL`, not
+merely a displayed URL. The shell uses `baseUrl: "about:blank"`.
+The browser harness now distinguishes the legacy `data` option (actually
+`about:blank` plus setContent) from a real `data-url` navigation.
+
+The physical `diag-1` screenshot supplies that missing evidence: `page about:
+187 chars, hash 176`, iframe load 1, inner messages 2, ready 1, native messages 1,
+probe received 1, bridge/fragment attempts 5 each, no script/navigation errors;
+app-side bridge and fragment counts remain zero. Rendering, inner ready, the
+native-to-page command and the local hash change all work. The return hop does
+not. Chromium's `MaybeGetOverriddenURL` in
+`content/renderer/render_frame_impl.cc` explicitly returns the original stored
+`data:` URL for `loadDataWithBaseURL` commits **even after same-document
+navigation** (crbug.com/40187600). A changed renderer hash therefore does not
+prove the native loading event contains that fragment.
+
+The **`diag-2` candidate** writes the same chunk to a prefixed document title
+immediately before fragment navigation, then reads `nativeEvent.title` before
+the event URL. It uses the same strict session/chunk validator and assembler,
+not a substitute ready signal. All three carriers remain active; duplicate
+chunks are acknowledged and applied once. Encoded chunk data is 3,000 characters
+so every complete title stays below a conservative 4,000-character budget
+(Chromium's limit is 4,096). The 28 MiB encoded-message cap, 8 MiB image budget,
+8 s ready deadline, 120 s transfer deadline and iframe sandbox are unchanged.
+Oversized unrelated load URLs are ignored, not mistaken for transport data.
+
+On the fresh `diag-2` test card, the user reported **“works and no errors”**.
+That is positive basic phone evidence for this candidate, not a timed lifecycle
+or throughput result. Sustained dwell, cold reopens, background/resume,
+theme/link/image actions and large-image throughput are not individually
+confirmed. More small chunks mean more native round trips; the unchanged
+transfer deadline may still be a practical limit. A host exposing the
+raw WebView title could display chunk content: do not log native event titles.
+The safe failure banner includes accepted title counts plus raw event/hash
+counts and last title length, never the title itself. The page strip identifies
+`diag-2` and title attempts/errors/length. Android acceptance remains open.
 
 | Capability | Plugin implementation / difference |
 | --- | --- |
@@ -78,8 +175,9 @@ Browser, shim and Hermes checks are separate evidence layers.
 | History | Marker-driven, bounded/cycle-safe nested codemode recognition; first valid reference per row, legacy v1 readable |
 | Deletion | Workspace-owned artifacts retained by default, opt-in workspace archive cleanup; not T3's thread-owned deletion |
 
-Android selection does not require the `DocumentFrame` export added in Paseo
-0.13: supported 0.12 clients can use public `UIManager` native-manager discovery.
+Android selection does not require the `DocumentFrame` export that 0.14 clients
+expose: legacy client surfaces without it still use public `UIManager`
+native-manager discovery.
 No component is re-registered. A positive query does not prove JavaScript view
 registration, mounting or the ready handshake; those failures remain contained
 and explicit. A negative query wins even if `DocumentFrame` exists.

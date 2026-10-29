@@ -26,7 +26,7 @@ npm run typecheck
 npm test
 npm run check:bundles
 npm run check:package -- --out /tmp/hr-package
-npm run smoke:package -- --tarball /tmp/hr-package/paseo-html-render-2.2.0.tgz --skip-missing-browser
+npm run smoke:package -- --tarball /tmp/hr-package/paseo-html-render-3.0.0.tgz --skip-missing-browser
 # Also run once without --skip-missing-browser on a host with no discoverable browser.
 ```
 

@@ -47,14 +47,14 @@ test("README is short, truthful about install and labels the demo capture", asyn
   assert.ok(lines.length <= 80, `README has ${lines.length} lines; keep it scannable`);
   assert.ok(readme.split(/\s+/).length <= 700, "README should stay a front page, not a manual");
 
-  assert.match(readme, /2\.2\.0 is an unreleased candidate/);
+  assert.match(readme, /3\.0\.0 is an unreleased candidate/);
   assert.match(readme, /not a published npm release/);
   assert.match(readme, /git clone https:\/\/github\.com\/lued\/paseo-html-render\.git/);
   assert.match(readme, /npm ci --ignore-scripts/);
   assert.match(readme, /paseo plugin install \./);
   assert.match(readme, /paseo plugin ls/);
-  assert.match(readme, />=0\.12\.0 <0\.14\.0/);
-  assert.doesNotMatch(readme, /paseo plugin install npm:paseo-html-render@2\.2\.0/);
+  assert.match(readme, />=0\.14\.0-beta\.1 <0\.15\.0/);
+  assert.doesNotMatch(readme, /paseo plugin install npm:paseo-html-render@3\.0\.0/);
   assert.match(readme, /Node 22\.18 or newer/);
   assert.match(readme, /Chromium/);
   assert.match(readme, /No browser is downloaded or installed/);

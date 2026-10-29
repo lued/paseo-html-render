@@ -12,11 +12,16 @@ import {
   readSizeChangedMessage,
 } from "../shared/html-document.ts";
 import {
+  NATIVE_ACK_TIMEOUT_MS,
   NATIVE_MAX_CHUNK_CHARS,
+  NATIVE_MAX_TITLE_CHARS,
+  NATIVE_TITLE_PREFIX,
   NativeChunkAssembler,
   buildNativeShellDocument,
   decodeNativeTransportMessage,
   parseNativeErrorUrl,
+  parseNativeErrorTitle,
+  parseNativeTitle,
   parseNativeTransportUrl,
   readNativeThemeAck,
 } from "../client/native-html-protocol.ts";
@@ -76,7 +81,7 @@ interface ReceivedMessage {
   readonly value?: unknown;
 }
 
-async function interact(io: BrowserInteraction) {
+async function interact(io: BrowserInteraction, carrier: "fragment" | "title" = "fragment") {
   const iframeTarget = await waitFor(async () => {
     const targets = await io.send("Target.getTargets");
     return (targets.targetInfos ?? []).find(
@@ -132,12 +137,15 @@ async function interact(io: BrowserInteraction) {
   const pump = async (predicate: () => boolean, timeoutMs: number) => {
     const end = Date.now() + timeoutMs;
     while (Date.now() < end) {
-      const hash = String(await evaluate(io, "location.hash"));
-      if (hash !== lastHash) {
-        lastHash = hash;
-        const error = parseNativeErrorUrl(`about:blank${hash}`);
+      // In title mode, never read the fragment carrier. This exercises the real
+      // shell's title output and all interactions with the URL reply absent.
+      const value = String(await evaluate(io, carrier === "title" ? "document.title" : "location.hash"));
+      if (value !== lastHash) {
+        lastHash = value;
+        if (carrier === "title") assert.ok(value.length <= NATIVE_MAX_TITLE_CHARS);
+        const error = carrier === "title" ? parseNativeErrorTitle(value) : parseNativeErrorUrl(`about:blank${value}`);
         if (error) throw new Error(`shell transport error: ${error}`);
-        const parsed = parseNativeTransportUrl(`about:blank${hash}`, SESSION);
+        const parsed = carrier === "title" ? parseNativeTitle(value, SESSION) : parseNativeTransportUrl(`about:blank${value}`, SESSION);
         if (parsed?.ok && parsed.chunk) {
           const result = assembler.push(parsed.chunk);
           if (!result.ok) throw new Error(result.error);
@@ -246,10 +254,11 @@ async function interact(io: BrowserInteraction) {
   })}`);
 }
 
-test("native shell runs arbitrary scripts, real clicks, multi-chunk images and active-transfer theme changes", { timeout: 90_000 }, async () => {
+for (const carrier of ["fragment", "title"] as const) {
+test(`native shell runs scripts, clicks, multi-chunk images and active-transfer theme changes over ${carrier}`, { timeout: 90_000 }, async () => {
   const inner = buildLiveDocument({ html: REPORT, title: "Native report", theme: theme("dark") });
   const shell = buildNativeShellDocument(inner, SESSION);
-  const result = await browserResult(shell, { interact, viewport: { width: 800, height: 600 }, navigation: "data" }) as Record<string, unknown>;
+  const result = await browserResult(shell, { interact: (io) => interact(io, carrier), viewport: { width: 800, height: 600 }, navigation: "data" }) as Record<string, unknown>;
   assert.equal(result.scriptRan, true, "arbitrary authored and dynamically created inline scripts ran");
   assert.equal(result.count, "1", "the real click changed state");
   assert.equal(result.background, "#ffffff", "theme changed during image transfer");
@@ -265,6 +274,7 @@ test("native shell runs arbitrary scripts, real clicks, multi-chunk images and a
   assert.equal(result.bridge, "undefined");
   assert.equal(result.remote, "blocked");
 });
+}
 
 test("native shell exposes a missing acknowledgement as a visible transport failure", { timeout: 30_000 }, async () => {
   const inner = buildLiveDocument({ html: "<p>waiting</p>", title: "No ack", theme: theme("dark") });
@@ -274,8 +284,9 @@ test("native shell exposes a missing acknowledgement as a visible transport fail
     navigation: "data",
     interact: async (io) => {
       await waitFor(async () => String(await evaluate(io, "location.hash")).startsWith("#paseo-p2n="), 3_000);
-      // A late retry request must not re-arm the original five-second chunk
-      // deadline. The old retry implementation failed this bounded wait.
+      const sentAt = Date.now();
+      // A late retry request must not re-arm the chunk deadline. The old retry
+      // implementation failed this bounded wait.
       await new Promise((resolve) => setTimeout(resolve, 3_000));
       await evaluate(io, `document.dispatchEvent(new MessageEvent("message",{data:${JSON.stringify(JSON.stringify({
         type: "paseo-ready-probe", session: SESSION,
@@ -283,11 +294,15 @@ test("native shell exposes a missing acknowledgement as a visible transport fail
       const hash = await waitFor(async () => {
         const value = String(await evaluate(io, "location.hash"));
         return value.startsWith("#paseo-error=") ? value : null;
-      }, 3_000);
-      await evaluate(io, `window.__result=${JSON.stringify({ hash })}`);
+      }, 10_000);
+      await evaluate(io, `window.__result=${JSON.stringify({ hash, elapsed: Date.now() - sentAt })}`);
     },
   }) as Record<string, unknown>;
   assert.equal(result.hash, "#paseo-error=ack-timeout");
+  // One resend on every channel after the first deadline, then fail at the
+  // second: about two deadlines, never more.
+  assert.ok(Number(result.elapsed) > NATIVE_ACK_TIMEOUT_MS, `failed too early: ${String(result.elapsed)} ms`);
+  assert.ok(Number(result.elapsed) < 2 * NATIVE_ACK_TIMEOUT_MS + 2_000, `failed too late: ${String(result.elapsed)} ms`);
 });
 
 test("native shell resends genuine ready after a lost initial native fragment", { timeout: 30_000 }, async () => {
@@ -380,4 +395,186 @@ test("an early probe cannot cancel automatic retries of the genuine inner ready"
   assert.equal(result.same, true);
   assert.equal(result.ready, true);
   assert.equal(result.suffix, true);
+});
+
+/** Install a test-only RNCWebView bridge object before the trusted shell runs. */
+function withBridge(shell: string): string {
+  const marker = "<body>";
+  const at = shell.indexOf(marker);
+  if (at < 0) throw new Error("shell body is missing");
+  const prelude = `${marker}<script>window.__bridge=[];window.ReactNativeWebView={postMessage:function(payload){window.__bridge.push(String(payload));}};</script>`;
+  return shell.slice(0, at) + prelude + shell.slice(at + marker.length);
+}
+
+async function readBridge(io: BrowserInteraction): Promise<Record<string, unknown>[]> {
+  const raw = await evaluate(io, "JSON.stringify(window.__bridge||[])");
+  return (JSON.parse(String(raw)) as string[]).map((entry) => JSON.parse(entry) as Record<string, unknown>);
+}
+
+test("native shell sends each page->native chunk on the onMessage bridge and as a fragment URL", { timeout: 30_000 }, async () => {
+  const inner = buildLiveDocument({ html: "<p>bridge primary</p>", title: "Bridge", theme: theme("dark") });
+  const shell = withBridge(buildNativeShellDocument(inner, SESSION));
+  const result = await browserResult(shell, {
+    viewport: { width: 800, height: 600 },
+    navigation: "data",
+    interact: async (io) => {
+      const payloads = await waitFor(async () => {
+        const list = await readBridge(io);
+        return list.length > 0 ? list : null;
+      }, 8_000);
+      const first = payloads[0]!;
+      // The same chunk also goes out as a fragment, because Android drops bridge
+      // messages for a raw RNCWebView mount.
+      const hash = await waitFor(async () => {
+        const value = String(await evaluate(io, "location.hash"));
+        return value.startsWith("#paseo-p2n=") ? value : null;
+      }, 1_500);
+      await evaluate(io, `document.dispatchEvent(new MessageEvent("message",{data:${JSON.stringify(JSON.stringify({
+        type: "paseo-ack",
+        session: SESSION,
+        mid: first.mid,
+        seq: first.seq,
+      }))}}))`);
+      await new Promise((done) => setTimeout(done, 250));
+      await evaluate(io, `window.__result=${JSON.stringify({
+        first,
+        hash,
+        // The shell moves on to its next message after an ack; only a resend of
+        // the acknowledged chunk would be wrong.
+        payloadCount: (await readBridge(io)).filter((p) => p.mid === first.mid && p.seq === first.seq).length,
+        errorHash: String(await evaluate(io, "location.hash")).startsWith("#paseo-error="),
+      })}`);
+    },
+  }) as Record<string, unknown>;
+  const fragment = parseNativeTransportUrl(`about:blank${String(result.hash)}`, SESSION);
+  assert.ok(fragment?.ok && fragment.chunk, "the fragment copy parses");
+  assert.equal(fragment.chunk.messageId, (result.first as { mid?: number }).mid, "same message identity on both channels");
+  assert.equal(fragment.chunk.data, (result.first as { data?: string }).data, "same chunk payload on both channels");
+  assert.equal(result.errorHash, false);
+  const first = result.first as { type?: string; session?: string; mid?: number; seq?: number; total?: number; data?: string };
+  assert.equal(first.type, "paseo-p2n");
+  assert.equal(first.session, SESSION);
+  assert.equal(first.mid, 1);
+  assert.equal(first.seq, 0);
+  assert.equal(first.total, 1);
+  const decoded = decodeNativeTransportMessage(String(first.data));
+  assert.equal(decoded.ok, true);
+  assert.equal(readReadyMessage(decoded.ok ? decoded.value : null), true, "the bridge carries the genuine ready payload");
+  assert.equal(Number(result.payloadCount), 1, "an acknowledged chunk is not resent");
+});
+
+test("a bridge that silently drops messages does not delay the fragment copy", { timeout: 40_000 }, async () => {
+  const inner = buildLiveDocument({ html: "<p>bridge fallback</p>", title: "Fallback", theme: theme("dark") });
+  const shell = withBridge(buildNativeShellDocument(inner, SESSION));
+  const result = await browserResult(shell, {
+    viewport: { width: 800, height: 600 },
+    navigation: "data",
+    interact: async (io) => {
+      // The device case: the bridge accepts postMessage and nothing arrives. The
+      // fragment copy must already be out, not wait for an ack timeout.
+      const payloads = await waitFor(async () => {
+        const list = await readBridge(io);
+        return list.length > 0 ? list : null;
+      }, 8_000);
+      const first = payloads[0]!;
+      const fallback = await waitFor(async () => {
+        const hash = String(await evaluate(io, "location.hash"));
+        return hash.startsWith("#paseo-p2n=") ? hash : null;
+      }, 1_500);
+      const parsed = parseNativeTransportUrl(`about:blank${fallback}`, SESSION);
+      if (!parsed?.ok || !parsed.chunk) throw new Error("fallback chunk did not parse");
+      await evaluate(io, `document.dispatchEvent(new MessageEvent("message",{data:${JSON.stringify(JSON.stringify({
+        type: "paseo-ack",
+        session: SESSION,
+        mid: parsed.chunk.messageId,
+        seq: parsed.chunk.sequence,
+      }))}}))`);
+      await new Promise((done) => setTimeout(done, 300));
+      await evaluate(io, `window.__result=${JSON.stringify({
+        fallback,
+        firstMid: first.mid,
+        firstData: first.data,
+        chunkMid: parsed.chunk.messageId,
+        chunkData: parsed.chunk.data,
+        retrySuffix: /;r=\\d+$/.test(fallback),
+        errorHash: String(await evaluate(io, "location.hash")).startsWith("#paseo-error="),
+        bridgeCount: (await readBridge(io)).length,
+      })}`);
+    },
+  }) as Record<string, unknown>;
+  assert.equal(result.errorHash, false, "the fallback recovers the transfer instead of failing");
+  assert.equal(result.retrySuffix, false, "the first fragment delivery of that chunk needs no retry suffix");
+  assert.equal(result.chunkMid, result.firstMid, "the fallback reuses the bridge message identity");
+  assert.equal(result.chunkData, result.firstData, "the fallback carries the same chunk payload");
+  const decoded = decodeNativeTransportMessage(String(result.chunkData));
+  assert.equal(decoded.ok, true);
+  assert.equal(readReadyMessage(decoded.ok ? decoded.value : null), true);
+});
+
+test("the shell sets the document title to the same bounded chunk before each fragment navigation", { timeout: 90_000 }, async () => {
+  const inner = buildLiveDocument({ html: "<p>title carrier</p>", title: "Title carrier", theme: theme("dark") });
+  const shell = buildNativeShellDocument(inner, SESSION);
+  // Record the title assignment synchronously (it observes location.hash at the
+  // instant of the write) and pair it with the hash each committed navigation
+  // produced. A title written after the navigation would see the new hash.
+  const instrumented = shell.replace("<body>", `<body><script>
+window.__pairs=[];
+window.__titleLog=[];
+window.addEventListener("hashchange",function(){window.__pairs.push({hash:location.hash,title:document.title});});
+(function(){var descriptor=Object.getOwnPropertyDescriptor(Document.prototype,"title");
+Object.defineProperty(document,"title",{configurable:true,get:function(){return descriptor.get.call(document);},
+set:function(value){window.__titleLog.push({value:value,hash:location.hash});descriptor.set.call(document,value);}});})();
+</script>`);
+  const result = await browserResult(instrumented, {
+    viewport: { width: 800, height: 600 },
+    navigation: "data",
+    interact: async (io) => {
+      const pairs: Array<{ hash: string; title: string }> = [];
+      let acknowledged = 0;
+      const collectDeadline = Date.now() + 9_000;
+      while (Date.now() < collectDeadline && pairs.length < 2) {
+        const raw = String(await evaluate(io, "JSON.stringify(window.__pairs||[])")) ?? "[]";
+        const all = JSON.parse(raw) as Array<{ hash: string; title: string }>;
+        while (pairs.length < all.length) pairs.push(all[pairs.length]!);
+        for (; acknowledged < pairs.length; acknowledged += 1) {
+          const parsed = parseNativeTransportUrl(`about:blank${pairs[acknowledged]!.hash}`, SESSION);
+          if (parsed?.ok && parsed.chunk) {
+            await evaluate(io, `document.dispatchEvent(new MessageEvent("message",{data:${JSON.stringify(JSON.stringify({
+              type: "paseo-ack", session: SESSION, mid: parsed.chunk.messageId, seq: parsed.chunk.sequence,
+            }))}}))`);
+          }
+        }
+        await new Promise((done) => setTimeout(done, 40));
+      }
+      const titleLog = JSON.parse(String(await evaluate(io, "JSON.stringify(window.__titleLog||[])"))) as Array<{ value: string; hash: string }>;
+      const mounted = Boolean(await evaluate(io, "document.getElementById('f') !== null"));
+      const errorHash = String(await evaluate(io, "location.hash.indexOf('#paseo-error=') === 0"));
+      await evaluate(io, `window.__result=${JSON.stringify({ pairs, titleLog, mounted, errorHash })}`);
+    },
+  }) as Record<string, any>;
+  const pairs = result.pairs as Array<{ hash: string; title: string }>;
+  const titleLog = result.titleLog as Array<{ value: string; hash: string }>;
+  assert.ok(pairs.length >= 2, "at least two chunks committed a navigation");
+  assert.equal(result.mounted, true, "the report frame stayed mounted");
+  assert.equal(result.errorHash, "false", "the shell never failed its transfer");
+  for (const pair of pairs) {
+    const fromTitle = parseNativeTitle(pair.title, SESSION);
+    const fromUrl = parseNativeTransportUrl(`about:blank${pair.hash}`, SESSION);
+    assert.equal(fromTitle?.ok, true, "the document title parses as a transport chunk");
+    assert.equal(fromUrl?.ok, true, "the fragment still commits in an about:blank fixture");
+    assert.deepEqual(fromTitle!.chunk, fromUrl!.chunk, "title and fragment describe the same chunk");
+    assert.ok(pair.title.startsWith(NATIVE_TITLE_PREFIX));
+    assert.ok(pair.title.length <= NATIVE_MAX_TITLE_CHARS, `${pair.title.length} chars stay under the title cap`);
+  }
+  const transportTitles = titleLog.filter((entry) => entry.value.startsWith(NATIVE_TITLE_PREFIX));
+  assert.ok(transportTitles.length >= pairs.length, "every navigation was preceded by a title write");
+  pairs.forEach((pair, index) => {
+    const write = transportTitles.find((entry) => entry.value === pair.title);
+    assert.ok(write, `title for chunk ${index} was written`);
+    // The write observed the PREVIOUS committed hash: the title is set before
+    // location.replace, not after it.
+    const previous = index === 0 ? "" : pairs[index - 1]!.hash;
+    assert.equal(write!.hash, previous, `title ${index} was written before its own navigation committed`);
+  });
+  assert.ok(new Set(pairs.map((pair) => pair.title)).size >= 2, "distinct chunks produced distinct titles");
 });

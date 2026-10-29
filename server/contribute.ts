@@ -28,12 +28,72 @@ export interface ContributeOptions {
 }
 
 /**
- * Daemon entry: private artifact store, bounded inert renderer, local bridge for
- * the MCP adapter, and MCP injection for agents created after this plugin loads.
- * Existing sessions are never retrofitted and no configuration files are edited.
+ * Label that opts a single agent out of the injected server. Frozen spelling:
+ * `html-render/disabled: "true"`. Any other value keeps the default behavior.
+ */
+const DISABLED_LABEL = "html-render/disabled";
+
+/**
+ * A session open must never wait on bridge startup. The bridge starts with the
+ * plugin and is normally ready before the first hook; this is a guard against a
+ * stuck filesystem, not a normal wait.
+ */
+const BRIDGE_INJECTION_TIMEOUT_MS = 5_000;
+
+/** Log-safe value: no spaces or quotes a parser could misread, bounded length. */
+function logValue(value: unknown, fallback: string, max = 64): string {
+  const text = typeof value === "string" ? value.trim() : "";
+  const safe = text.replace(/[^A-Za-z0-9._:@-]/g, "_").slice(0, max);
+  return safe || fallback;
+}
+
+export interface SessionOpenEvidence {
+  readonly result: "injected" | "skipped";
+  readonly skip?: "history" | "label" | "already-present" | "bridge-unavailable" | "host-unsupported";
+  readonly agent: string;
+  readonly provider: string;
+  readonly reason: string;
+  readonly purpose: string;
+  readonly transport: "stdio" | "none";
+  readonly alwaysLoad: boolean;
+  readonly server: string;
+}
+
+/**
+ * One sanitized line per session open. This is the only injection evidence 3.0
+ * can produce: the server is launch-only and never persisted, so the daemon's
+ * `~/.paseo` configuration cannot show it. The fields are the agent id, provider,
+ * session reason, purpose, transport, alwaysLoad flag and server key.
  *
- * Every agent created in a workspace gets the MCP server injected; artifact reads
- * are authorized against that agent's real workspace.
+ * The bridge token, the launch environment and the workspace path are never
+ * included, so the line is safe to paste into a bug report.
+ */
+export function formatSessionOpenEvidence(evidence: SessionOpenEvidence): string {
+  const parts = [
+    "session-open",
+    `result=${evidence.result}`,
+    ...evidence.skip === undefined ? [] : [`skip=${evidence.skip}`],
+    `server=${logValue(evidence.server, "unknown")}`,
+    `transport=${evidence.transport}`,
+    `alwaysLoad=${evidence.alwaysLoad}`,
+    `agent=${logValue(evidence.agent, "unattributed")}`,
+    `provider=${logValue(evidence.provider, "unknown")}`,
+    `reason=${logValue(evidence.reason, "unknown")}`,
+    `purpose=${logValue(evidence.purpose, "unknown")}`,
+  ];
+  return parts.join(" ");
+}
+
+/**
+ * Daemon entry: private artifact store, bounded inert renderer, local bridge for
+ * the MCP adapter, and launch-only MCP injection at `agent.session_open`.
+ *
+ * No saved configuration is ever written. Paseo 0.14 runs the session-open hook on
+ * create, resume, refresh and import, so every interactive agent derives the
+ * server from the hook instead of from a record that a reload cannot update. The
+ * server key is versioned (`html-render-v3`) because a 2.x agent's saved
+ * `html-render` entry is invisible to the plugin and would make every open of that
+ * agent fail with a collision.
  */
 export default function contribute(server: PluginServerContext, options: ContributeOptions = {}) {
   const identity = options.identity ?? SELECTED_IDENTITY;
@@ -87,6 +147,20 @@ export default function contribute(server: PluginServerContext, options: Contrib
   bridgePromise.catch((error: unknown) => {
     log(`bridge failed to start: ${error instanceof Error ? error.message : String(error)}`);
   });
+
+  /** Bridge for injection, bounded: a stuck start must not hold a session open. */
+  const bridgeForInjection = async (): Promise<Bridge | null> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), BRIDGE_INJECTION_TIMEOUT_MS);
+      timer.unref?.();
+    });
+    try {
+      return await Promise.race([bridgePromise.catch(() => null), deadline]);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+  };
 
   const requireWorkspace = async (paseo: PaseoApi, agentId: string): Promise<ArtifactRequester> => {
     const workspace = await getAuthority(paseo).workspaceForAgentOwnership(agentId);
@@ -185,10 +259,118 @@ export default function contribute(server: PluginServerContext, options: Contrib
     }
   });
 
-  // A resumed agent may call a tool before any client RPC has run. Warm both
-  // authority paths from the public session-open hook; the request is untouched.
+  let warnedHostUnsupported = false;
+  // The one place this plugin contributes an MCP server. `agent.session_open`
+  // also runs on resume, refresh and import, so a reload reaches idle agents on
+  // their next prompt and no agent has to be recreated.
   server.before("agent.session_open", async ({ request }, context) => {
-    await warmAuthority(context.paseo, request.agentId, request.cwd);
+    // A resumed agent may call a tool before any client RPC has run. Warm both
+    // authority paths; a warm failure must never fail the open.
+    await warmAuthority(context.paseo, request.agentId, request.cwd).catch(() => {});
+
+    const evidence = {
+      agent: request.agentId,
+      provider: request.provider,
+      reason: request.reason,
+      purpose: request.purpose,
+      server: identity.mcpServerName,
+    };
+    // `requirements.paseo` is checked against both the daemon and the app, and
+    // mobile apps are still on 0.13.2, so the range also admits 0.13 daemons.
+    // Only a 0.14 daemon passes an `mcpServers` map to this hook; an older one
+    // would silently drop a contribution. Pass the request through untouched
+    // and say plainly why there are no tools.
+    const hostMcpServers: unknown = (request as { mcpServers?: unknown }).mcpServers;
+    if (typeof hostMcpServers !== "object" || hostMcpServers === null) {
+      if (!warnedHostUnsupported) {
+        warnedHostUnsupported = true;
+        log("this Paseo daemon cannot receive MCP servers at session open; html_render and html_preview need a 0.14 daemon");
+      }
+      log(formatSessionOpenEvidence({
+        ...evidence,
+        result: "skipped",
+        skip: "host-unsupported",
+        transport: "none",
+        alwaysLoad: false,
+      }));
+      return;
+    }
+    // A history open attaches no tools at all, so there is nothing to inject.
+    if (request.purpose !== "interactive") {
+      log(formatSessionOpenEvidence({
+        ...evidence,
+        result: "skipped",
+        skip: "history",
+        transport: "none",
+        alwaysLoad: false,
+      }));
+      return;
+    }
+    if (request.labels?.[DISABLED_LABEL]?.trim().toLowerCase() === "true") {
+      log(formatSessionOpenEvidence({
+        ...evidence,
+        result: "skipped",
+        skip: "label",
+        transport: "none",
+        alwaysLoad: false,
+      }));
+      return;
+    }
+    const bridge = await bridgeForInjection();
+    if (!bridge) {
+      log(formatSessionOpenEvidence({
+        ...evidence,
+        result: "skipped",
+        skip: "bridge-unavailable",
+        transport: "none",
+        alwaysLoad: false,
+      }));
+      return;
+    }
+    // The daemon hands each plugin an empty map, so this only guards against a
+    // future host that merges contributions. Never overwrite a present value.
+    if (request.mcpServers?.[identity.mcpServerName]) {
+      log(formatSessionOpenEvidence({
+        ...evidence,
+        result: "skipped",
+        skip: "already-present",
+        transport: "stdio",
+        alwaysLoad: false,
+      }));
+      return;
+    }
+    log(formatSessionOpenEvidence({
+      ...evidence,
+      result: "injected",
+      transport: "stdio",
+      alwaysLoad: true,
+    }));
+    // Immutable fields and every other server are returned untouched: the request
+    // object is never mutated, and only `mcpServers` is added to.
+    return {
+      ...request,
+      mcpServers: {
+        ...request.mcpServers,
+        [identity.mcpServerName]: {
+          type: "stdio",
+          // Load the tools with the session instead of behind a lazy catalog. The
+          // Claude provider honors this flag; the others load an injected server
+          // regardless, so this is never the reason a tool is missing.
+          alwaysLoad: true,
+          command: process.execPath,
+          args: [bridge.adapterPath],
+          env: {
+            [identity.bridgeEnv.bridge]: bridge.socketPath,
+            [identity.bridgeEnv.token]: bridge.token,
+            [identity.bridgeEnv.cwd]: request.cwd,
+            // A desktop-managed daemon has the Electron app as process.execPath.
+            // Without this the adapter starts the GUI instead of Node and exits,
+            // closing MCP stdio; Node ignores the variable.
+            ELECTRON_RUN_AS_NODE: "1",
+          },
+        },
+      },
+    };
   });
 
   // A plugin reload can land while an agent process is already running, after
@@ -220,44 +402,6 @@ export default function contribute(server: PluginServerContext, options: Contrib
     } catch (error) {
       log(`workspace archive cleanup failed: ${error instanceof Error ? error.message : String(error)}`);
     }
-  });
-
-  server.before("agent.create", async ({ request }, context) => {
-    const bridge = await bridgePromise.catch(() => null);
-    const cwd = request.config.cwd;
-    if (!bridge || typeof cwd !== "string" || !cwd) return;
-    // Establish workspace authority now: an injected agent may call a tool
-    // before any client-side RPC has run.
-    const authority = getAuthority(context.paseo);
-    // Resolve the workspace now so a later artifact read is already authorizeable.
-    await authority.workspaceForCwd(cwd).catch(() => null);
-    if (request.config.mcpServers?.[identity.mcpServerName]) return;
-    return {
-      ...request,
-      config: {
-        ...request.config,
-        mcpServers: {
-          ...request.config.mcpServers,
-          [identity.mcpServerName]: {
-            type: "stdio",
-            // Load the tools with the session instead of behind codemode, so the
-            // model sees html_render as a first-class choice.
-            alwaysLoad: true,
-            command: process.execPath,
-            args: [bridge.adapterPath],
-            env: {
-              [identity.bridgeEnv.bridge]: bridge.socketPath,
-              [identity.bridgeEnv.token]: bridge.token,
-              [identity.bridgeEnv.cwd]: cwd,
-              // A desktop-managed daemon has the Electron app as process.execPath.
-              // Without this the adapter starts the GUI instead of Node and exits,
-              // closing MCP stdio; Node ignores the variable.
-              ELECTRON_RUN_AS_NODE: "1",
-            },
-          },
-        },
-      },
-    };
   });
 
   return async () => {

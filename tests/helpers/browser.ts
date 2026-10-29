@@ -20,8 +20,11 @@ export interface BrowserOptions {
   reducedMotion?: "reduce" | "no-preference";
   /** Test-only interaction after navigation and before window.__result is read. */
   interact?: (io: BrowserInteraction) => Promise<void>;
-  /** Opt-in local data-document navigation for opaque-origin tests. Default: file. */
-  navigation?: "file" | "data";
+  /**
+   * `data` is the legacy opaque about:blank/setContent fixture, NOT a data URL.
+   * `data-url` performs real data: navigation. Default: file.
+   */
+  navigation?: "file" | "data" | "data-url";
 }
 
 export async function browserResult(html: string, options: BrowserOptions = {}): Promise<unknown> {
@@ -99,7 +102,9 @@ export async function browserResult(html: string, options: BrowserOptions = {}):
         mobile: false,
       }, sessionId);
     }
-    if (options.navigation === "data") {
+    if (options.navigation === "data-url") {
+      await send("Page.navigate", { url: `data:text/html;charset=utf-8;base64,${Buffer.from(html).toString("base64")}` }, sessionId);
+    } else if (options.navigation === "data") {
       // Opt-in local in-memory document. The URL stays about:blank, so the
       // shell has an opaque origin without file:// access.
       await send("Page.navigate", { url: "about:blank" }, sessionId);

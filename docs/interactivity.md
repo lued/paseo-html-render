@@ -54,17 +54,27 @@ On Android, the plugin mounts a constant trusted WebView shell only when the
 public host capability is present. The report document stays inert JSON until
 the shell assigns it to an opaque `allow-scripts` inner frame. Only the constant
 shell script runs outside that frame. The shell forwards source-checked ready,
-height, link, image and theme messages through bounded, acknowledged chunks; it
-requires fresh focus/user activation before link/image requests. Missing
-capability shows a reason-specific static fallback. Registration, handshake,
-acknowledgement, load or process failures after mounting show an explicit error
-with retry. The `DocumentFrame` export added in 0.13 is optional: supported 0.12
-clients use a public native-manager query instead. A query does not prove JS
+height, link, image and theme messages through bounded, acknowledged chunks,
+each sent over the RNCWebView `onMessage` bridge, as a fragment URL and in a
+prefixed document title set before navigation. Android's raw mount cannot receive
+the wrapper-routed bridge, and its load URL may omit the changed fragment; the
+`diag-2` candidate reads the title separately from native loading events. Chunk
+data is 3,000 encoded characters so a full title stays below 4,000 characters;
+all carriers share session validation, ordered assembly and acknowledgement.
+A fresh `diag-2` phone card was user-reported working without errors; timed
+lifecycle checks and large-image throughput remain unverified.
+The shell requires fresh focus/user
+activation before link/image requests. Missing capability shows a
+reason-specific static fallback. Load, mount or render-process failures show an
+explicit error with retry. A ready, acknowledgement or theme failure keeps the
+rendered report mounted behind a banner that names the failed stage and offers
+Retry. The `DocumentFrame` export is optional: legacy client surfaces without it
+use a public native-manager query instead. A query does not prove JS
 view registration or a working handshake, and no component is re-registered.
 iOS, hosts without the public capability, and explicit `static` mode continue
 to use the static PNG or native report. Browser/shim tests are not physical
-Android evidence. A user has confirmed local inline interaction followed by a
-native ready timeout; the recovery changes still need a fresh device check.
+Android evidence. Under 2.2.0 a user confirmed local inline interaction followed
+by a native ready timeout; the 3.0 transport still needs a fresh device check.
 The adapter retries genuine ready messages within the existing deadlines and
 reads transport URLs from public start/progress/finish events. Shell load or a
 page's local LIVE badge does not complete the native handshake.

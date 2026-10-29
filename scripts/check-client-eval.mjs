@@ -9,6 +9,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { assertNoClientClasses } from "./client-syntax.ts";
+import { buildNativeShellDocument } from "../client/native-html-protocol.ts";
+import { buildLiveDocument } from "../shared/html-document.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const argument = process.argv.indexOf("--hermes");
@@ -18,8 +20,11 @@ const hermes = resolve(binary);
 const common = { bundle: true, platform: "neutral", mainFields: ["module", "main"],
   target: "es2020", supported: { "async-await": false }, write: false, logLevel: "silent" };
 const client = await build({ ...common, absWorkingDir: root, entryPoints: ["index.client.tsx"],
-  format: "cjs", jsx: "automatic", external: ["react", "react/*", "react-native", "react-native/*",
-    "@getpaseo/plugin", "@getpaseo/plugin/*", "@tanstack/react-query", "zod"] });
+  format: "cjs", jsx: "automatic", external: ["react", "react/jsx-runtime", "react-native",
+    "@getpaseo/plugin", "@getpaseo/plugin/server", "@getpaseo/plugin/server/provider",
+    "@getpaseo/plugin/server/usage", "@getpaseo/plugin/server/acp",
+    "@getpaseo/plugin/client", "@getpaseo/plugin/client/ui",
+    "@getpaseo/plugin/client/react-native", "@tanstack/react-query", "zod"] });
 const code = client.outputFiles[0].text;
 assertNoClientClasses(code);
 // Same public CommonJS factory/eager interop contract as the pinned host compiler.
@@ -54,17 +59,21 @@ const nativeCheck = `module.exports.__nativeCheck=function(nativeHost){
  if(boundary.render()!==null)throw Error("boundary containment");
  boundary.componentDidCatch();if(!caught)throw Error("boundary error reporting");
  var oldHost=nativeHtmlCapability("android");
- if(!oldHost.available||oldHost.reason!=="ready")throw Error("0.12 missing-DocumentFrame registered-WebView capability");
- if(reportCardMode({platform:"android",renderMode:"auto",hasHtml:true,hasReport:false,nativeAvailable:oldHost.available})!=="native")throw Error("0.12 native selection");
+ if(!oldHost.available||oldHost.reason!=="ready")throw Error("legacy missing-DocumentFrame registered-WebView capability");
+ if(reportCardMode({platform:"android",renderMode:"auto",hasHtml:true,hasReport:false,nativeAvailable:oldHost.available})!=="native")throw Error("legacy native selection");
  nativeHost.UIManager.hasViewManagerConfig=function(){return false;};
  var unavailable=nativeHtmlCapability("android");
  if(unavailable.available||unavailable.reason!=="host-native-view")throw Error("missing native view must fail closed");
  if(!/registered native WebView manager/.test(nativeFallbackMessage(unavailable.reason)))throw Error("fallback reason");
  nativeHost.UIManager.hasViewManagerConfig=function(name){return name==="RNCWebView";};
- if(NATIVE_WEBVIEW_SECURITY_PROPS.messagingEnabled!==false)throw Error("native security");
+ if(NATIVE_WEBVIEW_SECURITY_PROPS.messagingEnabled!==true)throw Error("native security");
  return true;
 };
-module.exports.__capability=function(){return nativeHtmlCapability("android");};\n`;
+module.exports.__capability=function(){return nativeHtmlCapability("android");};
+module.exports.__nativeDocuments=function(){
+ var inner=buildLiveDocument({html:"<p>Transport probe 😀 漢字</p>",title:"Transport probe"});
+ return {inner:inner,shell:buildNativeShellDocument(inner,"hermes-fixture-session")};
+};\n`;
 const instrumented = delivered.replace(sentinel, nativeCheck + sentinel);
 const program = `
 function must(value,message){if(!value)throw Error(message);}
@@ -87,16 +96,17 @@ print("HERMES_ENTRY_OK");
 var inspected=setup(${JSON.stringify(instrumented)});
 must(inspected.__nativeCheck(native)===true,"native construction incomplete");
 print("HERMES_NATIVE_OK");
+print("HERMES_DOCUMENTS="+JSON.stringify(inspected.__nativeDocuments()));
 var modernUi=Object.assign({},legacyUi,legacyRn,{DocumentFrame:Dummy});
 modules["@getpaseo/plugin/client/ui"]=modernUi;
 modules["@getpaseo/plugin/client/react-native"]=modernUi;
 setup(${JSON.stringify(delivered)});
 var modern=setup(${JSON.stringify(instrumented)});
-must(modern.__capability().available,"0.13 selection missing");
+must(modern.__capability().available,"0.14 selection missing");
 native.UIManager.hasViewManagerConfig=function(){return false;};
-must(!modern.__capability().available&&modern.__capability().reason==="host-native-view","0.13 export overrode missing native manager");
+must(!modern.__capability().available&&modern.__capability().reason==="host-native-view","0.14 export overrode missing native manager");
 delete native.UIManager.hasViewManagerConfig;
-must(modern.__capability().available,"0.13 public export without optional manager query");
+must(modern.__capability().available,"0.14 public export without optional manager query");
 native.UIManager.hasViewManagerConfig=function(){return true;};
 native.UIManager.dispatchViewManagerCommand=undefined;
 must(!modern.__capability().available&&modern.__capability().reason==="command-apis","missing command API must fail closed");
@@ -114,9 +124,15 @@ try {
   assert.match(output, /^HERMES_ENTRY_OK$/m);
   assert.match(output, /^HERMES_NATIVE_OK$/m);
   assert.match(output, /^HERMES_HOST_MATRIX_OK$/m);
+  const documentLine = output.split("\n").find((line) => line.startsWith("HERMES_DOCUMENTS="));
+  assert.ok(documentLine, "Hermes must generate the actual native shell and report runtime");
+  const generated = JSON.parse(documentLine.slice("HERMES_DOCUMENTS=".length));
+  const inner = buildLiveDocument({ html: "<p>Transport probe 😀 漢字</p>", title: "Transport probe" });
+  assert.deepEqual(generated, { inner, shell: buildNativeShellDocument(inner, "hermes-fixture-session") },
+    "Hermes-generated native documents must match the documents exercised by browser tests");
   console.log(JSON.stringify({ result: "pass", clientSha256: createHash("sha256").update(delivered).digest("hex"),
-    clientBytes: Buffer.byteLength(delivered), engineVersion: version, entrySetup: true, nativeConstruction: true,
-    hostProfiles: ["0.12-separate-ui-no-DocumentFrame", "0.13-unified-ui"], hostNegativeCases: true,
+    clientBytes: Buffer.byteLength(delivered), engineVersion: version, entrySetup: true, nativeConstruction: true, nativeDocuments: true,
+    hostProfiles: ["legacy-separate-ui-no-DocumentFrame", "0.14-unified-ui"], hostNegativeCases: true,
     uiEvidence: "synthetic-unmounted; NOT Android/Fabric/WebView evidence" }, null, 2));
 } finally {
   await rm(directory, { recursive: true, force: true });

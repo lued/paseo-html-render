@@ -8,10 +8,16 @@ import { SELECTED_IDENTITY } from "../shared/selected-identity.ts";
  * subprocesses). Other Paseo plugins keep their runtimes under the same parent, so
  * this plugin puts only its own private artifacts beside them:
  *
- *   $PASEO_HOME/plugin-data/html-render/{artifacts,bridge.sock,bridge.token}
+ *   $PASEO_HOME/plugin-data/html-render/
+ *     artifacts/                 durable cards, previews, report models
+ *     mcp-adapter-v3.mjs         generated stdio adapter for this build
+ *     mcp-adapter-v1.mjs         tombstone replacing the retired 2.x adapter
+ *     bridge-v3.sock             private unix socket for the adapter
+ *     bridge-v3.token            shared owner-only bridge credential
  *
- * `bridge.token` is a durable per-install credential, so plugin reloads do not
- * invalidate MCP adapters already injected into agents. PASEO_HTML_RENDER_DATA_DIR
+ * The token stays in the private data root so active adapters survive reloads.
+ * Paseo 0.14 injects MCP configuration from `agent.session_open` (launch-only),
+ * never persisting the token in saved agent records. PASEO_HTML_RENDER_DATA_DIR
  * overrides the root for isolated tests.
  *
  * The QA canary uses the same function with its own identity, so it resolves to
