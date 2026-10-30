@@ -13,6 +13,7 @@ import { ArtifactError, ArtifactStore, pngDimensions, type ArtifactRequester } f
 import { startBridge, type Bridge } from "./bridge.ts";
 import { archiveCleanupEnabled, resolveDataRoot } from "./paths.ts";
 import { createRenderer } from "./renderer.ts";
+import { createResponseCards } from "./response-cards.ts";
 import { createHtmlTools } from "./tools.ts";
 import { createTurnGuard, guardKey, maxCardsPerTurn } from "./turn-guard.ts";
 
@@ -167,6 +168,17 @@ export default function contribute(server: PluginServerContext, options: Contrib
     if (!workspace) throw new Error("This report is not available for that agent");
     return { workspaceIds: workspace.workspaceIds, root: workspace.root };
   };
+
+  // The response card is the only surface the host never folds away: it is a
+  // persisted plugin row appended after the turn's native reply. It reads the
+  // artifact through the same authority as every other read, and it is inert on
+  // any failure.
+  const responseCards = createResponseCards({
+    identity,
+    store,
+    resolveRequester: requireWorkspace,
+    log,
+  });
 
   server.handle(readArtifactRpc, async ({ artifactId, agentId }, { paseo }) => {
     const requester = await requireWorkspace(paseo, agentId);
@@ -380,14 +392,19 @@ export default function contribute(server: PluginServerContext, options: Contrib
   server.on("agent.turn_started", async ({ agent, turnId }, context) => {
     const key = guardKey(agent.id);
     if (key) guard.beginTurn(key, turnId);
+    responseCards.turnStarted(agent.id);
     await warmAuthority(context.paseo, agent.id, agent.cwd);
   });
 
   // Closing the turn keeps the remembered publishes, so an identical card is
-  // still refused in a later turn; only the per-turn count resets.
-  server.on("agent.turn_ended", ({ agent, turnId }) => {
+  // still refused in a later turn; only the per-turn count resets. The same hook
+  // appends the response card, after the reply is already in the timeline, so the
+  // native assistant message keeps its fold anchor. `event.timeline` is
+  // deprecated and always empty: the publisher reads bounded tail snapshots.
+  server.on("agent.turn_ended", async ({ agent, turnId, outcome }, context) => {
     const key = guardKey(agent.id);
     if (key) guard.endTurn(key, turnId);
+    await responseCards.handleTurnEnded({ agent, turnId, outcome }, context);
   });
 
   // Non-destructive by default: only an explicit `PASEO_HTML_RENDER_PURGE_ON_ARCHIVE`
@@ -405,6 +422,7 @@ export default function contribute(server: PluginServerContext, options: Contrib
   });
 
   return async () => {
+    responseCards.dispose();
     const bridge = await bridgePromise.catch(() => null);
     await bridge?.close().catch(() => {});
     await renderer.close().catch(() => {});

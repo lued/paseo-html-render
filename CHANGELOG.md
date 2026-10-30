@@ -11,19 +11,17 @@ It also contains the never-published 2.2.0 candidate changes listed further down
 
 ### Added
 
-- The report card now also renders on the assistant's final reply. Paseo's
-  `chat display > collapse turns` (the 0.14 default) reduces a finished turn to
-turn triggers up to the **last assistant message**, so a card attached to the
-  `html_render` row is invisible until the turn is expanded and no plugin can opt
-  out. The reply carries the artifact link, so the client transformer for
-  `assistant_message` moves the card there: the artifact RPC still supplies the
-  title and render mode, the reply text is re-rendered with Paseo's own Markdown
-  component, and the catalog (new `message` source rank) hides the tool-row copy
-  after a re-projection. Two accepted costs: the plugin renders that message
-  instead of the host, and the fold loses its end anchor for the trailing segment
-  of such turns, which then stay unfolded. A plain reply, a reply citing more than
-  one artifact, or a reply the schema cannot bound keeps the native message and
-  the tool-row card.
+- Published HTML answers now use a persistent response-card reference appended
+  after the native final reply through Paseo's public plugin-session timeline API.
+  This keeps the card visible with `Chat > Chat display > Collapse turns` while
+  preserving the real assistant-message boundary and collapsed thinking/tools.
+  It replaces the reply-replacement workaround, which inadvertently unfolded work.
+  Promotion verifies successful render output and workspace ownership, restores
+  durable sizing/render mode, reconciles persisted ids, and skips stale,
+  canceled, failed, unattributed or unreadable turns. Pending reads cannot append
+  after their deadline or a new turn. Original tool rows remain as work; preview
+  drafts do not become published responses. Older history is not auto-migrated.
+  No upstream or installed-Paseo modification is needed.
 
 ### Breaking
 

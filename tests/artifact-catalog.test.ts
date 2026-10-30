@@ -113,3 +113,36 @@ test("a reply reference outranks the render row and hides its card", () => {
     changed: true,
   });
 });
+
+test("the persisted response row outranks every projected row", () => {
+  const catalog = new ArtifactCatalog();
+  // The tool row is projected first and claims the artifact.
+  assert.deepEqual(catalog.record({ data: card(A), source: "marker", callId: "call-1" }), {
+    show: true,
+    changed: true,
+  });
+  catalog.takeDirty();
+  // The appended response row mounts later and becomes canonical.
+  assert.deepEqual(catalog.record({ data: card(A), source: "response", callId: `response:${A}` }), {
+    show: true,
+    changed: true,
+  });
+  catalog.takeDirty();
+  // Re-projection keeps the native tool row (no card) and never re-shows it.
+  assert.deepEqual(catalog.record({ data: card(A), source: "marker", callId: "call-1" }), {
+    show: false,
+    changed: false,
+  });
+  assert.equal(catalog.canonicalCallId(A), `response:${A}`);
+  // A second mount of the same response row is stable: no loop.
+  assert.deepEqual(catalog.record({ data: card(A), source: "response", callId: `response:${A}` }), {
+    show: true,
+    changed: false,
+  });
+  assert.equal(catalog.takeDirty(), false);
+  // Another artifact is unaffected, and its fallback still exists.
+  assert.deepEqual(catalog.record({ data: card(B), source: "marker", callId: "call-2" }), {
+    show: true,
+    changed: true,
+  });
+});

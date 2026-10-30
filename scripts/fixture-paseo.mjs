@@ -589,7 +589,7 @@ export async function runProtectedAcceptance(options = {}) {
   const provider = options.provider ?? DEFAULT_PROVIDER;
   const model = options.model ?? DEFAULT_MODEL;
   const thinking = options.thinking ?? DEFAULT_THINKING;
-  for (const name of ["fixture-result.json", "g6-client.json", "browser-group.json", "browser-child-group.json", "bridge-facts.json", "agent-runtime-facts.json", "agent-tool-facts.json", "artifact-facts.json", "g6-timeline.png", "g6-file-preview.png", "g6-refresh.png"]) {
+  for (const name of ["fixture-result.json", "g6-client.json", "browser-group.json", "browser-child-group.json", "bridge-facts.json", "agent-runtime-facts.json", "agent-tool-facts.json", "artifact-facts.json", "response-card-facts.json", "g6-timeline.png", "g6-expanded.png", "g6-failure.png", "g6-file-preview.png", "g6-refresh.png"]) {
     await fs.rm(join(outDir, name), { force: true }).catch(() => {});
   }
   const result = {
@@ -927,6 +927,33 @@ export async function runProtectedAcceptance(options = {}) {
       throw new Error("the unique artifact marker must occur in a completed render tool row with the requested title");
     }
     result.artifactId = reference.artifactId;
+
+    result.stage = "response_card";
+    const responseDeadline = Date.now() + 15_000;
+    let responseFacts = null;
+    while (Date.now() < responseDeadline) {
+      const page = await client.fetchAgentTimeline(agentId, { direction: "tail", limit: 48, projection: "canonical" });
+      if (page.error) throw new Error("fixture response timeline read failed");
+      const entries = page.entries;
+      const matches = entries.filter(entry => entry.item.type === "plugin" &&
+        entry.item.pluginId === SELECTED_IDENTITY.pluginId && entry.item.kind === SELECTED_IDENTITY.responseRendererKind &&
+        entry.item.data?.artifactId === reference.artifactId);
+      if (matches.length > 1) throw new Error("duplicate persisted response cards");
+      if (matches.length === 1) {
+        const responseIndex = entries.indexOf(matches[0]);
+        const replyIndex = entries.findLastIndex(entry => entry.item.type === "assistant_message" && entry.item.text.trim().length > 0);
+        if (replyIndex < 0 || responseIndex <= replyIndex) throw new Error("HTML response was not appended after the native assistant reply");
+        responseFacts = { count: 1, pluginId: matches[0].item.pluginId,
+          kind: matches[0].item.kind, artifactId: reference.artifactId,
+          nativeReplyPreserved: true, afterNativeReply: true,
+          responseSeq: matches[0].seqStart, replySeq: entries[replyIndex].seqStart };
+        break;
+      }
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    if (!responseFacts) throw new Error("no persisted HTML response card appeared after turn completion");
+    result.responseCard = responseFacts;
+    await writePrivateJson(join(outDir, "response-card-facts.json"), responseFacts);
 
     result.stage = "artifact_readback";
     const readback = await client.invokePluginRpc("html-render", "html.artifact.read", {

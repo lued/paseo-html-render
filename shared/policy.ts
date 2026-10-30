@@ -42,7 +42,8 @@ export const POLICY_INSTRUCTIONS =
   DESIGN_GUIDANCE + "\n" +
   "The live card is fluid (typically about 600-1100 CSS pixels); 728 is only the default preview width, not a card cap. " +
   "Fill the width with responsive, reflowing visuals. " +
-  "html_preview returns a script-disabled PNG screenshot and content height; " +
+  "html_preview returns a draft, script-disabled PNG screenshot and content height; it does not publish an answer. " +
+  "When the visual is the answer, finish with html_render rather than saying a preview was published. " +
   "html_render publishes a visual card with a private byte-identical original HTML, a static preview, " +
   "an absolute interactive.html path for Paseo file preview, and an optional bounded native report. " +
   "Daemon captures keep JavaScript, network, remote assets, SVG, and file URLs blocked; workspace " +
@@ -108,7 +109,7 @@ export const HTML_DESCRIPTION =
   "comparison, timeline or small interactive. Keep labels short; the page is not an essay. " +
   DESIGN_GUIDANCE + " " + LAYOUT_DESCRIPTION + " Any prose " +
   "on the page must be essential to reading the visual, because the explanation belongs in your reply " +
-  "below the card. Inline <style> and inline SVG are supported. " +
+  "alongside the card. Inline <style> and inline SVG are supported. " +
   "Remote http(s) resources and local file:// paths are blocked. Workspace-local raster images " +
   "(PNG, JPEG, GIF, WebP, AVIF) referenced by img src, srcset, or CSS url() are inlined for previews " +
   "and published pages. Local SVG files are not inlined; inline SVG markup is supported. Remote resources stay blocked. " +
@@ -120,7 +121,8 @@ export const RENDER_DESCRIPTION =
   "chart, flow, timeline or interactive, not a styled essay or a wall of bullets. " +
   DESIGN_GUIDANCE + " " + LAYOUT_DESCRIPTION + " Skip it for a single " +
   "fact, one sentence, code, file contents or config, and anything the reader will copy as text. " +
-  "Publish the finished page above your final reply. " +
+  "Publish the finished page with html_render; a draft html_preview is not publication. " +
+  "The response card appears after your native final reply when the turn completes, outside collapsed thinking and tools. " +
   "renderMode auto is the default: it renders live, sandboxed HTML on web and desktop and a static " +
   "PNG on native clients (a native report when report is supplied). In live mode inline scripts and styles " +
   "run; network resources, forms, local file URLs, and remote assets are blocked. Self-navigation remains possible. Inline SVG markup is supported; embed raster images as data: URIs or " +

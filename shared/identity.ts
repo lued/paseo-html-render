@@ -40,12 +40,21 @@ export interface PluginIdentity {
   /** Timeline renderer kind. */
   readonly rendererKind: string;
   /**
-   * Renderer kind for the card carried on the final reply. Paseo folds a
-   * finished turn's rows away but keeps the last assistant message, so a card
-   * attached to the render row is hidden by `collapseTurns` while this one is
-   * not. A separate kind keeps the two schemas apart.
+   * Renderer kind for the card carried on the final reply.
+   *
+   * Retained for compatibility, but no longer emitted: replacing the reply with
+   * a plugin row removes the `assistant_message` anchor `collapseTurns` looks for,
+   * which unfolds the whole turn instead of hiding only its tools.
    */
   readonly messageRendererKind: string;
+  /**
+   * Renderer kind for the response card appended after the native reply.
+   *
+   * This row is persisted by the daemon (`agent.timeline.append`), not projected
+   * from another row, so it sits after the last assistant message: the reply
+   * keeps its fold anchor and this card is outside the folded range.
+   */
+  readonly responseRendererKind: string;
   /** Timeline renderer/report-card schema version. */
   readonly reportVersion: number;
   /** Host screen id used for the report screen. */
@@ -90,6 +99,7 @@ export const PRODUCTION_IDENTITY: PluginIdentity = Object.freeze({
   markerPrefix: "paseo-html-render:v1:",
   rendererKind: "html-report-card",
   messageRendererKind: "html-report-message",
+  responseRendererKind: "html-report-response",
   reportVersion: 1,
   screenId: "report",
   screenTitle: "HTML report",

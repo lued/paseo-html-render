@@ -75,19 +75,36 @@ daemon once; the resume path does not make that check. Hosts with
 affected. The plugin cannot see the old session's capabilities, so it cannot
 work around this.
 
-Paseo 0.14 also folds a finished turn's tool rows by default, and the card is
-attached to the `html_render` row, so it is hidden until the turn is expanded.
-The final reply's `Open interactive report` link stays visible.
+Paseo 0.14 folds a finished turn's work before its last native assistant reply.
+A card projected onto the `html_render` tool row is therefore hidden with the
+work. Replacing the reply itself removes that fold boundary and leaves work
+unfolded, so the plugin no longer uses reply replacement.
 
-The reply avoids that: when the final assistant message carries the artifact link
-(`artifacts/<id>/interactive.html`), the card is published on the reply instead
-of the tool row, and the catalog hides the tool-row copy. Paseo keeps the last
-assistant message when it collapses a turn, so the card survives
-`chatDisplay: "collapseTurns"`. Two accepted costs: the reply is re-rendered by
-the plugin (Paseo's own `Markdown` component, so theme/selection/links behave),
-and the fold loses its end anchor for that turn's trailing segment, so the tool
-rows there stay unfolded. Replies without the link, replies citing more than one
-artifact, and artifacts published before this build keep the tool-row card.
+After a successfully completed, attributed turn, the plugin server reads bounded
+canonical timeline snapshots, verifies the completed render output and workspace
+ownership, and appends a small persistent `html-report-response` reference through
+Paseo's public plugin-session timeline API. It sits **after the native reply**:
+the reply keeps its original rendering, thinking and tools remain collapsible,
+and the HTML answer stays outside that collapsed range. The mounted response
+retires only the projected card copy; the original tool row remains as work.
+No upstream patch, installed-host change, or special chat setting is required.
+
+The response uses durable artifact metadata, including explicit static mode and
+width-specific heights. Deterministic ids, bounded history reconciliation and
+in-process serialization prevent repeated hook events from normally duplicating
+it. A timed-out append can have an uncertain delivery outcome; the gate stays
+held until that RPC settles and a later attempt reconciles persisted history.
+
+Draft `html_preview` calls do not publish cards. Failed/canceled turns, missing
+turn identity, a missing final reply, a publication outside the bounded tail
+window, authority failures and stale events keep the original tool/file fallback.
+New turns cancel pending promotion; the timeline is rechecked before appending.
+Subagents receive cards in their own conversations, not their parent's. Older
+publications are not retroactively moved merely by opening history. Persisted
+response rows survive refresh but require this plugin's renderer; uninstalling
+it leaves Paseo's unavailable-plugin placeholder. The absolute interactive-file
+link remains a fallback. No exactly-once claim is made across independent plugin
+instances or a host-side race that the append API cannot atomically exclude.
 
 ## Provider tool names
 

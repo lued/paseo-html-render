@@ -33,7 +33,19 @@ export interface RecordCardResult {
   readonly changed: boolean;
 }
 
-const SOURCE_RANK: Readonly<Record<ReferenceSource, number>> = { path: 0, marker: 1, message: 2 };
+/**
+ * Rank of a reference's origin when several rows name the same artifact.
+ *
+ * `response` is the persisted row appended after the turn: it is the only card
+ * that survives `collapseTurns`, so it wins over every projected row and the
+ * projected tool card is dropped in favour of it.
+ */
+const SOURCE_RANK: Readonly<Record<ReferenceSource, number>> = {
+  path: 0,
+  marker: 1,
+  message: 2,
+  response: 3,
+};
 
 export interface ArtifactCatalog {
   record(input: ObservedCard): RecordCardResult;

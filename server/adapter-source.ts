@@ -248,7 +248,7 @@ function freshnessText(result) {
 function previewText(result) {
   const widths = "width=" + result.width + " contentHeight=" + result.contentHeight +
     " capturedHeight=" + result.capturedHeight + " suggestedHeight=" + Math.max(80, Math.min(2000, result.contentHeight));
-  return "Static PNG preview rendered with scripts disabled. " + widths +
+  return "Draft only, not published: call html_render to publish the final HTML answer. Static PNG preview rendered with scripts disabled. " + widths +
     ". No console output: page scripts are disabled. Workspace raster images were inlined; remote and file " +
     "URLs stay blocked." + missingText(result.missingImages) + freshnessText(result);
 }
@@ -321,7 +321,7 @@ async function callTool(name, args) {
     // artifact id survives any prefix; the rest is for the model to read.
     let text = MARKER + reference + "\n" +
       "Published a report card titled " + JSON.stringify(result.htmlRender.title) +
-      ". The reader sees it above your reply.\n" +
+      ". The response card is appended after your native final reply when the turn completes.\n" +
       "interactivePath: " + path + "\n" +
       "measuredHeights: " + heights + "\n" +
       "reportStored: " + (result.hasReport === true ? "yes" : "no") + "\n" +

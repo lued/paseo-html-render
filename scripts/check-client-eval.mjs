@@ -11,6 +11,7 @@ import { build } from "esbuild";
 import { assertNoClientClasses } from "./client-syntax.ts";
 import { buildNativeShellDocument } from "../client/native-html-protocol.ts";
 import { buildLiveDocument } from "../shared/html-document.ts";
+import { SELECTED_IDENTITY } from "../shared/selected-identity.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const argument = process.argv.indexOf("--hermes");
@@ -87,9 +88,13 @@ function requireHost(name){must(Object.prototype.hasOwnProperty.call(modules,nam
 function setup(source){
  var factory=(0,eval)(source);must(typeof factory==="function","factory missing");
  var value=factory(requireHost);must(typeof value.default==="function","entry missing");
- var registrations=[];
- var cleanup=value.default({addTimelineTransformer:function(){registrations.push("transformer");return Dummy;},addScreen:function(){registrations.push("screen");},addTimelineRenderer:function(){registrations.push("renderer");},openScreen:Dummy});
- must(registrations.join(",")==="transformer,screen,renderer"&&typeof cleanup==="function","setup incomplete");cleanup();return value;
+ var registrations=[],transformers=[],renderers=[],removed=0;
+ var cleanup=value.default({addTimelineTransformer:function(input){registrations.push("transformer");transformers.push(input);return function(){removed+=1;};},addScreen:function(){registrations.push("screen");},addTimelineRenderer:function(input){registrations.push("renderer");renderers.push(input);},openScreen:Dummy});
+ must(registrations.join(",")==="transformer,screen,renderer,renderer,renderer"&&typeof cleanup==="function","setup incomplete");
+ must(transformers.length===1&&transformers[0].query.itemType==="tool_call","native assistant reply must remain untouched");
+ var kinds=renderers.map(function(input){must(typeof input.Component==="function","renderer component missing");return input.kind;}).sort();
+ must(kinds.join(",")===${JSON.stringify([SELECTED_IDENTITY.rendererKind, SELECTED_IDENTITY.messageRendererKind, SELECTED_IDENTITY.responseRendererKind].sort().join(","))},"response and compatibility renderers missing");
+ cleanup();must(removed===1,"transformer cleanup missing");return value;
 }
 setup(${JSON.stringify(delivered)});
 print("HERMES_ENTRY_OK");

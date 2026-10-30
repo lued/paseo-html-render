@@ -434,6 +434,50 @@ async function waitForCard(browser, marker, timeoutMs, label) {
   );
 }
 
+async function setCollapseTurns(browser, baseUrl) {
+  await browser.send("Page.navigate", { url: `${baseUrl.replace(/\/$/, "")}/settings/chat` }, browser.sessionId);
+  const trigger = `document.querySelector('[role="button"][aria-label^="Chat display:"]')`;
+  await browser.waitFor(`Boolean(${trigger})`, 30_000, "Chat display setting");
+  if (await browser.evaluate(`(${trigger}).getAttribute('aria-label') === 'Chat display: Collapse turns'`)) return;
+  const point = await findClickableRect(browser, trigger);
+  if (!point) throw new Error("Chat display control is not clickable");
+  await clickPoint(browser, point);
+  const option = `Array.from(document.querySelectorAll('[role="menuitem"], [role="option"]')).find(node => node.textContent.trim() === 'Collapse turns')`;
+  await browser.waitFor(`Boolean(${option})`, 10_000, "Collapse turns option");
+  const optionPoint = await findClickableRect(browser, option);
+  if (!optionPoint) throw new Error("Collapse turns option is not clickable");
+  await clickPoint(browser, optionPoint);
+  await browser.waitFor(`Boolean(${trigger}) && (${trigger}).getAttribute('aria-label') === 'Chat display: Collapse turns'`,
+    10_000, "Collapse turns saved through Settings UI");
+}
+
+async function assertCollapsedResponse(browser, marker) {
+  const expression = `(() => {
+    const summaries = Array.from(document.querySelectorAll('[data-testid="turn-summary"]'));
+    const toggle = summaries[0]?.querySelector('[aria-expanded]');
+    const frame = Array.from(document.querySelectorAll('iframe')).find(node =>
+      (node.getAttribute('srcdoc') || '').includes(${JSON.stringify(marker)}));
+    // Stock 0.14 does not expose aria-expanded here. Check the actual folding
+    // effect instead: native tool rows unmount when work is collapsed.
+    const workRowCount = document.querySelectorAll('[data-history-row-id^="agent_tool_"]').length;
+    return { summaryCount: summaries.length,
+      collapsed: workRowCount === 0,
+      workRowCount,
+      cardAfterSummary: Boolean(frame && summaries[0] &&
+        frame.getBoundingClientRect().top >= summaries[0].getBoundingClientRect().bottom - 1),
+      summaryTop: summaries[0]?.getBoundingClientRect().top ?? null,
+      cardTop: frame?.getBoundingClientRect().top ?? null,
+      expandedValue: toggle?.getAttribute('aria-expanded') ?? null };
+  })()`;
+  try {
+    await browser.waitFor(`(() => { const state = ${expression}; return state.summaryCount === 1 && state.collapsed && state.cardAfterSummary; })()`,
+      30_000, "HTML answer outside collapsed turn work");
+  } catch (error) {
+    throw new Error(`${error.message}; state=${JSON.stringify(await browser.evaluate(expression))}`);
+  }
+  return browser.evaluate(expression);
+}
+
 async function waitForAnyTestId(browser, testIds, timeoutMs) {
   const end = Date.now() + timeoutMs;
   while (Date.now() < end) {
@@ -691,6 +735,10 @@ async function main() {
     "exactly the fixture host after admission",
   );
 
+  result.stage = "chat_display";
+  await setCollapseTurns(browser, config.baseUrl);
+  result.isolation.chatDisplaySetByUi = "collapseTurns";
+
   result.stage = "timeline";
   await browser.send("Page.navigate", {
     url: `${config.baseUrl.replace(/\/$/, "")}/h/${config.serverId}/agent/${config.agentId}`,
@@ -723,6 +771,7 @@ async function main() {
     path: `${origin}/h/${config.serverId}/agent/${config.agentId}`,
     cardCount: frames.length,
     card,
+    folding: await assertCollapsedResponse(browser, config.marker),
   };
   result.auth.positive = "connected";
   result.isolation.hostsAfter = await waitForRegistry(
@@ -732,6 +781,17 @@ async function main() {
     "exactly the fixture host after the card",
   );
   await browser.screenshot(join(config.outDir, "g6-timeline.png"));
+
+  result.stage = "expand_turn";
+  await clickTestId(browser, "turn-summary", 10_000, "expand turn work");
+  await browser.waitFor(`document.querySelectorAll('[data-history-row-id^="agent_tool_"]').length > 0`,
+    10_000, "expanded turn mounts the original tool rows");
+  const expandedFrames = await markerFrames(browser, config.marker);
+  if (expandedFrames.length !== 1) throw new Error(`expanded work duplicated the answer card (${expandedFrames.length})`);
+  result.timeline.folding.expandedCardCount = expandedFrames.length;
+  await browser.screenshot(join(config.outDir, "g6-expanded.png"));
+  await clickTestId(browser, "turn-summary", 10_000, "collapse turn work");
+  result.timeline.folding.recollapsed = (await assertCollapsedResponse(browser, config.marker)).collapsed;
 
   result.stage = "refresh";
   // Return to the timeline before reloading; a compact host may have replaced
@@ -750,7 +810,8 @@ async function main() {
     30_000,
     "exactly the fixture host after refresh",
   );
-  result.refresh = { cardCount: refreshed.length, hosts: refreshedHosts };
+  result.refresh = { cardCount: refreshed.length, hosts: refreshedHosts,
+    folding: await assertCollapsedResponse(browser, config.marker) };
   await browser.screenshot(join(config.outDir, "g6-refresh.png"));
 
   result.stage = "file_link";
@@ -802,6 +863,9 @@ async function main() {
   if (browser) {
     const text = await bodyText(browser);
     if (text) result.failureText = sanitize(text.slice(-1600));
+    if (["card_assertions", "expand_turn", "refresh"].includes(result.stage)) {
+      await browser.screenshot(join(config.outDir, "g6-failure.png")).catch(() => {});
+    }
   }
 } finally {
   if (browser) {

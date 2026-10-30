@@ -7,7 +7,7 @@ No Paseo fork, daemon HTTP route, or shared-browser dependency.
 
 | Client / input | Display |
 | --- | --- |
-| Final reply carrying the artifact link | The report card is published **on the assistant reply** (card, then the reply text through Paseo's Markdown component), so `chat display > collapse turns` cannot hide it. The tool-row copy is suppressed. |
+| Completed turn with a published HTML answer | The plugin appends a persistent response-card reference **after the native assistant reply** using the public server timeline API. The reply keeps Paseo's fold boundary, thinking/tools remain collapsed, and the card stays visible. The tool-row card copy is retired only after the response is observed. |
 | Web/desktop, `renderMode: "auto"` (default) or `"iframe"` | Borderless inline HTML with theme updates and content-height fitting; no fullscreen. If the artifact also carries a report, one muted "View report" link opens the report screen. |
 | iOS/Android, optional `report` supplied | Accessible native report views, findings, graph lists, evidence and usage |
 | Explicit `"static"` | Native report views when supplied; otherwise PNG, with no live HTML |

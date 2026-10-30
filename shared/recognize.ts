@@ -301,8 +301,12 @@ const MAX_SCAN_DEPTH = 12;
  * tool row, because Paseo keeps the final assistant message when it collapses a
  * finished turn while the render row is folded away; a persisted marker outranks
  * the artifact-path fallback.
+ *
+ * `response` is the persisted row the daemon appends after the turn ends. It is
+ * read back as a mounted item, so it outranks every projected row: it is the one
+ * card the host never folds away.
  */
-export type ReferenceSource = "marker" | "path" | "message";
+export type ReferenceSource = "marker" | "path" | "message" | "response";
 
 export interface FoundReportReference {
   readonly data: ReportCardData;
