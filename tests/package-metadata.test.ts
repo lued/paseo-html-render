@@ -20,12 +20,13 @@ test("package, lockfile, manifest and adapter use the same 3.0.0 contract", asyn
   assert.match(identity, /adapterVersion: "3\.0\.0"/);
   assert.match(identity, /mcpServerName: "html-render-v3"/);
   assert.equal(pkg.engines.node, ">=22.18.0");
-  assert.equal(pkg.peerDependencies["@getpaseo/plugin"], ">=0.14.0-beta.1 <0.15.0");
-  assert.equal(pkg.devDependencies["@getpaseo/plugin"], "0.14.0-beta.1");
-  assert.equal(lock.packages["node_modules/@getpaseo/plugin"].version, "0.14.0-beta.1");
-  // One range gates both the daemon and the app; mobile apps are on 0.13.2.
-  // The 0.14 daemon floor is enforced at session open instead.
-  assert.equal(manifest.requirements.paseo, ">=0.13.2 <0.15.0");
+  assert.equal(pkg.peerDependencies["@getpaseo/plugin"], ">=0.14.0-beta.1");
+  assert.equal(pkg.devDependencies["@getpaseo/plugin"], "0.15.0-beta.1");
+  assert.equal(lock.packages["node_modules/@getpaseo/plugin"].version, "0.15.0-beta.1");
+  // One minimum gates both the daemon and the app; mobile apps are on 0.13.2.
+  // No upper cap: a newer app must load the plugin instead of failing the
+  // requirement check, and the 0.14 daemon floor is enforced at session open.
+  assert.equal(manifest.requirements.paseo, ">=0.13.2");
   assert.equal(manifest.id, "html-render");
 });
 
@@ -74,8 +75,9 @@ test("README labels the unreleased candidate and provides a checkout install", a
   assert.match(readme, /paseo plugin install \./);
   assert.doesNotMatch(readme, /paseo plugin install npm:paseo-html-render@3\.0\.0/);
   assert.match(readme, /git clone https:\/\/github\.com\/lued\/paseo-html-render\.git/);
-  assert.match(readme, />=0\.14\.0-beta\.1 <0\.15\.0/);
-  assert.match(readme, /0\.14\.0-beta\.1 and 0\.14\.0-beta\.2/);
+  assert.match(readme, />=0\.14\.0-beta\.1/);
+  assert.doesNotMatch(readme, /<0\.15\.0/, "an upper cap rejects newer apps");
+  assert.match(readme, /tested on 0\.14\.0-beta\.1 and 0\.14\.0/);
   assert.match(readme, /app 0\.13\.2 or newer/);
   // 3.0 reaches existing agents at session open; the old advice is wrong now.
   assert.doesNotMatch(readme, /start a new agent/i);

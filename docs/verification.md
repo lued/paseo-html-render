@@ -57,8 +57,8 @@ server=html-render-v3 reason=resume` and published artifact
 `16a012fb1d084d84934fbff8c053b866` from a nested codemode call. The Android app
 (0.13.2; no 0.14 mobile release yet) then showed the plugin as failed: `requires
 Paseo >=0.14.0-beta.1 <0.15.0. Your app is 0.13.2`. Paseo checks the same range
-against the app. The range is now `>=0.13.2 <0.15.0`, and a 0.13 daemon is
-handled at session open (`skip=host-unsupported`).
+against the app. The range is now `>=0.13.2` with no upper cap, and a 0.13 daemon
+is handled at session open (`skip=host-unsupported`).
 
 **Android device failure, 2026-10-29:** the report renders and stays mounted
 behind the non-destructive banner, but the ready handshake consistently times

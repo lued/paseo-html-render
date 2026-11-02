@@ -7,14 +7,14 @@ Existing tag `v2.1.0` is historical and must not be moved.
 
 ## Support matrix
 
-The release claims Node `>=22.18.0`, a Paseo daemon `>=0.14.0-beta.1 <0.15.0`
-and a Paseo app `>=0.13.2`. 3.0 contributes its MCP server through the 0.14
+The release claims Node `>=22.18.0`, a Paseo daemon 0.14.0-beta.1 or newer, and
+a Paseo app `>=0.13.2`. 3.0 contributes its MCP server through the 0.14
 `agent.session_open` hook, so 0.12 and 0.13 daemons are not supported. Paseo
 checks `requirements.paseo` against both the daemon and the app, and mobile apps
-are still on 0.13.2, so the manifest range is `>=0.13.2 <0.15.0`; an older daemon
-loads the plugin but gets no tools and logs `skip=host-unsupported`. The client
-SDK `dist` is byte-identical between 0.13.2 and 0.14.0-beta.1. Validate the
-minimum and current host before publication:
+are still on 0.13.2, so the manifest declares a minimum only, `>=0.13.2`, with
+no upper cap; an older daemon loads the plugin but gets no tools and logs
+`skip=host-unsupported`. The client SDK `dist` is byte-identical between 0.13.2
+and 0.14.0-beta.1. Validate the minimum and current host before publication:
 
 | Node | Paseo daemon | Paseo CLI | `@getpaseo/plugin` SDK | Evidence |
 | --- | --- | --- | --- | --- |
@@ -22,8 +22,8 @@ minimum and current host before publication:
 | 22.18.0 | 0.14.0-beta.2 | 0.14.0-beta.2 | 0.14.0-beta.1 | CI isolated reference-tarball smoke |
 | 26.12.1 | 0.14.0-beta.2 | 0.14.0-beta.2 | 0.14.0-beta.1 | local isolated smoke; see `docs/verification.md` |
 
-The 0.14.0-beta.1 and 0.14.0-beta.2 SDK `dist` trees are byte-identical, so the
-package pins the floor.
+The 0.14.0-beta.1 and 0.14.0-beta.2 SDK `dist` trees are byte-identical, and the
+0.15.0-beta.1 client tree is byte-identical to both, so the package pins the floor.
 
 The daemon/CLI version and the `@getpaseo/plugin` SDK version are separate
 contracts. Record both in `smoke-result.json`; do not infer the SDK version from

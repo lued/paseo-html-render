@@ -2,8 +2,9 @@
 
 ## 3.0.0 status (2026-10-28)
 
-Target: first npm release, **3.0.0** for Paseo `>=0.14.0-beta.1 <0.15.0`. The
-2.2.0 candidate below was never published and is folded into 3.0.0.
+Target: first npm release, **3.0.0** for a Paseo daemon 0.14.0-beta.1 or newer.
+The manifest declares only the `>=0.13.2` minimum, with no upper cap. The 2.2.0
+candidate below was never published and is folded into 3.0.0.
 
 - Done: session-open injection, `html-render-v3` key, versioned transport,
   legacy tombstone, stage diagnostics and a non-destructive failure banner.

@@ -6,7 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased] — 3.0.0 candidate
 
-Not published to npm or tagged as 3.0.0. Requires Paseo `>=0.14.0-beta.1 <0.15.0`.
+Not published to npm or tagged as 3.0.0. Requires a Paseo daemon 0.14.0-beta.1 or
+newer; the manifest declares only a minimum (`>=0.13.2`) and no upper cap.
 It also contains the never-published 2.2.0 candidate changes listed further down.
 
 ### Added
@@ -25,13 +26,14 @@ It also contains the never-published 2.2.0 candidate changes listed further down
 
 ### Breaking
 
-- The daemon must be Paseo `>=0.14.0-beta.1 <0.15.0`; 0.12 and 0.13 daemons get
-  no tools. The manifest range is `>=0.13.2 <0.15.0` because Paseo checks the
-  same range against the app, and mobile apps are still on 0.13.2 (the client
-  SDK is byte-identical between 0.13.2 and 0.14.0-beta.1). On an older daemon
-  the session-open hook passes the request through and logs
-  `skip=host-unsupported`. The SDK is pinned to `@getpaseo/plugin` 0.14.0-beta.1
-  and the peer range is `>=0.14.0-beta.1 <0.15.0`.
+- The daemon must be Paseo 0.14.0-beta.1 or newer; 0.12 and 0.13 daemons get
+  no tools. The manifest declares a minimum only, `>=0.13.2`, because Paseo
+  checks the same value against the app and mobile apps are still on 0.13.2
+  (the client SDK is byte-identical between 0.13.2 and 0.14.0-beta.1). There is
+  no upper cap: a newer app loads the plugin instead of failing the requirement
+  check. On an older daemon the session-open hook passes the request through and
+  logs `skip=host-unsupported`. The SDK is pinned to `@getpaseo/plugin`
+  0.15.0-beta.1 for typecheck and the peer range is `>=0.14.0-beta.1`.
 - The MCP server is contributed at `agent.session_open`, not written into an
   agent's saved configuration at `agent.create`. The `agent.create` hook is gone.
   The contribution is launch-only, so it reaches new, resumed, refreshed and
@@ -104,6 +106,11 @@ It also contains the never-published 2.2.0 candidate changes listed further down
 
 ### Fixed
 
+- The `requirements.paseo` upper cap is gone. Paseo checks that range against
+  the app, so `>=0.13.2 <0.15.0` made a 0.15.0-beta.1 app refuse to evaluate the
+  client bundle and every report card rendered as "Plugin timeline item
+  unavailable." while the daemon still injected tools and published artifacts.
+  The manifest is now `>=0.13.2` and the peer range `>=0.14.0-beta.1`.
 - Cards now recognize the tool-row names Paseo's `omp` provider produces.
   `omp` bridges MCP itself (`providers/omp/mcp-bridge.js`), so the model calls
   `mcp_<server>__<tool>_<12-hex>` and Paseo renames the timeline item to

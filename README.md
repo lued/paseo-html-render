@@ -6,7 +6,7 @@ Ask Paseo for a comparison, a flow, a screenshot review or a set of numbers. Ins
 
 ![The image-inspection demo: a before/after settings screenshot with numbered differences and a detail crop.](docs/images/showcase/hero.png)
 
-<sub>A real capture of the [image-inspection demo](examples/showcase/image-inspection.html). The capture is a standalone demo page, not a mocked Paseo window; on web/desktop the same page runs as a live card in the timeline.</sub>
+<sub>A real capture of the [image-inspection demo](examples/showcase/image-inspection.html): a standalone demo page, not a mocked Paseo window. On web/desktop the same page runs as a live card.</sub>
 
 Each interactive agent session gets two MCP tools: `html_preview` checks the page as a PNG, and `html_render` publishes the card with a link to the full interactive HTML file.
 
@@ -30,7 +30,7 @@ paseo plugin install .
 paseo plugin ls
 ```
 
-Existing agents pick up the tools on their next prompt (Pi with default MCP settings: restart the daemon once, see [compatibility](docs/compatibility.md)). Requires a Paseo daemon `>=0.14.0-beta.1 <0.15.0` (tested with 0.14.0-beta.1 and 0.14.0-beta.2) and Paseo app 0.13.2 or newer, Node 22.18 or newer on the daemon host, and a sandbox-capable Chromium, found via `PASEO_HTML_RENDER_CHROMIUM`, a Playwright cache, `shared-browser`, or an installed Chromium-family browser. No browser is downloaded or installed.
+Existing agents get the tools on their next prompt (Pi defaults: restart the daemon once, see [compatibility](docs/compatibility.md)). Requires a Paseo daemon `>=0.14.0-beta.1` (tested on 0.14.0-beta.1 and 0.14.0), a Paseo app 0.13.2 or newer, Node 22.18 or newer on the daemon host, and a sandbox-capable Chromium (via `PASEO_HTML_RENDER_CHROMIUM`, a Playwright cache, `shared-browser`, or an installed Chromium-family browser). The manifest has no upper cap, so newer apps load it. No browser is downloaded or installed.
 
 ## What it does
 

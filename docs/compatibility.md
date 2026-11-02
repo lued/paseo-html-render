@@ -47,11 +47,14 @@ link/path; copying is not represented as opening a file tab.
 
 **Versions.** The daemon must be 0.14.0-beta.1 or newer. The app may be 0.13.2
 (the current mobile release) or newer. Paseo checks the single
-`requirements.paseo` range (`>=0.13.2 <0.15.0`) against both, so the range also
-admits a 0.13 daemon. That daemon passes no `mcpServers` map to the hook, so
-the plugin passes the request through, gets no tools, and logs
-`skip=host-unsupported` with one explanation line. The client SDK `dist` is
-byte-identical between 0.13.2 and 0.14.0-beta.1.
+`requirements.paseo` minimum (`>=0.13.2`) against both, with no upper cap, so a
+newer app or daemon still loads the plugin; a future breaking host change would
+surface as a client evaluation error rather than a version message. The minimum
+also admits a 0.13 daemon. That daemon passes no `mcpServers` map to the hook,
+so the plugin passes the request through, gets no tools, and logs
+`skip=host-unsupported` with one explanation line. The client SDK `dist` tree is
+byte-identical between 0.13.2, 0.14.0-beta.1 and 0.15.0-beta.1; 0.15 only adds
+server hook aliases and `addHook`, which this plugin does not need.
 
 The MCP server `html-render-v3` is contributed at `agent.session_open` for
 interactive sessions only. It is launch-only: never in a saved agent record, and

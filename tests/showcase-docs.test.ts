@@ -53,7 +53,8 @@ test("README is short, truthful about install and labels the demo capture", asyn
   assert.match(readme, /npm ci --ignore-scripts/);
   assert.match(readme, /paseo plugin install \./);
   assert.match(readme, /paseo plugin ls/);
-  assert.match(readme, />=0\.14\.0-beta\.1 <0\.15\.0/);
+  assert.match(readme, />=0\.14\.0-beta\.1/);
+  assert.doesNotMatch(readme, /<0\.15\.0/, "an upper cap rejects newer apps");
   assert.doesNotMatch(readme, /paseo plugin install npm:paseo-html-render@3\.0\.0/);
   assert.match(readme, /Node 22\.18 or newer/);
   assert.match(readme, /Chromium/);
