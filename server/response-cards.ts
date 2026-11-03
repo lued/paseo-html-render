@@ -16,6 +16,8 @@ type TimelineHandle = ReturnType<PaseoApi["agents"]["ref"]>["timeline"];
 export type ResponseItem = Parameters<TimelineHandle["append"]>[0];
 const DEFAULT_REFETCH_LIMIT = 24;
 const MAX_ENTRIES = 240;
+/** Outer cap for a deferred recovery whose first read waits on a session open. */
+const RECOVERY_TIMEOUT_MS = 20_000;
 const MAX_REFETCH_LIMIT = 48;
 const MAX_SCAN_NODES = 192;
 const MAX_OUTPUT_STRINGS = 32;
@@ -49,8 +51,23 @@ export interface ResponseCardsOptions {
 }
 export interface ResponseCards {
   handleTurnEnded(input: TurnEndedInput, context: Pick<PluginHookContext, "paseo" | "signal">): Promise<ResponseOutcome>;
+  /**
+   * Re-append the last turn's response card after the host lost it.
+   *
+   * Paseo keeps plugin timeline rows in memory, so a daemon restart drops every
+   * appended card while the artifact store keeps the card itself. This restores
+   * the one row that keeps a published report visible outside the folded turn.
+   * Only the last turn is restored: `timeline.append` has no position, so an
+   * older card would land after the newest reply instead of under its own turn.
+   */
+  recover(paseo: PaseoApi, agentId: string): Promise<ResponseOutcome>;
   turnStarted(agentId: string): void;
   dispose(): void;
+}
+interface RunMode {
+  /** Turn end waits for the reply to be final; a session open already is. */
+  readonly requireIdle: boolean;
+  readonly verb: "appended" | "recovered";
 }
 interface EntryView { readonly item: Record<string, unknown>; readonly turnId: string | null }
 export interface SelectOptions { readonly turnId: string | null; readonly identity: PluginIdentity }
@@ -73,6 +90,16 @@ function entryViews(entries: unknown): EntryView[] {
     if (typeof item !== "object" || item === null || Array.isArray(item)) return [];
     return [{ item: item as Record<string, unknown>, turnId: typeof turnId === "string" && turnId.length > 0 ? turnId : null }];
   });
+}
+
+/** Turn id of the newest non-plugin row: the last turn the host can attribute. */
+export function lastTurnId(entries: unknown): string | null {
+  const views = entryViews(entries);
+  for (let index = views.length - 1; index >= 0; index -= 1) {
+    const view = views[index]!;
+    if (view.turnId !== null && view.item.type !== "plugin") return view.turnId;
+  }
+  return null;
 }
 
 /** Bounded output-only walk. Arguments are not publication evidence. */
@@ -136,6 +163,38 @@ export function selectResponseTarget(entries: unknown, options: SelectOptions): 
   return { kind: "skip", reason: "no-publish" };
 }
 
+/**
+ * Selection for a timeline the host rebuilt without turn attribution.
+ *
+ * A daemon restart rebuilds history from the provider session, which can carry
+ * no turn ids. The last user message bounds the last turn; the reply must still
+ * be the newest non-plugin row and the render row must be inside that turn.
+ */
+export function selectLastResponseTarget(entries: unknown, identity: PluginIdentity): Selection {
+  const views = entryViews(entries);
+  if (views.length === 0) return { kind: "skip", reason: "empty-timeline" };
+  const last = views.findLast(entry => entry.item.type !== "plugin");
+  if (!last || last.item.type !== "assistant_message" ||
+    typeof last.item.text !== "string" || last.item.text.trim().length === 0) {
+    return { kind: "skip", reason: "no-reply" };
+  }
+  const start = views.findLastIndex(entry => entry.item.type === "user_message");
+  const window = views.slice(start + 1);
+  const reply = window.length - 1;
+  let examined = 0;
+  for (let index = reply - 1; index >= 0 && examined < MAX_RENDER_ROWS; index -= 1) {
+    const item = window[index]!.item;
+    if (item.type !== "tool_call" || typeof item.name !== "string" || !isRenderToolRow({ name: item.name, detail: item.detail })) continue;
+    examined += 1;
+    if (item.status !== "completed" || (item.error !== null && item.error !== undefined)) continue;
+    for (const text of publishedMarkerText(item.detail)) {
+      const reference = decodeReportReference(text, identity);
+      if (reference) return { kind: "target", artifactId: reference.artifactId, rowName: item.name };
+    }
+  }
+  return { kind: "skip", reason: "no-publish" };
+}
+
 export function hasResponseRow(entries: unknown, itemId: string, kind: string, pluginId?: string): boolean {
   return entryViews(entries).some(({ item }) => item.type === "plugin" && item.id === itemId &&
     item.kind === kind && (pluginId === undefined || item.pluginId === pluginId));
@@ -177,16 +236,25 @@ export function createResponseCards(options: ResponseCardsOptions): ResponseCard
     if (page.error) throw new Error("Timeline read failed");
     return { entries: page.entries, active: page.agent?.status === "running" || page.agent?.status === "initializing" };
   };
-  const run = async (input: TurnEndedInput, context: Pick<PluginHookContext, "paseo" | "signal">,
-    signal: AbortSignal, deadline: number): Promise<ResponseOutcome> => {
-    const stopped = (): ResponseOutcome | null => disposed ? skip("disposed") : signal.aborted ? skip("aborted") :
-      performance.now() >= deadline ? skip("timeout") : null;
+  const run = async (input: TurnEndedInput, context: Pick<PluginHookContext, "paseo">,
+    signal: AbortSignal, budgetMs: number, mode: RunMode): Promise<ResponseOutcome> => {
     const timeline = context.paseo.agents.ref(input.agent.id).timeline;
     const page = await read(timeline);
+    // A session-open hook runs inside the agent's own load, where a timeline
+    // read waits for that load to finish. Start the budget after the read so a
+    // deferred recovery is not charged for the open it was waiting on.
+    const deadline = performance.now() + budgetMs;
+    const stopped = (): ResponseOutcome | null => disposed ? skip("disposed") : signal.aborted ? skip("aborted") :
+      performance.now() >= deadline ? skip("timeout") : null;
     let stop = stopped();
     if (stop) return stop;
-    if (page.active) return skip("active-turn");
-    const selection = selectResponseTarget(page.entries, { turnId: input.turnId, identity });
+    if (mode.requireIdle && page.active) return skip("active-turn");
+    const turnId = input.turnId ?? lastTurnId(page.entries);
+    // A rebuilt timeline may have no turn ids; bound the turn by its user message.
+    const select = (entries: unknown): Selection => turnId
+      ? selectResponseTarget(entries, { turnId, identity })
+      : selectLastResponseTarget(entries, identity);
+    const selection = select(page.entries);
     if (selection.kind === "skip") return skip(selection.reason);
     const { artifactId } = selection;
     const itemId = responseItemId(input.agent.id, artifactId);
@@ -209,8 +277,8 @@ export function createResponseCards(options: ResponseCardsOptions): ResponseCard
     const latest = await read(timeline);
     stop = stopped();
     if (stop) return stop;
-    if (latest.active) return skip("active-turn", artifactId);
-    const target = selectResponseTarget(latest.entries, { turnId: input.turnId, identity });
+    if (mode.requireIdle && latest.active) return skip("active-turn", artifactId);
+    const target = select(latest.entries);
     if (target.kind === "skip") return skip(target.reason, artifactId);
     if (target.artifactId !== artifactId) return skip("stale-turn", artifactId);
     if (present(latest.entries)) return skip("already-present", artifactId);
@@ -219,7 +287,7 @@ export function createResponseCards(options: ResponseCardsOptions): ResponseCard
         version: identity.reportVersion, data: card });
     } catch { return skip("append-failed", artifactId); }
     remember(keyFor(input.agent.id, artifactId));
-    log(`response-card appended agent=${safe(input.agent.id)} artifact=${artifactId} item=${safe(itemId)} row=${safe(selection.rowName)}`);
+    log(`response-card ${mode.verb} agent=${safe(input.agent.id)} artifact=${artifactId} item=${safe(itemId)} row=${safe(selection.rowName)}`);
     return { result: "appended", artifactId, itemId, rowName: selection.rowName };
   };
   return {
@@ -233,7 +301,7 @@ export function createResponseCards(options: ResponseCardsOptions): ResponseCard
       const relayAbort = () => controller.abort();
       context.signal.addEventListener("abort", relayAbort, { once: true });
       inflight.set(input.agent.id, controller);
-      const work = run(input, context, controller.signal, performance.now() + timeoutMs);
+      const work = run(input, context, controller.signal, timeoutMs, { requireIdle: true, verb: "appended" });
       // A timeout does not cancel an already-dispatched append RPC. Keep its
       // gate until it settles, and reconcile history on subsequent attempts.
       const release = () => { if (inflight.get(input.agent.id) === controller) inflight.delete(input.agent.id); };
@@ -249,6 +317,32 @@ export function createResponseCards(options: ResponseCardsOptions): ResponseCard
       } finally { context.signal.removeEventListener("abort", relayAbort); }
     },
     turnStarted(agentId) { inflight.get(agentId)?.abort(); },
+    async recover(paseo, agentId) {
+      if (disposed) return skip("disposed");
+      if (inflight.has(agentId)) return skip("busy");
+      const controller = new AbortController();
+      inflight.set(agentId, controller);
+      const input: TurnEndedInput = {
+        agent: { id: agentId, parentAgentId: null },
+        turnId: null,
+        outcome: { kind: "completed" },
+      };
+      const work = run(input, { paseo }, controller.signal, timeoutMs,
+        { requireIdle: false, verb: "recovered" });
+      const release = () => { if (inflight.get(agentId) === controller) inflight.delete(agentId); };
+      void work.then(release, release);
+      try {
+        // The first timeline read can wait for the session open that triggered
+        // this call; the outer deadline only needs to bound the append work.
+        const result = await raceDeadline(work, Math.max(timeoutMs, RECOVERY_TIMEOUT_MS), controller.signal);
+        if (result.kind === "done") return result.value;
+        if (result.kind === "failed") return skip("read-failed");
+        controller.abort();
+        return skip(result.kind);
+      } catch {
+        return skip("read-failed");
+      }
+    },
     dispose() {
       disposed = true;
       for (const controller of inflight.values()) controller.abort();

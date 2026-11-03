@@ -328,6 +328,12 @@ export default function contribute(server: PluginServerContext, options: Contrib
       }));
       return;
     }
+    // The host keeps plugin timeline rows in memory, so a daemon restart drops
+    // the response card that keeps a published report visible outside the
+    // folded turn. Restore the last turn's card in the background: a timeline
+    // read waits for this very open to finish, so awaiting it would stall the
+    // session. The call is idempotent and bounded.
+    void responseCards.recover(context.paseo, request.agentId).catch(() => {});
     const bridge = await bridgeForInjection();
     if (!bridge) {
       log(formatSessionOpenEvidence({

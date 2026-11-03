@@ -20,6 +20,7 @@ const IDENTITY = PRODUCTION_IDENTITY;
 function fakePaseoWorkspaces(
   workspaces: Array<{ id: string; path: string }>,
   agents: Record<string, string | null>,
+  counters?: { refetches: number },
 ): PaseoApi {
   return {
     workspaces: {
@@ -41,13 +42,22 @@ function fakePaseoWorkspaces(
         get workspaceId() {
           return agents[agentId] ?? null;
         },
+        timeline: {
+          async refetch() {
+            if (counters) counters.refetches += 1;
+            return { entries: [] };
+          },
+          async append() {
+            throw new Error("no response card expected");
+          },
+        },
       }),
     },
   } as unknown as PaseoApi;
 }
 
-function fakePaseo(workspaceRoot: string): PaseoApi {
-  return fakePaseoWorkspaces([{ id: "wks_test", path: workspaceRoot }], { agent_ok: "wks_test" });
+function fakePaseo(workspaceRoot: string, counters?: { refetches: number }): PaseoApi {
+  return fakePaseoWorkspaces([{ id: "wks_test", path: workspaceRoot }], { agent_ok: "wks_test" }, counters);
 }
 
 /** Minimal server context that records every registration. */
@@ -265,20 +275,24 @@ test("session open skips history, disabled labels, and an already-present server
   });
   const cleanup = contribute(server);
   t.after(cleanup);
-  const paseo = fakePaseo(workspace);
+  const counters = { refetches: 0 };
+  const paseo = fakePaseo(workspace, counters);
   const sessionOpen = hooks.get("agent.session_open")!;
   const open = (overrides: Record<string, unknown>) =>
     sessionOpen({ request: sessionRequest({ cwd: workspace, ...overrides }) }, { paseo, signal: new AbortController().signal });
 
-  // A history open attaches no tools at all.
+  // A history open attaches no tools at all, and recovery stays out of it.
   assert.equal(await open({ purpose: "history" }), undefined);
   assert.ok(logs.some((line) => /result=skipped skip=history/.test(line)));
+  assert.equal(counters.refetches, 0, "a history open is not repaired");
   // The opt-out label is exact and case/whitespace tolerant.
   assert.equal(await open({ labels: { "html-render/disabled": " TRUE " } }), undefined);
   assert.ok(logs.some((line) => /result=skipped skip=label/.test(line)));
   // Only "true" disables; any other value keeps the default.
   assert.ok(await open({ labels: { "html-render/disabled": "no" } }), "a non-true label keeps injection");
   assert.ok(logs.some((line) => /result=injected/.test(line)));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(counters.refetches >= 1, "an interactive open tries to restore the last response card");
   // A host that pre-populates the key is never overwritten.
   const present = { [IDENTITY.mcpServerName]: { type: "stdio", command: "keep" } };
   assert.equal(await open({ mcpServers: present }), undefined);

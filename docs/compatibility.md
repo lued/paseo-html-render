@@ -98,6 +98,17 @@ in-process serialization prevent repeated hook events from normally duplicating
 it. A timed-out append can have an uncertain delivery outcome; the gate stays
 held until that RPC settles and a later attempt reconciles persisted history.
 
+Plugin timeline rows live in the daemon's memory, so a daemon restart drops the
+appended reference while the artifact stays on disk. On the next
+`agent.session_open` the plugin re-reads the tail and re-appends the **last**
+turn's card when its row is missing. The restore runs in the background because a
+timeline read from inside the open waits for that open to finish. Older turns
+keep their projected card inside the folded work: `timeline.append` has no
+position, so restoring an older card would place it under the newest reply
+instead of its own turn. An explicit agent reload (`paseo agent reload`, or the
+app's reload action) wipes plugin rows after its session open, so that card is
+restored on the following open.
+
 Draft `html_preview` calls do not publish cards. Failed/canceled turns, missing
 turn identity, a missing final reply, a publication outside the bounded tail
 window, authority failures and stale events keep the original tool/file fallback.

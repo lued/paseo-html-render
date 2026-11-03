@@ -108,6 +108,7 @@ interface FakeState {
   appends: ResponseItem[];
   error?: unknown;
   refetchOptions?: Record<string, unknown>;
+  agent?: { status?: string };
 }
 
 function fakePaseo(state: FakeState) {
@@ -115,7 +116,7 @@ function fakePaseo(state: FakeState) {
     async refetch(options: Record<string, unknown>) {
       state.refetchOptions = options;
       if (state.error) throw state.error;
-      return { entries: state.entries };
+      return { entries: state.entries, agent: state.agent };
     },
     async append(item: ResponseItem) {
       state.appends.push(item);
@@ -377,6 +378,87 @@ test("a replayed event appends once, and a restart reconciles the persisted row"
     artifactId: ARTIFACT,
   });
   assert.equal(state.appends.length, 1);
+});
+
+// --- recovery --------------------------------------------------------------
+
+test("recovery re-appends the last turn's card after the host lost it", async () => {
+  const state: FakeState = { entries: [render(), reply()], appends: [] };
+  const logs: string[] = [];
+  const cards = publisher({ state, logs });
+  const outcome = await cards.recover(fakePaseo(state), "agent_ok");
+  assert.deepEqual(outcome, {
+    result: "appended",
+    artifactId: ARTIFACT,
+    itemId: responseItemId("agent_ok", ARTIFACT),
+    rowName: "mcp__html_render_v3__html_render",
+  });
+  assert.equal(state.appends.length, 1);
+  assert.equal(state.entries.at(-1)?.item.type, "plugin");
+  assert.ok(logs.some((line) => line.includes("response-card recovered")));
+  // A second open reads the restored row back and does nothing.
+  assert.deepEqual(await cards.recover(fakePaseo(state), "agent_ok"), {
+    result: "skipped",
+    reason: "already-present",
+    artifactId: ARTIFACT,
+  });
+  assert.equal(state.appends.length, 1);
+});
+
+test("recovery appends while the host still reports the agent as starting", async () => {
+  // A session open can run before the daemon settles the agent lifecycle, so
+  // recovery must not reuse the turn-end idle gate.
+  const state: FakeState = { entries: [render(), reply()], appends: [], agent: { status: "initializing" } };
+  const outcome = await publisher({ state, logs: [] }).recover(fakePaseo(state), "agent_ok");
+  assert.equal(outcome.result, "appended");
+  assert.equal(state.appends.length, 1);
+});
+
+test("recovery leaves a newer turn alone", async () => {
+  const state: FakeState = {
+    entries: [render(), reply(), { turnId: "turn-2", item: { type: "user_message", text: "next question" } }],
+    appends: [],
+  };
+  const outcome = await publisher({ state, logs: [] }).recover(fakePaseo(state), "agent_ok");
+  assert.equal(outcome.result, "skipped");
+  assert.equal(state.appends.length, 0, "an older card would land under the newest turn");
+});
+
+test("recovery ignores a last turn that published nothing", async () => {
+  const state: FakeState = { entries: [preview(), reply()], appends: [] };
+  const outcome = await publisher({ state, logs: [] }).recover(fakePaseo(state), "agent_ok");
+  assert.deepEqual(outcome, { result: "skipped", reason: "no-publish" });
+  assert.equal(state.appends.length, 0);
+});
+
+test("recovery never appends when the stored card is unreadable", async () => {
+  const state: FakeState = { entries: [render(), reply()], appends: [] };
+  const outcome = await publisher({ state, logs: [], card: new Error("gone") })
+    .recover(fakePaseo(state), "agent_ok");
+  assert.deepEqual(outcome, { result: "skipped", reason: "unreadable", artifactId: ARTIFACT });
+  assert.equal(state.appends.length, 0);
+});
+
+test("recovery works on a rebuilt timeline that lost turn ids", async () => {
+  const strip = (entry: Entry): Entry => ({ item: entry.item });
+  const state: FakeState = {
+    entries: [strip({ item: { type: "user_message", text: "question" } }), strip(render()), strip(reply())],
+    appends: [],
+  };
+  const outcome = await publisher({ state, logs: [] }).recover(fakePaseo(state), "agent_ok");
+  assert.equal(outcome.result, "appended");
+  assert.equal(state.appends.length, 1);
+});
+
+test("a rebuilt timeline still refuses a card when the reply is not last", async () => {
+  const strip = (entry: Entry): Entry => ({ item: entry.item });
+  const state: FakeState = {
+    entries: [strip(render()), strip(reply()), strip({ item: { type: "user_message", text: "next" } })],
+    appends: [],
+  };
+  const outcome = await publisher({ state, logs: [] }).recover(fakePaseo(state), "agent_ok");
+  assert.equal(outcome.result, "skipped");
+  assert.equal(state.appends.length, 0);
 });
 
 test("concurrent turn-ended calls append once", async () => {

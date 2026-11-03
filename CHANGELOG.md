@@ -111,6 +111,13 @@ It also contains the never-published 2.2.0 candidate changes listed further down
   client bundle and every report card rendered as "Plugin timeline item
   unavailable." while the daemon still injected tools and published artifacts.
   The manifest is now `>=0.13.2` and the peer range `>=0.14.0-beta.1`.
+- The last published report no longer disappears when the daemon restarts.
+  Paseo keeps plugin timeline rows in memory, so the appended response card was
+  lost with the process while the artifact stayed on disk. `agent.session_open`
+  now re-reads the tail in the background and re-appends the last turn's card
+  when its row is missing; the call is idempotent, bounded, and skips a newer
+  turn so an older card never lands under the newest reply. Older turns keep
+  their projected card inside the folded work.
 - Cards now recognize the tool-row names Paseo's `omp` provider produces.
   `omp` bridges MCP itself (`providers/omp/mcp-bridge.js`), so the model calls
   `mcp_<server>__<tool>_<12-hex>` and Paseo renames the timeline item to
