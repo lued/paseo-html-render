@@ -6,6 +6,8 @@ import { COMMON_VISUAL_PACKAGES, COMMON_VISUAL_PACKAGE_HINTS } from "../shared/v
 import {
   HTML_DESCRIPTION,
   LAYOUT_DESCRIPTION,
+  MCP_SERVER_DESCRIPTION,
+  MCP_TOOL_EXPOSURE,
   POLICY_INSTRUCTIONS,
   POLICY_SUMMARY,
   POLICY_SUMMARY_MAX_CHARS,
@@ -14,21 +16,41 @@ import {
 
 test("the policy summary fits pi's one-line 250-character budget", () => {
   assert.equal(POLICY_SUMMARY_MAX_CHARS, 250);
-  // The exact contract text was measured at 244 characters. Keeping the value
-  // here catches an accidental reword that would push the negative rule past
-  // pi's hard cap.
-  assert.equal(POLICY_SUMMARY.length, 244);
-  assert.ok(POLICY_SUMMARY.length <= POLICY_SUMMARY_MAX_CHARS);
+  assert.ok(
+    POLICY_SUMMARY.length <= POLICY_SUMMARY_MAX_CHARS,
+    `the summary must stay within pi's hard cap (${POLICY_SUMMARY.length} chars)`,
+  );
   assert.equal(POLICY_SUMMARY.split("\n").length, 1);
+});
+
+/**
+ * The discovery regression this test exists for: pi declares no html_render or
+ * html_preview tool, `toPiMcpConfig` drops the server description, and the
+ * first instruction line is all the model sees. A fresh agent asked for an
+ * "HTML report" had no signal and wrote a file with bash instead, because the
+ * old first line only described when to render, never what the tools are.
+ */
+test("the first model-visible line carries the product identity and tool names", () => {
+  const firstLine = POLICY_INSTRUCTIONS.split("\n")[0] ?? "";
+  assert.equal(firstLine, POLICY_SUMMARY);
+  assert.ok(firstLine.length <= POLICY_SUMMARY_MAX_CHARS, `first line is ${firstLine.length} chars`);
+  for (const required of ["HTML", "report", "html_render", "html_preview"]) {
+    assert.ok(
+      firstLine.toLowerCase().includes(required.toLowerCase()),
+      `the first line must name ${required}: ${firstLine}`,
+    );
+  }
 });
 
 test("the summary carries all four rules on its own", () => {
   // pi sees only this line. Each rule is a positive assertion so a shorter
   // summary cannot silently drop the brake.
-  assert.match(POLICY_SUMMARY, /Render a visual card when a picture carries the answer/);
-  assert.match(POLICY_SUMMARY, /comparison, flow, architecture, multi-part status, numbers to scan/);
+  assert.match(POLICY_SUMMARY, /HTML reports and cards/);
+  assert.match(POLICY_SUMMARY, /html_render publishes a card above your reply/);
+  assert.match(POLICY_SUMMARY, /html_preview drafts it/);
+  assert.match(POLICY_SUMMARY, /comparison, flow, chart, status/);
   assert.match(POLICY_SUMMARY, /Otherwise reply in text/);
-  assert.match(POLICY_SUMMARY, /One card per turn, not every reply/);
+  assert.match(POLICY_SUMMARY, /One card per turn/);
   assert.match(POLICY_SUMMARY, /never republish unchanged content/);
 });
 
@@ -41,16 +63,29 @@ test("the long form starts with the standalone summary", () => {
 
 test("the long form agrees with the summary's brake and text rule", () => {
   const lines = POLICY_INSTRUCTIONS.split("\n");
-  assert.equal(lines[1], "Reply in text for a single fact, one sentence, code, file contents or config.");
   // Both projections must carry the same brake. The old "one card per reply"
   // phrase contradicted the summary's stricter "one card per turn".
-  assert.match(POLICY_INSTRUCTIONS, /One card per turn, not every reply/);
+  assert.match(POLICY_INSTRUCTIONS, /One card per turn/);
   assert.match(POLICY_INSTRUCTIONS, /Never publish a second card in the same turn/);
   assert.match(POLICY_INSTRUCTIONS, /Otherwise reply in text/);
   assert.match(POLICY_INSTRUCTIONS, /Reply in text for a single fact, one sentence, code, file contents or config/);
+  // The long form names the same tools as the summary, and keeps the "HTML
+  // report" phrasing a user actually asks for.
+  assert.match(POLICY_INSTRUCTIONS, /These are HTML report tools/);
+  assert.match(POLICY_INSTRUCTIONS, /html_preview returns a draft screenshot and never publishes/);
+  assert.match(POLICY_INSTRUCTIONS, /A request for an HTML report, a visual summary, a dashboard or something scannable/);
   for (const line of lines) {
     assert.ok(!line.toLowerCase().includes("one card per reply"), `contradicting line: ${line}`);
   }
+});
+
+test("the contributed MCP entry carries a description and an exposure", () => {
+  // Forward-compatible only: Paseo 0.15's providers strip both fields, so the
+  // summary above remains the discovery mechanism. These are still accurate.
+  assert.match(MCP_SERVER_DESCRIPTION, /HTML reports and cards/);
+  assert.match(MCP_SERVER_DESCRIPTION, /html_render/);
+  assert.ok(MCP_SERVER_DESCRIPTION.length <= 280);
+  assert.equal(MCP_TOOL_EXPOSURE, "codemode");
 });
 
 test("the common-package list is compact npm-name data, not a dependency or profile registry", () => {

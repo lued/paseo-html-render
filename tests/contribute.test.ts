@@ -7,6 +7,7 @@ import type { PaseoApi } from "@getpaseo/client";
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import contribute, { formatSessionOpenEvidence } from "../server/contribute.ts";
 import { ArtifactStore } from "../server/artifacts.ts";
+import { MCP_SERVER_DESCRIPTION, MCP_TOOL_EXPOSURE } from "../shared/policy.ts";
 import { BRIDGE_TOKEN_FILE, PRODUCTION_IDENTITY } from "../shared/identity.ts";
 import { readArtifactRpc, readAssetRpc, readOriginalArtifactRpc, readReportRpc } from "../shared/protocol.ts";
 
@@ -143,7 +144,15 @@ test("daemon entry injects MCP at session open, serves owned artifacts, and clea
     { request },
     { paseo, signal: new AbortController().signal },
   )) as {
-    mcpServers: Record<string, { type: string; command: string; args: string[]; alwaysLoad?: boolean; env: Record<string, string> }>;
+    mcpServers: Record<string, {
+      type: string;
+      command: string;
+      args: string[];
+      alwaysLoad?: boolean;
+      description?: string;
+      toolExposure?: string;
+      env: Record<string, string>;
+    }>;
     env: Record<string, string>;
   };
   assert.ok(opened, "an interactive open returns a request");
@@ -158,6 +167,10 @@ test("daemon entry injects MCP at session open, serves owned artifacts, and clea
   assert.ok(injected);
   assert.equal(injected.type, "stdio");
   assert.equal(injected.alwaysLoad, true);
+  // Forward-compatible discovery metadata. Current providers strip it, so the
+  // injection is never allowed to depend on it.
+  assert.equal(injected.description, MCP_SERVER_DESCRIPTION);
+  assert.equal(injected.toolExposure, MCP_TOOL_EXPOSURE);
   assert.equal(injected.command, process.execPath);
   assert.ok(injected.args[0]?.endsWith(IDENTITY.adapterFileName), injected.args[0]);
   assert.equal(injected.env[IDENTITY.bridgeEnv.cwd], workspace);

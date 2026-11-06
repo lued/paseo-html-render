@@ -8,8 +8,18 @@
  * summary below therefore has to carry the whole decision on its own; the long
  * form and the tool descriptions are additive.
  *
- * A test enforces the one-line budget and the presence of every rule, so a
- * verbose edit fails here instead of silently truncating on pi.
+ * Two host facts shape the first line. Pi exposes an injected MCP server behind
+ * codemode, so `html_render` and `html_preview` are never declared and never
+ * listed; Paseo's Pi provider also strips `description`, `toolExposure` and
+ * `alwaysLoad` when it builds the Pi MCP config (`toPiMcpConfig` forwards only
+ * command/args/env). The summary is therefore the only model-visible text, and
+ * it has to name the product and the tools, not just the trigger rule: a fresh
+ * agent asked for an "HTML report" had no signal at all and wrote a file with
+ * bash instead.
+ *
+ * A test enforces the one-line budget, the identity (HTML, report,
+ * html_render) and the presence of every rule, so a verbose or abstract edit
+ * fails here instead of silently truncating or going unnoticed on pi.
  *
  * This module is client-safe: plain strings only, no node builtins and no paths.
  */
@@ -18,7 +28,24 @@ import { COMMON_VISUAL_PACKAGE_HINTS } from "./visual-packages.ts";
 export const POLICY_SUMMARY_MAX_CHARS = 250;
 
 export const POLICY_SUMMARY =
-  "Render a visual card when a picture carries the answer: comparison, flow, architecture, multi-part status, numbers to scan, or a chart of real data. Otherwise reply in text. One card per turn, not every reply; never republish unchanged content.";
+  "HTML reports and cards: html_render publishes a card above your reply, html_preview drafts it. Render when a picture carries the answer: comparison, flow, chart, status. Otherwise reply in text. One card per turn, never republish unchanged content.";
+
+/**
+ * Server description carried on the contributed `mcpServers` entry. The current
+ * providers drop it (Paseo's Pi provider forwards only command/args/env), but a
+ * host that shows MCP server metadata gets the product identity instead of an
+ * opaque `html-render-v3` key.
+ */
+export const MCP_SERVER_DESCRIPTION =
+  "HTML reports and cards: html_render publishes a sandboxed visual answer card, html_preview renders a draft preview.";
+
+/**
+ * Requested tool exposure for the contributed MCP server. Pi exposes injected
+ * servers behind codemode today; declaring that keeps a forwarding host on the
+ * observed behaviour instead of changing it silently. The summary above is
+ * what carries discovery either way.
+ */
+export const MCP_TOOL_EXPOSURE = "codemode" as const;
 
 /** One npm inventory plus a small name list; the agent makes the design choice. */
 const DESIGN_GUIDANCE =
@@ -38,6 +65,8 @@ const DESIGN_GUIDANCE =
 export const POLICY_INSTRUCTIONS =
   POLICY_SUMMARY +
   "\n" +
+  "These are HTML report tools: html_render publishes the page as an HTML report card, html_preview returns a draft screenshot and never publishes. " +
+  "A request for an HTML report, a visual summary, a dashboard or something scannable is a request for html_render, not for a file written with bash or a Markdown table.\n" +
   "Reply in text for a single fact, one sentence, code, file contents or config.\n" +
   DESIGN_GUIDANCE + "\n" +
   "The live card is fluid (typically about 600-1100 CSS pixels); 728 is only the default preview width, not a card cap. " +
@@ -122,7 +151,8 @@ export const RENDER_DESCRIPTION =
   DESIGN_GUIDANCE + " " + LAYOUT_DESCRIPTION + " Skip it for a single " +
   "fact, one sentence, code, file contents or config, and anything the reader will copy as text. " +
   "Publish the finished page with html_render; a draft html_preview is not publication. " +
-  "The response card appears after your native final reply when the turn completes, outside collapsed thinking and tools. " +
+  "The HTML report card is the published answer: it is appended after your native final reply when the turn completes, " +
+  "outside collapsed thinking and tools, and a reply that carries the artifact link still shows it after a timeline rebuild. " +
   "renderMode auto is the default: it renders live, sandboxed HTML on web and desktop and a static " +
   "PNG on native clients (a native report when report is supplied). In live mode inline scripts and styles " +
   "run; network resources, forms, local file URLs, and remote assets are blocked. Self-navigation remains possible. Inline SVG markup is supported; embed raster images as data: URIs or " +

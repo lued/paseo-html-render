@@ -1,6 +1,7 @@
 import type { PluginHandlerContext, PluginServerContext } from "@getpaseo/plugin/server";
 import type { PluginIdentity } from "../shared/identity.ts";
 import { SELECTED_IDENTITY } from "../shared/selected-identity.ts";
+import { MCP_SERVER_DESCRIPTION, MCP_TOOL_EXPOSURE } from "../shared/policy.ts";
 import {
   readArtifactRpc,
   readAssetRpc,
@@ -371,6 +372,12 @@ export default function contribute(server: PluginServerContext, options: Contrib
         ...request.mcpServers,
         [identity.mcpServerName]: {
           type: "stdio",
+          // Forward-compatible discovery metadata. Current hosts strip both (Paseo
+          // 0.15's Pi provider forwards only command/args/env), so nothing depends
+          // on them; a host that shows server metadata gets the product identity
+          // instead of an opaque `html-render-v3` key.
+          description: MCP_SERVER_DESCRIPTION,
+          toolExposure: MCP_TOOL_EXPOSURE,
           // Load the tools with the session instead of behind a lazy catalog. The
           // Claude provider honors this flag; the others load an injected server
           // regardless, so this is never the reason a tool is missing.

@@ -11,6 +11,12 @@
  * - may-render: ambiguous prompts where either text or a card is defensible.
  * - must-not-render: one fact, code, config or file contents that stay text.
  *
+ * The corpus also carries the exact words users ask for - "HTML report",
+ * "render this as a card", "dashboard" - because the first model-visible line
+ * is the only signal pi gives and it has to connect those words to
+ * `html_render`. A miss on one of those is a discovery failure, not a taste
+ * difference.
+ *
  * The policy lives once in shared/policy.ts and is projected into the MCP
  * instructions and tool descriptions, so this measures the model's reading of
  * the plugin, not a prompt trick.
@@ -43,6 +49,10 @@ const CLASSES = [
       "Explain how the MCP bridge authenticates callers.",
       "Which files in server/ are the largest and what do they do?",
       "What changed about the report card today?",
+      // Report-shaped wording: the words a user actually types must reach
+      // html_render even though pi never declares the tool.
+      "Make me an HTML report of what changed in this repo this week.",
+      "Render this verification run as an HTML report card I can scan.",
     ],
   },
   {
