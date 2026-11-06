@@ -8,7 +8,7 @@ import { createHash } from "node:crypto";
 import type { PluginHandlerContext, PluginHookAgent, PluginHookContext, PluginTurnOutcome } from "@getpaseo/plugin/server";
 import { reportCardSchema, type ReportCardData } from "../shared/protocol.ts";
 import type { PluginIdentity } from "../shared/identity.ts";
-import { decodeReportReference, isRenderToolRow } from "../shared/recognize.ts";
+import { isRenderToolRow, recoverPublishedReference } from "../shared/recognize.ts";
 import type { ArtifactRequester } from "./artifacts.ts";
 
 type PaseoApi = PluginHandlerContext["paseo"];
@@ -23,13 +23,15 @@ const MAX_SCAN_NODES = 192;
 const MAX_OUTPUT_STRINGS = 32;
 const MAX_OUTPUT_CHARS = 400_000;
 const MAX_RENDER_ROWS = 6;
+/** Bounded walk back over rows Paseo appends after the reply (notifications). */
+const MAX_REBUILD_TRAILING_ROWS = 16;
 const GATE_LIMIT = 512;
 const UNTRUSTED_KEYS = new Set(["input", "arguments", "parameters", "params"]);
 
 export type ResponseSkipReason = "outcome" | "busy" | "disposed" | "timeout" | "aborted" |
   "empty-timeline" | "no-reply" | "no-publish" | "already-present" | "already-appended" |
   "no-workspace" | "unreadable" | "read-failed" | "append-failed" | "unattributed-turn" |
-  "stale-turn" | "active-turn";
+  "stale-turn" | "active-turn" | "agent-missing" | "host-unsupported";
 export type ResponseOutcome =
   | { readonly result: "appended"; readonly artifactId: string; readonly itemId: string; readonly rowName: string }
   | { readonly result: "skipped"; readonly reason: ResponseSkipReason; readonly artifactId?: string };
@@ -156,7 +158,7 @@ export function selectResponseTarget(entries: unknown, options: SelectOptions): 
     examined += 1;
     if (item.status !== "completed" || (item.error !== null && item.error !== undefined)) continue;
     for (const text of publishedMarkerText(item.detail)) {
-      const reference = decodeReportReference(text, options.identity);
+      const reference = recoverPublishedReference(text, options.identity);
       if (reference) return { kind: "target", artifactId: reference.artifactId, rowName: item.name };
     }
   }
@@ -164,31 +166,73 @@ export function selectResponseTarget(entries: unknown, options: SelectOptions): 
 }
 
 /**
+ * Smallest runtime capability guard for the minimum-only version range.
+ *
+ * `requirements.paseo` is `>=0.13.2` with no upper cap, so a future incompatible
+ * major still loads. The response card needs two public timeline methods; when a
+ * host stops exposing either, the plugin skips its card and says so instead of
+ * throwing inside a turn-end hook. This is a capability check, not a version
+ * cap, so 0.15.x and later keep working as long as the API is there.
+ */
+export function hasTimelineApi(timeline: unknown): boolean {
+  if (typeof timeline !== "object" || timeline === null) return false;
+  const record = timeline as { append?: unknown; refetch?: unknown };
+  return typeof record.append === "function" && typeof record.refetch === "function";
+}
+
+/**
+ * The daemon reports a deleted agent as `AgentNotFoundError` from a timeline
+ * read. That is not a plugin failure: the card had nowhere to go because the
+ * conversation is gone. Recognize the shape so the caller can skip quietly.
+ */
+export function isMissingAgentError(error: unknown): boolean {
+  const pattern = /agent[\s_-]*not[\s_-]*found/i;
+  if (typeof error === "string") return pattern.test(error);
+  if (typeof error !== "object" || error === null) return false;
+  const record = error as { name?: unknown; message?: unknown; code?: unknown };
+  return [record.name, record.message, record.code]
+    .some((value) => typeof value === "string" && pattern.test(value));
+}
+
+/**
  * Selection for a timeline the host rebuilt without turn attribution.
  *
  * A daemon restart rebuilds history from the provider session, which can carry
- * no turn ids. The last user message bounds the last turn; the reply must still
- * be the newest non-plugin row and the render row must be inside that turn.
+ * no turn ids. The last user message bounds the last turn. The reply no longer
+ * has to be the literal newest row: Paseo appends notification rows after it
+ * (`assistant_message -> notification`, observed live), and a notification must
+ * not hide the only card that turn can still show. The walk is bounded, stops at
+ * a newer user message, and accepts both persisted reference shapes: the encoded
+ * marker and the 2.x `interactivePath: .../artifacts/<id>/interactive.html` text.
  */
 export function selectLastResponseTarget(entries: unknown, identity: PluginIdentity): Selection {
   const views = entryViews(entries);
   if (views.length === 0) return { kind: "skip", reason: "empty-timeline" };
-  const last = views.findLast(entry => entry.item.type !== "plugin");
-  if (!last || last.item.type !== "assistant_message" ||
-    typeof last.item.text !== "string" || last.item.text.trim().length === 0) {
+  let reply = -1;
+  const floor = Math.max(0, views.length - MAX_REBUILD_TRAILING_ROWS);
+  for (let index = views.length - 1; index >= floor; index -= 1) {
+    const type = views[index]!.item.type;
+    if (type === "assistant_message") { reply = index; break; }
+    // A newer prompt means the older reply is no longer the tail of its turn.
+    if (type === "user_message") return { kind: "skip", reason: "no-reply" };
+  }
+  if (reply < 0) return { kind: "skip", reason: "no-reply" };
+  const replyItem = views[reply]!.item;
+  if (typeof replyItem.text !== "string" || replyItem.text.trim().length === 0) {
     return { kind: "skip", reason: "no-reply" };
   }
-  const start = views.findLastIndex(entry => entry.item.type === "user_message");
-  const window = views.slice(start + 1);
-  const reply = window.length - 1;
+  let start = 0;
+  for (let index = reply - 1; index >= 0; index -= 1) {
+    if (views[index]!.item.type === "user_message") { start = index + 1; break; }
+  }
   let examined = 0;
-  for (let index = reply - 1; index >= 0 && examined < MAX_RENDER_ROWS; index -= 1) {
-    const item = window[index]!.item;
+  for (let index = reply - 1; index >= start && examined < MAX_RENDER_ROWS; index -= 1) {
+    const item = views[index]!.item;
     if (item.type !== "tool_call" || typeof item.name !== "string" || !isRenderToolRow({ name: item.name, detail: item.detail })) continue;
     examined += 1;
     if (item.status !== "completed" || (item.error !== null && item.error !== undefined)) continue;
     for (const text of publishedMarkerText(item.detail)) {
-      const reference = decodeReportReference(text, identity);
+      const reference = recoverPublishedReference(text, identity);
       if (reference) return { kind: "target", artifactId: reference.artifactId, rowName: item.name };
     }
   }
@@ -233,12 +277,22 @@ export function createResponseCards(options: ResponseCardsOptions): ResponseCard
   };
   const read = async (timeline: TimelineHandle) => {
     const page = await timeline.refetch({ direction: "tail", limit: refetchLimit, projection: "canonical" });
-    if (page.error) throw new Error("Timeline read failed");
+    if (page.error) {
+      // Keep the host's error shape: a deleted agent reports AgentNotFoundError
+      // and is a quiet skip, not a plugin failure.
+      const raw: unknown = page.error;
+      if (raw instanceof Error) throw raw;
+      const message = typeof raw === "object" && raw !== null && typeof (raw as { message?: unknown }).message === "string"
+        ? String((raw as { message: string }).message)
+        : "Timeline read failed";
+      throw new Error(message);
+    }
     return { entries: page.entries, active: page.agent?.status === "running" || page.agent?.status === "initializing" };
   };
   const run = async (input: TurnEndedInput, context: Pick<PluginHookContext, "paseo">,
     signal: AbortSignal, budgetMs: number, mode: RunMode): Promise<ResponseOutcome> => {
     const timeline = context.paseo.agents.ref(input.agent.id).timeline;
+    if (!hasTimelineApi(timeline)) return skip("host-unsupported");
     const page = await read(timeline);
     // A session-open hook runs inside the agent's own load, where a timeline
     // read waits for that load to finish. Start the budget after the read so a
@@ -250,8 +304,7 @@ export function createResponseCards(options: ResponseCardsOptions): ResponseCard
     if (stop) return stop;
     if (mode.requireIdle && page.active) return skip("active-turn");
     const turnId = input.turnId ?? lastTurnId(page.entries);
-    // A rebuilt timeline may have no turn ids; bound the turn by its user message.
-    const select = (entries: unknown): Selection => turnId
+    const select = (entries: unknown): Selection => mode.requireIdle && turnId
       ? selectResponseTarget(entries, { turnId, identity })
       : selectLastResponseTarget(entries, identity);
     const selection = select(page.entries);
@@ -310,9 +363,14 @@ export function createResponseCards(options: ResponseCardsOptions): ResponseCard
         const result = await raceDeadline(work, timeoutMs, controller.signal);
         let outcome: ResponseOutcome;
         if (result.kind === "done") outcome = result.value;
-        else if (result.kind === "failed") outcome = skip("read-failed");
-        else { controller.abort(); outcome = skip(result.kind); }
-        if (outcome.result === "skipped") log(`response-card skip reason=${outcome.reason} agent=${safe(input.agent.id)}`);
+        else if (result.kind === "failed") {
+          outcome = skip(isMissingAgentError(result.error) ? "agent-missing" : "read-failed");
+        } else { controller.abort(); outcome = skip(result.kind); }
+        // A deleted agent is expected noise in a long-lived daemon; everything
+        // else gets one sanitized line so a real failure is still visible.
+        if (outcome.result === "skipped" && outcome.reason !== "agent-missing") {
+          log(`response-card skip reason=${outcome.reason} agent=${safe(input.agent.id)}`);
+        }
         return outcome;
       } finally { context.signal.removeEventListener("abort", relayAbort); }
     },
@@ -336,11 +394,13 @@ export function createResponseCards(options: ResponseCardsOptions): ResponseCard
         // this call; the outer deadline only needs to bound the append work.
         const result = await raceDeadline(work, Math.max(timeoutMs, RECOVERY_TIMEOUT_MS), controller.signal);
         if (result.kind === "done") return result.value;
-        if (result.kind === "failed") return skip("read-failed");
+        if (result.kind === "failed") {
+          return skip(isMissingAgentError(result.error) ? "agent-missing" : "read-failed");
+        }
         controller.abort();
         return skip(result.kind);
-      } catch {
-        return skip("read-failed");
+      } catch (error) {
+        return skip(isMissingAgentError(error) ? "agent-missing" : "read-failed");
       }
     },
     dispose() {

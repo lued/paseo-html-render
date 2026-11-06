@@ -8,8 +8,11 @@ import type { PluginServerContext } from "@getpaseo/plugin/server";
 import {
   createResponseCards,
   hasResponseRow,
+  hasTimelineApi,
+  isMissingAgentError,
   publishedMarkerText,
   responseItemId,
+  selectLastResponseTarget,
   selectResponseTarget,
   type ResponseItem,
   type TurnEndedInput,
@@ -437,6 +440,111 @@ test("recovery never appends when the stored card is unreadable", async () => {
     .recover(fakePaseo(state), "agent_ok");
   assert.deepEqual(outcome, { result: "skipped", reason: "unreadable", artifactId: ARTIFACT });
   assert.equal(state.appends.length, 0);
+});
+
+test("the rebuilt-timeline selector tolerates trailing rows and path-only references", () => {
+  const strip = (entry: Entry): Entry => ({ item: entry.item });
+  const withNotification = [
+    strip({ item: { type: "user_message", text: "question" } }),
+    strip(render()),
+    strip(reply()),
+    strip({ item: { type: "notification", level: "warning", message: "rate limited" } }),
+  ];
+  assert.deepEqual(selectLastResponseTarget(withNotification, IDENTITY), {
+    kind: "target",
+    artifactId: ARTIFACT,
+    rowName: "mcp__html_render_v3__html_render",
+  });
+  // A newer prompt before any reply still refuses to decorate the older turn.
+  assert.deepEqual(
+    selectLastResponseTarget([...withNotification, strip({ item: { type: "user_message", text: "next" } })], IDENTITY),
+    { kind: "skip", reason: "no-reply" },
+  );
+  // A reply with no render row in its own window publishes nothing.
+  assert.deepEqual(
+    selectLastResponseTarget([strip(render()), strip({ item: { type: "user_message", text: "next" } }), strip(reply())], IDENTITY),
+    { kind: "skip", reason: "no-publish" },
+  );
+});
+
+test("recovery finds the reply when the host appended notification rows after it", async () => {
+  // Observed live: the rebuilt tail ends `assistant_message -> notification`,
+  // and requiring the reply to be the literal last row skipped recovery.
+  const notification: Entry = {
+    item: { type: "notification", level: "info", message: "Retrying provider request" },
+  };
+  const state: FakeState = {
+    entries: [{ item: { type: "user_message", text: "question" } }, render(), reply(), notification],
+    appends: [],
+  };
+  const outcome = await publisher({ state, logs: [] }).recover(fakePaseo(state), "agent_ok");
+  assert.equal(outcome.result, "appended");
+  assert.equal(state.appends.length, 1);
+  // Idempotent: the restored row is still the only card on the next open.
+  assert.deepEqual(await publisher({ state, logs: [] }).recover(fakePaseo(state), "agent_ok"), {
+    result: "skipped",
+    reason: "already-present",
+    artifactId: ARTIFACT,
+  });
+  assert.equal(state.appends.length, 1);
+});
+
+test("recovery accepts a 2.x path-only row that carries no marker", async () => {
+  // Verified on a live 2.x row: `interactivePath:` and no encoded marker.
+  const text = [
+    "access: granted",
+    "interactivePath: /home/x/.paseo/plugin-data/html-render/artifacts/" + ARTIFACT + "/interactive.html",
+    "reportStored: no",
+    "renderMode: static",
+  ].join("\n");
+  const state: FakeState = {
+    entries: [
+      { item: { type: "user_message", text: "render it" } },
+      { item: { type: "tool_call", callId: "call-render", name: "mcp__html_render_v3__html_render", status: "completed", error: null, detail: { type: "plain_text", text } } },
+      { item: { type: "assistant_message", text: "Published." } },
+    ],
+    appends: [],
+  };
+  const outcome = await publisher({ state, logs: [] }).recover(fakePaseo(state), "agent_ok");
+  assert.equal(outcome.result, "appended");
+  assert.equal(state.appends.length, 1);
+  assert.equal(((state.appends[0] as { data: Record<string, unknown> } | undefined)?.data as { artifactId?: unknown } | undefined)?.artifactId, ARTIFACT);
+});
+
+test("a deleted agent is a quiet skip, not a failed recovery", async () => {
+  const missing = Object.assign(new Error("Agent not found: agent_gone"), { name: "AgentNotFoundError" });
+  const state: FakeState = { entries: [render(), reply()], appends: [], error: missing };
+  const logs: string[] = [];
+  const outcome = await publisher({ state, logs }).recover(fakePaseo(state), "agent_gone");
+  assert.deepEqual(outcome, { result: "skipped", reason: "agent-missing" });
+  assert.equal(state.appends.length, 0);
+  assert.deepEqual(logs, [], "a deleted agent must not log a failure");
+  assert.ok(isMissingAgentError({ name: "AgentNotFoundError" }));
+  assert.ok(isMissingAgentError("Agent not found: x"));
+  assert.equal(isMissingAgentError(new Error("socket closed")), false);
+  // The same shape is recognized through a non-Error value too.
+  assert.deepEqual(
+    await publisher({ state: { ...state, error: { name: "AgentNotFoundError" } }, logs })
+      .recover(fakePaseo(state), "agent_gone"),
+    { result: "skipped", reason: "agent-missing" },
+  );
+});
+
+test("a host without the timeline API is skipped instead of throwing", async () => {
+  const state: FakeState = { entries: [render(), reply()], appends: [] };
+  const legacy = {
+    agents: { ref: (agentId: string) => ({ id: agentId, timeline: { async refetch() { return { entries: state.entries }; } } }) },
+  } as unknown as PaseoApi;
+  const logs: string[] = [];
+  const cards = publisher({ state, logs });
+  assert.deepEqual(await cards.recover(legacy, "agent_ok"), { result: "skipped", reason: "host-unsupported" });
+  assert.deepEqual(
+    await cards.handleTurnEnded(turnEnded(), { paseo: legacy, signal: new AbortController().signal }),
+    { result: "skipped", reason: "host-unsupported" },
+  );
+  assert.equal(state.appends.length, 0);
+  assert.ok(hasTimelineApi({ append() {}, refetch() {} }));
+  assert.equal(hasTimelineApi({ append() {} }), false);
 });
 
 test("recovery works on a rebuilt timeline that lost turn ids", async () => {
