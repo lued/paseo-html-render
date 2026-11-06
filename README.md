@@ -6,9 +6,9 @@ Ask Paseo for a comparison, a flow, a screenshot review or a set of numbers. Ins
 
 ![The image-inspection demo: a before/after settings screenshot with numbered differences and a detail crop.](docs/images/showcase/hero.png)
 
-<sub>A real capture of the [image-inspection demo](examples/showcase/image-inspection.html): a standalone demo page, not a mocked Paseo window. On web/desktop the same page runs as a live card.</sub>
+<sub>A real capture of the [image-inspection demo](examples/showcase/image-inspection.html): a standalone demo page, not a mocked Paseo window. On web/desktop it runs as a live card.</sub>
 
-Each interactive agent session gets two MCP tools: `html_preview` checks the page as a PNG, and `html_render` publishes the card with a link to the full interactive HTML file.
+Each interactive agent session gets two MCP tools: `html_preview` checks the page as a PNG, and `html_render` publishes the card with a link to the full HTML file.
 
 ## Try asking
 
@@ -30,9 +30,7 @@ paseo plugin install .
 paseo plugin ls
 ```
 
-Existing agents get the tools on their next prompt (Pi defaults: restart the daemon once, see [compatibility](docs/compatibility.md)). Requires a Paseo daemon `>=0.14.0-beta.1` (tested on 0.14.0-beta.1, 0.14.0-beta.2, 0.15.0 and 0.15.2), a Paseo app 0.13.2 or newer, Node 22.18 or newer on the daemon host, and a sandbox-capable Chromium (via `PASEO_HTML_RENDER_CHROMIUM`, a Playwright cache, `shared-browser`, or an installed Chromium-family browser). The manifest declares a minimum only and has no upper cap, so newer apps load it instead of refusing the requirement; the response card also checks at runtime that the public timeline API it appends through still exists and skips its card instead of failing a turn on a host that removed it. No browser is downloaded or installed.
-
-On Pi the only model-visible text is the first line of the MCP instructions (Pi caps it at 250 characters and exposes injected servers behind codemode, and Paseo's Pi provider forwards only command/args/env). That line therefore names the product and the tools: *HTML reports and cards: html_render publishes a card above your reply, html_preview drafts it.* Ask for an "HTML report" and an agent on such a host has a signal to call `html_render` instead of writing a file with bash.
+Existing agents get the tools on their next prompt (Pi defaults: restart the daemon once, see [compatibility](docs/compatibility.md)). Requires a Paseo daemon `>=0.14.0-beta.1` (tested on 0.14.0-beta.1 and 0.14.0, plus 0.15.0/0.15.2), a Paseo app 0.13.2 or newer, Node 22.18 or newer on the daemon host, and a sandbox-capable Chromium (via `PASEO_HTML_RENDER_CHROMIUM`, a Playwright cache, `shared-browser`, or an installed Chromium-family browser). The manifest has no upper cap, so newer apps load it. No browser is downloaded or installed.
 
 ## What it does
 
@@ -40,7 +38,7 @@ On Pi the only model-visible text is the first line of the MCP instructions (Pi 
 2. **The agent composes one self-contained page** and can check it with `html_preview`. That preview is a PNG with page scripts disabled, so clipping and contrast show up before publishing.
 3. **`html_render` publishes it above the reply.** Web and desktop use a live sandboxed frame. Android attempts contained inline HTML, but durable native readiness is still under verification; iOS and unavailable Android hosts keep the PNG or native report. The reply keeps an `Open interactive report` link to the full HTML file.
 
-Cards are a choice, not a default: one per turn when attribution is available, otherwise the agent replies in text. Artifacts are owner-only files on the daemon host, and every plugin read is checked against the requesting agent's workspace.
+Cards are a choice: one per turn when attribution is available, otherwise the agent replies in text. Artifacts are owner-only files, and every plugin read is checked against the requesting agent's workspace.
 
 Live pages can use local controls, CSS transitions and inline SVG. Screenshots and native reports never execute page JavaScript. Remote scripts, styles, fonts and images are blocked; workspace raster images are inlined up to 2 MiB each. Local SVG files are refused, while inline SVG works. More detail: [compatibility and limits](docs/compatibility.md) and the [interaction guide](docs/interactivity.md).
 
@@ -48,10 +46,10 @@ Live pages can use local controls, CSS transitions and inline SVG. Screenshots a
 
 - The live frame cannot control Paseo agents, workspaces or files; its controls are local, except opening `http(s)` links and data-URI images.
 - A live page can still navigate itself; CSP and click interception do not fully contain `location.assign` or a meta refresh.
-- The turn guard compares exact prepared inputs and is not a permanent duplicate database: cosmetic changes count as new, a daemon restart clears state, and missing attribution or unknown turn lifecycle degrades with a warning. A late file-path failure after a durable save can return an error while still using the turn slot.
-- A 2.x agent keeps an inert saved `html-render` entry; its tools arrive as `html-render-v3`. Recreate the agent to drop the old entry.
-- Paseo's `collapse turns` hides a finished turn's tool rows. A published answer therefore also projects its card from the reply that carries the artifact link, which survives a rebuild; the daemon-appended response row is a live convenience and is lost with the process memory. A reply that names two different artifacts keeps its native rendering.
-- Artifacts are never pruned automatically. They are owner-only files that grow with every publish; prune deliberately with `npm run prune:artifacts -- --older-than 30d --references <history dir> [--apply]`, which never deletes an artifact its reference scan can see and refuses to delete while that scan is incomplete.
+- The turn guard compares exact prepared inputs, not semantic duplicates: cosmetic changes count as new, a restart clears state, and missing attribution degrades with a warning. A late file-path failure after a durable save can error while still using the turn slot.
+- A 2.x agent keeps an inert saved `html-render` entry; its tools arrive as `html-render-v3`. Recreate the agent to drop it.
+- `collapse turns` hides tool rows, so the card also projects from the reply that carries the artifact link; that survives a rebuild, while a reply citing two artifacts keeps its native rendering.
+- Artifacts are never pruned automatically; see [OVERVIEW](OVERVIEW.md) for the owner prune command.
 - Label an agent `html-render/disabled=true` to opt it out.
 
 ## Develop

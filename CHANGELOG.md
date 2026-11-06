@@ -261,7 +261,7 @@ permanent duplicate database or a semantic HTML diff.
 ### Changed
 
 - Trigger policy remains one source (`shared/policy.ts`) with the unchanged
-  244-character summary and a longer instruction payload. Exposure is not
+  248-character identity-first summary and a longer instruction payload. Exposure is not
   universal: a client, harness or shared server description can override or
   truncate what the model sees; Pi exposes MCP tools behind codemode and caps the
   first instruction line at 250 characters. Do not infer a universal selection
