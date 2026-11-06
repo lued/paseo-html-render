@@ -7,6 +7,7 @@ import {
   decodeReportReference,
   encodeReportReference,
   recognizeToolCall,
+  recoverPublishedReference,
   reportReferenceFromMessageText,
   transformTimelineToolCall,
 } from "../shared/recognize.ts";
@@ -78,6 +79,48 @@ test("the reply's artifact link moves the card onto the message", () => {
   assert.equal(reportReferenceFromMessageText(`artifacts/${id.slice(1)}/interactive.html`), null);
   assert.equal(reportReferenceFromMessageText("Open interactive report"), null);
   assert.equal(reportReferenceFromMessageText(""), null);
+});
+
+test("a reply carrying the 3.x marker is recognised with its metadata", () => {
+  const marker = encodeReportReference(card);
+  // The 3.x contract still asks for the link, but a reply that only kept the
+  // marker must not lose its card after a rebuild.
+  const fromMarker = reportReferenceFromMessageText(`Published.\n${marker}\n`);
+  assert.deepEqual(fromMarker, card);
+  // Marker and link for the same artifact agree: the marker metadata wins.
+  const both = reportReferenceFromMessageText(
+    `${marker}\n[Open interactive report](</x/artifacts/${card.artifactId}/interactive.html>)`,
+  );
+  assert.deepEqual(both, card);
+  // Two different markers are ambiguous, as are two different links.
+  const other = { ...card, artifactId: "fedcba9876543210fedcba9876543210" };
+  assert.equal(reportReferenceFromMessageText(`${marker}\n${encodeReportReference(other)}`), null);
+  // A marker without a decodable payload is not a reference.
+  assert.equal(reportReferenceFromMessageText("paseo-html-render:v1:%7Bnot-json"), null);
+});
+
+test("a 2.x published tool result is recognised by its interactive.html path", () => {
+  // Verified live during the host-visibility investigation: 2.x rows carry
+  // `interactivePath:` and no encoded marker at all.
+  const id = "0123456789abcdef0123456789abcdef";
+  const text = [
+    'Published a report card titled "Latency".',
+    `interactivePath: /home/x/.paseo/plugin-data/html-render/artifacts/${id}/interactive.html`,
+    "reportStored: yes",
+    "renderMode: iframe",
+    "measuredHeights: 728x420",
+  ].join("\n");
+  const found = recoverPublishedReference(text);
+  assert.equal(found?.artifactId, id);
+  assert.equal(found?.title, "Latency");
+  assert.equal(found?.renderMode, "iframe");
+  assert.equal(found?.height, 420);
+  assert.equal(found?.hasReport, true);
+  // A marker still wins when present.
+  assert.equal(recoverPublishedReference(`${encodeReportReference(card)}\n${text}`)?.artifactId, card.artifactId);
+  // A path that is not the published interactive file is not a publish.
+  assert.equal(recoverPublishedReference(`artifacts/${id}/preview.png`), null);
+  assert.equal(recoverPublishedReference("nothing to see"), null);
 });
 
 test("recognizes the omp bridge name and Paseo's omp timeline rename", () => {

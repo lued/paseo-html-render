@@ -90,11 +90,13 @@ function setup(source){
  var value=factory(requireHost);must(typeof value.default==="function","entry missing");
  var registrations=[],transformers=[],renderers=[],removed=0;
  var cleanup=value.default({addTimelineTransformer:function(input){registrations.push("transformer");transformers.push(input);return function(){removed+=1;};},addScreen:function(){registrations.push("screen");},addTimelineRenderer:function(input){registrations.push("renderer");renderers.push(input);},openScreen:Dummy});
- must(registrations.join(",")==="transformer,screen,renderer,renderer,renderer"&&typeof cleanup==="function","setup incomplete");
- must(transformers.length===1&&transformers[0].query.itemType==="tool_call","native assistant reply must remain untouched");
+ must(registrations.join(",")==="transformer,transformer,screen,renderer,renderer,renderer"&&typeof cleanup==="function","setup incomplete");
+ var queried=transformers.map(function(input){must(typeof input.transform==="function","transformer missing");return input.query.itemType;}).sort();
+ must(queried.join(",")==="assistant_message,tool_call","the reply and tool-row projections must both be registered");
+ must(transformers[1].id!==transformers[0].id,"transformer ids must differ");
  var kinds=renderers.map(function(input){must(typeof input.Component==="function","renderer component missing");return input.kind;}).sort();
  must(kinds.join(",")===${JSON.stringify([SELECTED_IDENTITY.rendererKind, SELECTED_IDENTITY.messageRendererKind, SELECTED_IDENTITY.responseRendererKind].sort().join(","))},"response and compatibility renderers missing");
- cleanup();must(removed===1,"transformer cleanup missing");return value;
+ cleanup();must(removed===2,"both transformer cleanups must run");return value;
 }
 setup(${JSON.stringify(delivered)});
 print("HERMES_ENTRY_OK");

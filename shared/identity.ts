@@ -42,9 +42,11 @@ export interface PluginIdentity {
   /**
    * Renderer kind for the card carried on the final reply.
    *
-   * Retained for compatibility, but no longer emitted: replacing the reply with
-   * a plugin row removes the `assistant_message` anchor `collapseTurns` looks for,
-   * which unfolds the whole turn instead of hiding only its tools.
+   * Emitted by the `assistant_message` transformer for a reply whose text
+   * carries the artifact link or marker. This is the projection that survives a
+   * rebuilt timeline, because provider history keeps replies and the daemon's
+   * response rows live only in memory. It loses to (and is retired by) a mounted
+   * response row, so no artifact shows two cards.
    */
   readonly messageRendererKind: string;
   /**

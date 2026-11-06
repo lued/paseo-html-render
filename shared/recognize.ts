@@ -206,32 +206,71 @@ export function recoverReportReferenceFromArtifactPath(
   return parsed.success ? parsed.data : null;
 }
 
-const MESSAGE_ARTIFACT_LINK = /artifacts[\\/]([0-9a-f]{32})[\\/]interactive\.html/g;
+const MESSAGE_INTERACTIVE_LINK = /artifacts[\\/]([0-9a-f]{32})[\\/]interactive\.html/g;
+/** A 2.x published tool result names the file without any encoded marker. */
+const PUBLISHED_INTERACTIVE_LINK = /artifacts[\\/]([0-9a-f]{32})[\\/]interactive\.html/;
+/** Bounded number of marker occurrences inspected in one string. */
+const MAX_MESSAGE_MARKERS = 8;
 
 /**
- * The render contract makes the final reply carry the artifact link:
- * `[Open interactive report](</abs/path/artifacts/<id>/interactive.html>)`.
+ * Every artifact id a reply names, through either channel.
  *
- * That link is the only thing tying a reply to its artifact, so it is matched
- * literally: the exact file name under `artifacts/<32 hex>/`. Several distinct
- * ids mean the reply covers more than one report, which stays on the tool rows.
- * Metadata here is a placeholder; the artifact RPC supplies the authoritative
- * title and render mode once the card mounts.
+ * Two channels exist because two generations of the render contract wrote
+ * different text into the final reply:
+ *
+ * - 2.x links the file: `[Open interactive report](</abs/artifacts/<id>/interactive.html>)`.
+ * - 3.x can also carry the encoded marker in the reply text.
+ *
+ * A reply that names two different artifacts is ambiguous, so no card is
+ * invented for it. The scan is bounded and literal.
  */
-export function reportReferenceFromMessageText(text: string): ReportCardData | null {
+function replyReference(text: string, identity: PluginIdentity):
+  { readonly id: string; readonly marker: ReportCardData | null } | null {
+  let id: string | null = null;
+  let marker: ReportCardData | null = null;
+  const ambiguous = (candidate: string | undefined): boolean => {
+    if (!candidate) return false;
+    if (id !== null && id !== candidate) return true;
+    id = candidate;
+    return false;
+  };
+  let from = 0;
+  for (let seen = 0; seen < MAX_MESSAGE_MARKERS; seen += 1) {
+    const at = text.indexOf(identity.markerPrefix, from);
+    if (at === -1) break;
+    from = at + identity.markerPrefix.length;
+    const decoded = decodeReportReference(text.slice(at), identity);
+    if (!decoded) continue;
+    if (ambiguous(decoded.artifactId)) return null;
+    marker ??= decoded;
+  }
+  for (const match of text.matchAll(MESSAGE_INTERACTIVE_LINK)) {
+    if (ambiguous(match[1])) return null;
+  }
+  return id === null ? null : { id, marker: marker?.artifactId === id ? marker : null };
+}
+
+/**
+ * The render contract makes the final reply carry the artifact reference: the
+ * 2.x file link, the 3.x marker, or both. That reference is the only thing
+ * tying a reply to its artifact, so it is matched literally: an exact file name
+ * under `artifacts/<32 hex>/`, or a decodable marker anywhere in the bounded
+ * reply. Metadata from a decoded marker is kept; a link-only reply gets a
+ * placeholder and the artifact RPC supplies the authoritative title/mode once
+ * the card mounts.
+ */
+export function reportReferenceFromMessageText(
+  text: string,
+  identity: PluginIdentity = SELECTED_IDENTITY,
+): ReportCardData | null {
   if (typeof text !== "string" || text.length === 0 || text.length > MAX_MESSAGE_TEXT_CHARS) {
     return null;
   }
-  let artifactId: string | null = null;
-  for (const match of text.matchAll(MESSAGE_ARTIFACT_LINK)) {
-    const id = match[1];
-    if (!id) continue;
-    if (artifactId !== null && artifactId !== id) return null;
-    artifactId = id;
-  }
-  if (artifactId === null) return null;
+  const found = replyReference(text, identity);
+  if (!found) return null;
+  if (found.marker) return found.marker;
   const parsed = reportCardSchema.safeParse({
-    artifactId,
+    artifactId: found.id,
     title: "HTML report",
     summary: null,
     width: PREVIEW_DEFAULT_WIDTH,
@@ -239,6 +278,25 @@ export function reportReferenceFromMessageText(text: string): ReportCardData | n
     renderMode: "auto",
   });
   return parsed.success ? parsed.data : null;
+}
+
+/**
+ * A published reference from one stored string, through either persisted shape.
+ *
+ * 3.x tool results start with the encoded marker. A 2.x result has no marker at
+ * all and only names `interactivePath: .../artifacts/<id>/interactive.html`
+ * (verified on a live row), so the path form has to be accepted as well or that
+ * turn can never be recovered. Anything else keeps the native row.
+ */
+export function recoverPublishedReference(
+  text: string,
+  identity: PluginIdentity = SELECTED_IDENTITY,
+): ReportCardData | null {
+  if (typeof text !== "string" || text.length === 0) return null;
+  const marker = decodeReportReference(text, identity);
+  if (marker) return marker;
+  if (!PUBLISHED_INTERACTIVE_LINK.test(text)) return null;
+  return recoverReportReferenceFromArtifactPath(text);
 }
 
 function sortedHeights(heights: readonly MeasuredHeight[] | undefined): MeasuredHeight[] | undefined {

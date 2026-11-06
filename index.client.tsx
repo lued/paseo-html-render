@@ -5,9 +5,14 @@ import { ReportCard } from "./client/report-card.tsx";
 import { ReportMessageCard } from "./client/report-message-card.tsx";
 import { ReportScreen } from "./client/report-screen.tsx";
 import { ArtifactCatalog } from "./client/artifact-catalog.ts";
+import {
+  noteRenderGap,
+  projectAssistantMessage,
+  projectToolCall,
+  recordResponseCard,
+} from "./client/card-projection.ts";
 import { setNavigator } from "./client/surface.ts";
 import { reportCardSchema, reportMessageSchema, type ReportCardData } from "./shared/protocol.ts";
-import { isRenderToolRow, recognizeToolCallWithSource } from "./shared/recognize.ts";
 import { SELECTED_IDENTITY } from "./shared/selected-identity.ts";
 
 /** Renderer contribution identity for this build. */
@@ -42,19 +47,14 @@ export default function contribute(client: PluginClientContext) {
    *
    * Unlike a projected card this row is always mounted: it sits after the last
    * assistant message, so `collapse turns` keeps it. Recording it here is what
-   * retires the duplicate on the render row — and only after the persisted row
-   * has actually been observed, so the fallback card is never removed before its
-   * replacement exists.
+   * retires the duplicate on the render row and on the reply — and only after
+   * the persisted row has actually been observed, so a fallback card is never
+   * removed before its replacement exists.
    */
   function ReportResponseCard(props: PluginTimelineItemProps<ReportCardData>) {
     const data = props.item.data;
     useEffect(() => {
-      const decision = catalog.record({
-        data,
-        source: "response",
-        callId: `response:${data.artifactId}`,
-      });
-      if (decision.changed) scheduleReprojection();
+      recordResponseCard(data, catalog, scheduleReprojection);
     }, [data]);
     return (
       <ReportCard
@@ -83,36 +83,30 @@ export default function contribute(client: PluginClientContext) {
         query: { itemType: "tool_call" },
         transform({ item, phase }): PluginTimelineTransformResult | undefined {
           const row = { name: item.name, detail: item.detail, callId: item.callId };
-          const found = recognizeToolCallWithSource(row, SELECTED_IDENTITY);
-          if (!found) {
-            // A render row that has no reference yet may finish streaming. Ask
-            // for one re-projection at completion so the row gets a fresh look.
-            if (isRenderToolRow(row) && catalog.noteGap(item.callId, phase)) scheduleReprojection();
-            return undefined;
-          }
-          const decision = catalog.record({
-            data: found.data,
-            source: found.source,
-            callId: item.callId,
-          });
-          if (!decision.show) {
-            // Another surface owns this artifact's only card. Keep the native
-            // row: it is this turn's countable tool work, and replacing it with
-            // nothing would empty the fold summary of a turn whose single tool
-            // call was this render. The appended response row carries the HTML.
-            return undefined;
-          }
-          if (decision.changed) scheduleReprojection();
-          return {
-            items: [
-              {
-                type: "plugin",
-                kind: SELECTED_IDENTITY.rendererKind,
-                version: SELECTED_IDENTITY.reportVersion,
-                data: found.data,
-              },
-            ],
-          };
+          const projected = projectToolCall(row, SELECTED_IDENTITY, catalog, scheduleReprojection);
+          if (projected) return { items: [...projected.items] };
+          // A render row that has no reference yet may finish streaming. Ask
+          // for one re-projection at completion so the row gets a fresh look.
+          if (noteRenderGap(row, phase, catalog)) scheduleReprojection();
+          return undefined;
+        },
+      }),
+      client.addTimelineTransformer({
+        id: SELECTED_IDENTITY.messageTransformerId,
+        query: { itemType: "assistant_message" },
+        transform({ item }): PluginTimelineTransformResult | undefined {
+          // The reply carries the artifact reference the render contract asks
+          // for. Projecting the card there is what survives a rebuilt timeline:
+          // the daemon's response row lives in memory and is lost on restart,
+          // while provider history keeps the reply. A live turn keeps its
+          // response row (catalog rank `response`) and this row stays native.
+          const projected = projectAssistantMessage(
+            { text: item.text },
+            SELECTED_IDENTITY,
+            catalog,
+            scheduleReprojection,
+          );
+          return projected ? { items: [...projected.items] } : undefined;
         },
       }),
     ];
@@ -130,9 +124,6 @@ export default function contribute(client: PluginClientContext) {
     schema: reportCardSchema,
     Component: ReportCard,
   });
-  // Retained for compatibility with any client that still holds the old shape,
-  // but nothing emits it: replacing the native reply removes the fold's end
-  // anchor, which unfolds the whole turn instead of hiding only its tools.
   client.addTimelineRenderer({
     kind: REPORT_MESSAGE_KIND,
     version: REPORT_VERSION,
