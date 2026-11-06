@@ -52,6 +52,7 @@
     "test:unit": "node --test tests/recognize.test.ts tests/artifacts.test.ts tests/authority.test.ts",
     "verify:e2e": "node --test --test-concurrency=1 tests/e2e/verify.test.ts",
     "check:trigger": "node scripts/trigger-eval.mjs",
+    "prune:artifacts": "node scripts/prune-artifacts.mjs",
     "check:package": "node scripts/check-package.mjs",
     "smoke:package": "node scripts/smoke-package.mjs",
     "test:package": "node --test tests/package-metadata.test.ts tests/showcase-docs.test.ts tests/package-check.test.ts",
