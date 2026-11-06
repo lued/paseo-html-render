@@ -7,7 +7,7 @@ No Paseo fork, daemon HTTP route, or shared-browser dependency.
 
 | Client / input | Display |
 | --- | --- |
-| Completed turn with a published HTML answer | The plugin appends a persistent response-card reference **after the native assistant reply** using the public server timeline API. The reply keeps Paseo's fold boundary, thinking/tools remain collapsed, and the card stays visible. The tool-row card copy is retired only after the response is observed. |
+| Completed turn with a published HTML answer | Two projections, one card. A reply whose text carries the artifact link (2.x) or marker (3.x) renders the card on the reply and keeps the reply text through Paseo's Markdown component, so a rebuilt timeline still shows the answer outside collapsed work. A live turn additionally gets a persistent response row **after** the native reply, appended through the public server timeline API; it outranks the reply projection, so the reply returns to its native rendering and keeps Paseo's fold boundary. Draft `html_preview`, failed turns and replies naming several artifacts keep the previous surface. |
 | Web/desktop, `renderMode: "auto"` (default) or `"iframe"` | Borderless inline HTML with theme updates and content-height fitting; no fullscreen. If the artifact also carries a report, one muted "View report" link opens the report screen. |
 | iOS/Android, optional `report` supplied | Accessible native report views, findings, graph lists, evidence and usage |
 | Explicit `"static"` | Native report views when supplied; otherwise PNG, with no live HTML |
@@ -39,7 +39,9 @@ at about 390 and 1000-1200.
    page and publishes a durable timeline reference. Optional `report` is bounded
    `ReportModelV1` JSON, not executable content.
 3. Include the exact link returned by `html_render` in the final assistant reply:
-   `[Open interactive report](</absolute/path/to/interactive.html>)`.
+   `[Open interactive report](</absolute/path/to/interactive.html>)`. That reply
+   is also the rebuild-proof card anchor: a host that lost its in-memory
+   response rows (a daemon restart or rebuild) still projects the card from it.
 
 Use CSS variables such as `--background`, `--foreground`, `--card`, `--border`,
 `--accent`, `--primary`, `--muted-foreground`, `--chart-1` through `--chart-6`,
@@ -93,10 +95,15 @@ is preserved. Remote assets are not fetched. Missing images are diagnostics, not
 permission to broaden access. Calls have a 60-second absolute deadline and cancel
 unfinished work on disconnect.
 
-Artifacts are retained by default. Set `PASEO_HTML_RENDER_PURGE_ON_ARCHIVE=1`
-only if deleting a workspace's reports on archive is desired. No background
-age-based deletion is performed. Pele is pinned inside this plugin; graph lists
-remain usable if graph thumbnails cannot be generated.
+Artifacts are retained by default and nothing deletes them automatically, so the store grows with every publish (29 MiB on the reference host before this change). Set `PASEO_HTML_RENDER_PURGE_ON_ARCHIVE=1` only if deleting a workspace's reports on archive is desired. For age-based trimming use the owner command, which is a dry run until `--apply` and never deletes an artifact its reference scan can see:
+
+```sh
+npm run prune:artifacts -- --older-than 30d \
+  --references ~/.pi/agent/sessions --references ~/.paseo/agents
+npm run prune:artifacts -- --older-than 30d --references ~/.pi/agent/sessions --apply
+```
+
+The scan is bounded (file count, file size, total bytes). If it hits a bound it refuses to delete unless `--allow-incomplete-references` is passed, because an id it could not read is not proof that nothing links to it. An artifact with no readable manifest date is never a candidate, and each run is capped (200 artifacts / 512 MiB by default, `--max` and `--max-bytes`). No background age-based deletion is performed. Pele is pinned inside this plugin; graph lists remain usable if graph thumbnails cannot be generated.
 
 ## Development and installation
 
@@ -118,8 +125,16 @@ Every interactive agent session receives the MCP server, plus the rendering poli
 in the MCP handshake: render a card when the answer has structure, answer in text
 for single facts, prose, code, file contents or config. What the model actually sees is client- and
 configuration-dependent: some harnesses expose MCP tools behind codemode, and a
-client or shared server description can override or truncate the 244-character
-summary. Do not infer universal exposure from one harness. 
+client or shared server description can override or truncate the 248-character
+summary. Do not infer universal exposure from one harness.
+On Pi that first line is the *only* model-visible text: Pi declares no
+`html_render`/`html_preview` tool and Paseo's Pi provider strips `description`,
+`toolExposure` and `alwaysLoad` when it builds the Pi MCP config
+(`toPiMcpConfig` forwards only command/args/env). The first line therefore
+starts with the product identity and both tool names, and the contributed server
+entry also carries `description` and `toolExposure` for a future host that keeps
+them. Verify a host with `paseo plugin logs html-render | grep session-open` and
+the first line of the adapter's `initialize` instructions. 
 Paseo 0.14 runs the plugin's `agent.session_open` hook on create, resume, refresh
 and import, and the server it returns (`html-render-v3`) is launch-only: it is
 never written into a saved agent record. Installing, reloading or disabling the

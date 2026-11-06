@@ -56,6 +56,28 @@ so the plugin passes the request through, gets no tools, and logs
 byte-identical between 0.13.2, 0.14.0-beta.1 and 0.15.0-beta.1; 0.15 only adds
 server hook aliases and `addHook`, which this plugin does not need.
 
+**Tested range and runtime guard.** 0.14.0-beta.1, 0.14.0-beta.2, 0.15.0 and
+0.15.2 daemons have been run with this build; the range stays minimum-only
+because Paseo checks the same value against mobile apps. Instead of an upper
+cap, the one API the newest surface needs is capability-checked at runtime: if
+`agents.ref(id).timeline` no longer exposes both `refetch` and `append`, the
+response card logs `reason=host-unsupported` once and skips instead of throwing
+inside a hook. A future major that keeps those methods keeps working; one that
+removes them degrades to the reply projection instead of failing turns.
+
+**Model-visible discovery.** Pi exposes an injected MCP server behind codemode,
+so `html_render` and `html_preview` are neither declared nor listed, and Paseo's
+Pi provider strips `description`/`toolExposure`/`alwaysLoad` when it builds the
+Pi MCP config (`server/dist/server/server/agent/providers/pi/agent.js`,
+`toPiMcpConfig` returns only `command`, `args`, `env`). The first line of the MCP
+`instructions` is therefore the whole signal, and it names the product and the
+tools (`HTML reports and cards: html_render publishes a card above your reply,
+html_preview drafts it. Render when a picture carries the answer: comparison,
+flow, chart, status. Otherwise reply in text. One card per turn, never republish
+unchanged content.`) within Pi's 250-character cap. The contributed server entry
+also carries `description` and `toolExposure` for a host that keeps them; nothing
+relies on that today.
+
 The MCP server `html-render-v3` is contributed at `agent.session_open` for
 interactive sessions only. It is launch-only: never in a saved agent record, and
 re-derived on create, resume, refresh and import. History opens and agents
@@ -80,17 +102,32 @@ work around this.
 
 Paseo 0.14 folds a finished turn's work before its last native assistant reply.
 A card projected onto the `html_render` tool row is therefore hidden with the
-work. Replacing the reply itself removes that fold boundary and leaves work
-unfolded, so the plugin no longer uses reply replacement.
+work. Two projections cover that, and the client catalog's ranks pick exactly
+one card per artifact (`response` 3 > `message` 2 > `marker` 1 > `path` 0):
 
-After a successfully completed, attributed turn, the plugin server reads bounded
-canonical timeline snapshots, verifies the completed render output and workspace
-ownership, and appends a small persistent `html-report-response` reference through
-Paseo's public plugin-session timeline API. It sits **after the native reply**:
-the reply keeps its original rendering, thinking and tools remain collapsible,
-and the HTML answer stays outside that collapsed range. The mounted response
-retires only the projected card copy; the original tool row remains as work.
+1. **The reply.** A reply whose text carries the artifact reference renders the
+   card together with the reply text, through Paseo's own Markdown component, so
+   the text is never hidden. Provider history keeps replies, so this is the
+   projection that survives a daemon restart or a rebuilt timeline; it accepts
+   the 2.x file link (`artifacts/<32 hex>/interactive.html`) and the 3.x marker.
+   A reply naming two different artifacts keeps its native rendering.
+2. **The response row.** After a successfully completed, attributed turn the
+   plugin server reads bounded canonical timeline snapshots, verifies the
+   completed render output and workspace ownership, and appends a small
+   persistent `html-report-response` reference through Paseo's public
+   plugin-session timeline API. It sits **after** the native reply, so the reply
+   keeps its fold anchor and thinking/tools stay collapsible. Its rank retires
+   the projected reply card, returning the reply to native rendering, and the
+   original tool row stays as countable work.
+
 No upstream patch, installed-host change, or special chat setting is required.
+The accepted cost of the reply projection is documented and unchanged: while it
+is the owning surface, that turn's trailing segment has no `assistant_message`
+end anchor and stays unfolded. It applies only until a response row exists.
+
+When no client can project a card (for example a provider that drops both the
+link and the marker), the tool row and the absolute interactive-file link remain
+the fallback.
 
 The response uses durable artifact metadata, including explicit static mode and
 width-specific heights. Deterministic ids, bounded history reconciliation and
@@ -99,15 +136,21 @@ it. A timed-out append can have an uncertain delivery outcome; the gate stays
 held until that RPC settles and a later attempt reconciles persisted history.
 
 Plugin timeline rows live in the daemon's memory, so a daemon restart drops the
-appended reference while the artifact stays on disk. On the next
-`agent.session_open` the plugin re-reads the tail and re-appends the **last**
-turn's card when its row is missing. The restore runs in the background because a
-timeline read from inside the open waits for that open to finish. Older turns
-keep their projected card inside the folded work: `timeline.append` has no
-position, so restoring an older card would place it under the newest reply
-instead of its own turn. An explicit agent reload (`paseo agent reload`, or the
-app's reload action) wipes plugin rows after its session open, so that card is
-restored on the following open.
+appended reference while the artifact stays on disk. That is why the reply
+projection above exists: it is rebuilt from provider history on every load. On
+the next `agent.session_open` the plugin also re-reads the tail and re-appends the
+**last** turn's response row when its row is missing. That recovery walks back to
+the last assistant reply inside the latest user-message window, so trailing rows
+the host appends after the reply (`assistant_message -> notification`, observed
+live) no longer defeat it, and it accepts a 2.x path-only reference
+(`interactivePath: .../artifacts/<id>/interactive.html`) as well as the marker. A
+deleted agent (`AgentNotFoundError` from the timeline read) is a quiet skip. The
+restore runs in the background because a timeline read from inside the open waits
+for that open to finish. Older turns keep their reply-projected card: `timeline.append`
+has no position, so restoring an older response row would place it under the
+newest reply instead of its own turn. An explicit agent reload
+(`paseo agent reload`, or the app's reload action) wipes plugin rows after its
+session open, so that card is restored on the following open.
 
 Draft `html_preview` calls do not publish cards. Failed/canceled turns, missing
 turn identity, a missing final reply, a publication outside the bounded tail
@@ -154,6 +197,34 @@ skips the guard. If the turn lifecycle is unknown, it warns and keeps duplicate-
 checking. The durable save commits the reservation before the `interactivePath`
 lookup, so a late path failure can return an error after the card was stored and
 the turn slot consumed. Do not describe this as permanent or semantic deduplication.
+
+## Retention
+
+Artifacts are never pruned automatically. They accumulate per publish (a whole
+HTML page, a prepared interactive copy, a PNG, an optional report), and a card is
+referenced from provider history and from in-memory response rows, neither of
+which the plugin can enumerate safely. The default therefore stays "keep";
+`PASEO_HTML_RENDER_PURGE_ON_ARCHIVE=1` still deletes only an archived
+workspace's artifacts, and nothing else deletes.
+
+Age-based trimming is an explicit owner command (`npm run prune:artifacts -- ...`,
+`scripts/prune-artifacts.mjs`). It is a dry run unless `--apply` is passed and it
+enforces, in `server/retention.ts`:
+
+- an id found in the reference scan or passed with `--keep` is never deleted,
+  whatever its age;
+- an artifact newer than `--older-than` is never deleted;
+- an artifact whose `manifest.json` cannot be read or dated is never a candidate;
+- only 32-hex artifact directories are candidates, symlinks are skipped, and the
+  path is re-checked before removal;
+- each run is bounded (200 artifacts and 512 MiB by default, `--max` /
+  `--max-bytes`), oldest first.
+
+The reference scan is bounded too (file count, per-file size, total bytes) and
+refuses to delete at all when it hits a bound, unless
+`--allow-incomplete-references` is given: an unread reference is not proof that
+nothing links to the artifact. Point `--references` at the history that holds the
+links or markers, for example a provider session directory and `$PASEO_HOME/agents`.
 
 ## Display parity
 

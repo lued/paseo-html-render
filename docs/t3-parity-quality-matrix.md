@@ -50,10 +50,10 @@ feature of T3 or every private design rationale.
 | PQ-015 | File name | Sanitized title-derived `.html` | ⚠️ Fixed `interactive.html` inside artifact ID directory. |
 | PQ-016 | Assistant link | Inline attachment presentation | ⚠️ Absolute Markdown file link is a host-preview compatibility workaround. |
 | PQ-017 | File-preview click-through | First-party viewer/navigation | ✅ G6: in the hosted web client the assistant file link opened `interactive.html` as a second sandboxed, CSP-carrying frame. Native file preview remains unverified (PQ-125). |
-| PQ-018 | Persisted reconstruction | Structured tool-result reference | ✅ Actual persisted outer Pi codemode row reconstructs one card per row, stable after serialization. 2.1.0 also recovers a card from a surviving `artifacts/<id>/` path (regression `b49e8050`) and stores a durable `card.json` beside the artifact, so a marker lost to an output cap does not lose the card or its display mode. |
-| PQ-019 | Cross-row deduplication | First-party reference/tool processing; no global guarantee inferred | ✅ G4: only the render tool's own row is transformed, so Pi's outer `codemode` row no longer duplicates the card (reproduced in the hosted client before the fix, one card after). 2.1.0 adds a client artifact catalog: a stable canonical call id, marker-over-path preference, and one bounded re-projection when the catalog changes or a render row is a gap. Residual: a per-item transformer cannot see an arbitrary third row, so a marker duplicated there is still outside the contract. |
+| PQ-018 | Persisted reconstruction | Structured tool-result reference | ✅ Actual persisted outer Pi codemode row reconstructs one card per row, stable after serialization. Also recovers from a surviving `artifacts/<id>/` path (regression `b49e8050`), from a 2.x `interactivePath` row with no marker, and from the reply that carries the link or marker (`client/card-projection.ts`), so a rebuild still shows the card. A durable `card.json` beside the artifact keeps display metadata when the marker was cut. |
+| PQ-019 | Cross-row deduplication | First-party reference/tool processing; no global guarantee inferred | ✅ G4: only the render tool's own row is transformed, so Pi's outer `codemode` row no longer duplicates the card (reproduced in the hosted client before the fix, one card after). The client catalog keeps a stable canonical call id with source ranks `response` 3 > `message` 2 > `marker` 1 > `path` 0, so the reply card, the tool row and the persisted response row collapse to one card, and a losing row keeps its native rendering (`tests/message-card.test.ts`). Residual: a per-item transformer cannot see an arbitrary third row, so a marker duplicated there is still outside the contract. |
 | PQ-020 | Thread deletion | Deletes owned renders; fork ownership protects source pages | ❌ Equivalent thread-owned deletion not implemented. |
-| PQ-021 | Retention | Follows thread lifecycle | ⚠️ Retain by default; opt-in workspace archive purge is tested but different. |
+| PQ-021 | Retention | Follows thread lifecycle | ⚠️ Retain by default; opt-in workspace archive purge is tested but different. Bounded age-based trimming exists as an owner command (`npm run prune:artifacts`) whose reference scan never deletes a listed artifact and refuses to delete while incomplete; it is not thread-lifecycle retention. |
 | PQ-022 | Interrupted writes | Scoped cleanup removes interrupted publication | ✅ Cancellation checkpoints/atomic writes; disconnected-publish regression passed. |
 | PQ-023 | Agent stopped/history use | Durable attachment | ✅ Persisted artifact does not require the authoring agent to remain actively running; workspace authorization still applies. |
 
@@ -204,12 +204,20 @@ The policy lives once in `shared/policy.ts` and is projected into a one-line
 summary and a long form, so disabling the plugin removes the guidance with it (no
 AGENTS.md, no skill, no host configuration):
 
-- the MCP `instructions` first line is `POLICY_SUMMARY`, and `POLICY_INSTRUCTIONS`
-  starts with that exact line. pi places only the first line in the agent's
-  `mcp_servers` section and hard-caps it at 250 characters; claude, codex and
-  opencode read the full payload and the `tools/list` descriptions. The summary
-  therefore stands alone: render when a picture carries the answer, otherwise
-  reply in text, one card per turn, and never republish unchanged content.
+- the MCP `instructions` first line is `POLICY_SUMMARY` (248 characters), and
+  `POLICY_INSTRUCTIONS` starts with that exact line. pi places only the first
+  line in the agent's `mcp_servers` section and hard-caps it at 250 characters;
+  claude, codex and opencode read the full payload and the `tools/list`
+  descriptions. Because pi declares no tool and Paseo's Pi provider strips
+  `description`/`toolExposure`/`alwaysLoad` (`toPiMcpConfig` forwards only
+  command/args/env), that line must also carry the product identity and both
+  tool names, not just the trigger rule: `HTML reports and cards: html_render
+  publishes a card above your reply, html_preview drafts it...`. The 2026-11
+  regression — a fresh agent asked for an "HTML report" wrote a file with bash
+  instead (agent `9febb42b` on sly, 46 replies, zero codemode calls) — was the
+  old identity-free line. The contributed server entry now also carries
+  `description` and `toolExposure: "codemode"` for a host that keeps them; the
+  summary does not depend on it.
 - the shared descriptions (`HTML_DESCRIPTION`, `LAYOUT_DESCRIPTION`,
   `RENDER_DESCRIPTION`) repeat the positive and negative rules and require the
   card to be a picture: diagram, chart, flow, timeline or interactive, not a
@@ -268,9 +276,13 @@ the capture.
 | 2 | Autonomous harness | ✅ `verify:e2e` 6/6 pass; unit suite 178/178. |
 | 3 | Native-client acceptance | Open: no iOS/Android device evidence exists (PQ-025, PQ-125). Not automatable on this host. |
 | 4 | Residual transformer limits | Open: a per-item transformer cannot suppress a marker duplicated in an arbitrary third row (documented in PQ-019). |
+| 5 | Host-boundary discovery | ✅ 2026-11-06: identity-first first line, `description`/`toolExposure` on the contributed server, report prompts in the trigger corpus. |
+| 6 | Card after a rebuild | ✅ 2026-11-06: the `assistant_message` transformer is live again and the catalog ranks pick one card (`response` > `message` > `marker` > `path`). |
+| 7 | Retention | ✅ 2026-11-06: owner command `npm run prune:artifacts` with a reference scan and bounded planner; nothing deletes automatically. |
 
 ## Iteration ledger
 
+- **2026-11-06, host boundary (discovery, rebuild, recovery, retention):** three defects, one theme — everything worked until the host boundary. (1) *Discovery:* Pi declares no tool and Paseo's Pi provider strips the server description, so the old trigger-only first line left a fresh agent with no signal (agent `9febb42b` on sly: asked for an "HTML report", 46 replies, zero codemode calls, a file written with bash). The summary is now 248 characters, identity-first and tool-named; the MCP entry also carries `description`/`toolExposure` for a future host; a probe test fails if the identity leaves line one. (2) *Rebuild:* `bcacdcc` deleted the `assistant_message` transformer, leaving only the collapsed tool row and the memory-only response row (sly agent `3339a099`: 5 artifact links, 0 cards after a rebuild; workspace-0 agent `f03ac122`: 2 links, 1 card). The reply projection is restored in `client/card-projection.ts` with catalog ranks `response` > `message` > `marker` > `path`; the reply text is never hidden and the losing row keeps its native rendering. (3) *Recovery:* `selectLastResponseTarget` now walks back over trailing notification rows inside the last user-message window, accepts the 2.x `interactivePath` form, and treats `AgentNotFoundError` as a quiet skip. Retention is now an explicit owner command (`server/retention.ts` + `scripts/prune-artifacts.mjs`) with a reference scan that refuses to delete while incomplete, and the minimum-only version range gained a runtime capability guard. Evidence: 386 unit tests (was 362), `typecheck`, bundles 19 client / 26 server inputs, package 81 entries, `verify:e2e` 6/6, plus an isolated-home live check: injected `html-render-v3` over stdio, 248-character first line, a real codemode publish, the response row present before the restart and gone after it, and exactly one `html-report-message` card projected from the rebuilt reply with its text kept.
 - **2026-10-20, QA methodology retired:** deleted `scripts/build-qa.mjs`, `server/qa-allowlist.ts`, `server/scope.ts`, the QA identity/profile, and `.paseo-plugin/` (qa-build + qa-workspaces). Removed the stale `html-render-v2-qa` registration; backed up the five workspace cases to `verification-20261020/qa-workspaces-20261020-qa01.tar.gz`; deleted the five Paseo projects/workspaces (`paseo project delete`, each removing one workspace). Tests went 164 → 153 with the 11 canary/scope tests removed, then 154 with a new authority regression.
 - **2026-10-20, two-workspace directory fixed:** `workspaceForCwd` no longer denies when two workspaces share one directory (this workspace has two ids on one path, which made real tool calls fail closed). Ownership is deepest-root, then lowest workspace id, so publish is stable; regression test added.
 - **2026-10-20, duplicate card fixed:** the real hosted client rendered two inline cards for one artifact because the outer `codemode` row and the inner MCP row both carried the marker. `recognizeToolCall` now transforms only the render tool's own row (`html_render`, `mcp__*__html_render`, `html-render.html_render`). Re-verified in the hosted client: one card. G4 covers it.

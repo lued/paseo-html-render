@@ -12,17 +12,72 @@ It also contains the never-published 2.2.0 candidate changes listed further down
 
 ### Added
 
-- Published HTML answers now use a persistent response-card reference appended
-  after the native final reply through Paseo's public plugin-session timeline API.
-  This keeps the card visible with `Chat > Chat display > Collapse turns` while
-  preserving the real assistant-message boundary and collapsed thinking/tools.
-  It replaces the reply-replacement workaround, which inadvertently unfolded work.
+- A reply that carries the artifact link (2.x `artifacts/<id>/interactive.html`) or
+  the encoded marker (3.x) renders the report card again, together with the reply
+  text through Paseo's own Markdown component. This is the projection that
+  survives a daemon restart or a rebuilt timeline: the appended response row
+  lives in daemon memory, provider history keeps replies. Live turns keep the
+  response row, and the catalog ranks (`response` 3 > `message` 2 > `marker` 1 >
+  `path` 0) make one artifact show one card; the losing row keeps its native
+  rendering, so a reply is never hidden and a tool row stays countable work.
+  `client/card-projection.ts` is the framework-free production policy, and
+  `tests/message-card.test.ts` drives it through a rebuilt timeline.
+- `description` and `toolExposure: "codemode"` on the contributed `mcpServers`
+  entry, for a future host that shows MCP server metadata. Nothing depends on
+  them today: Paseo 0.15's Pi provider strips both. Paseo's Pi provider
+  (`toPiMcpConfig`) forwards only `command`/`args`/`env`, so the first
+  instruction line is still the whole model-visible signal.
+- Owner-invoked artifact retention: `npm run prune:artifacts -- --older-than 30d
+  --references <history dir> [--apply]`. Dry run by default. The planner in
+  `server/retention.ts` never deletes an id the reference scan found or `--keep`
+  named, never deletes a newer artifact or one without a readable manifest date,
+  and caps each run (200 artifacts / 512 MiB). The scan is bounded and refuses to
+  delete at all when it hits a bound, unless `--allow-incomplete-references` is
+  passed. Nothing is pruned automatically, and `PASEO_HTML_RENDER_PURGE_ON_ARCHIVE`
+  is unchanged.
+- Trigger corpus gains the wording users actually type: "Make me an HTML report
+  of what changed in this repo this week." and "Render this verification run as
+  an HTML report card I can scan."
+- The live turn still appends a persistent response-card reference after the
+  native final reply through Paseo's public plugin-session timeline API, so the
+  card is outside collapsed thinking/tools without an extra chat setting.
   Promotion verifies successful render output and workspace ownership, restores
   durable sizing/render mode, reconciles persisted ids, and skips stale,
   canceled, failed, unattributed or unreadable turns. Pending reads cannot append
   after their deadline or a new turn. Original tool rows remain as work; preview
-  drafts do not become published responses. Older history is not auto-migrated.
-  No upstream or installed-Paseo modification is needed.
+  drafts do not become published responses. The response row outranks the reply
+  projection, so the reply returns to its native rendering while that row lives.
+- A runtime capability guard for the minimum-only version range: if a host's
+  `agent.timeline` stops exposing `refetch`/`append`, the response card logs
+  `reason=host-unsupported` and skips instead of failing a turn. The tested range
+  is documented (0.14.0-beta.1 through 0.15.2) and no upper cap is reintroduced.
+
+### Fixed
+
+- **A published card no longer disappears after a rebuild.** Commit bcacdcc
+  deleted the `assistant_message` transformer, so the only remaining surfaces
+  were the tool row inside the collapsed turn and the in-memory response row:
+  a host with five replies carrying artifact links showed zero cards after a
+  rebuild, and another with two links showed one. The reply projection is back
+  (see Added), the catalog keeps it single, and the reply text is never hidden.
+- **Recovery no longer needs the reply to be the last row.** Paseo appends
+  notification items after the reply (`assistant_message -> notification`), which
+  made the rebuilt-tail recovery skip. It now walks back to the last assistant
+  reply inside the latest user-message window, bounded and idempotent, and a
+  newer prompt still aborts it. It also accepts a 2.x path-only reference
+  (`interactivePath: .../artifacts/<id>/interactive.html`, verified on a live row)
+  instead of requiring the marker, and a deleted agent (`AgentNotFoundError` from
+  the timeline read) is a quiet `agent-missing` skip rather than a logged failure.
+- **The first model-visible line names the product and the tools.** Pi declares
+  no `html_render`/`html_preview` tool, strips the server description and caps
+  the MCP instructions at 250 characters, so the old trigger-only first line
+  left a fresh agent with no signal: asked for an "HTML report" it wrote a file
+  with bash (agent `9febb42b`, 46 replies, zero codemode calls). The 248-character
+  first line now reads "HTML reports and cards: html_render publishes a card above
+  your reply, html_preview drafts it. Render when a picture carries the answer:
+  comparison, flow, chart, status. Otherwise reply in text. One card per turn,
+  never republish unchanged content." The long form and the tool descriptions
+  agree with it, and a test fails if the identity leaves the first line.
 
 ### Breaking
 
@@ -117,7 +172,7 @@ It also contains the never-published 2.2.0 candidate changes listed further down
   now re-reads the tail in the background and re-appends the last turn's card
   when its row is missing; the call is idempotent, bounded, and skips a newer
   turn so an older card never lands under the newest reply. Older turns keep
-  their projected card inside the folded work.
+  the card projected from their reply, outside the folded work.
 - Cards now recognize the tool-row names Paseo's `omp` provider produces.
   `omp` bridges MCP itself (`providers/omp/mcp-bridge.js`), so the model calls
   `mcp_<server>__<tool>_<12-hex>` and Paseo renames the timeline item to
@@ -144,12 +199,15 @@ It also contains the never-published 2.2.0 candidate changes listed further down
 
 ### Known limits
 
-- Paseo 0.14 folds a finished turn's tool rows by default ("collapse turns" on new
-  installs), and the card sits on the `html_render` tool row, so it is hidden
-  until the turn is expanded. A plugin cannot opt out. The
-  `[Open interactive report](...)` link in the final reply stays visible.
-  Superseded for the card itself: it moves to the reply when the reply carries the
-  artifact link (see Added), which is the only position the fold keeps.
+- Paseo folds a finished turn's tool rows by default ("collapse turns" on new
+  installs). A card attached to the `html_render` tool row is hidden with that
+  work, so the plugin projects the card from the reply that carries the artifact
+  link and keeps the response row for live turns. A provider that drops both the
+  link and the marker leaves only the tool row and the
+  `[Open interactive report](...)` link, both of which the fold/collapse can
+  hide. While the reply projection is the owning surface, that turn's trailing
+  segment has no `assistant_message` end anchor and stays unfolded; it is the
+  documented cost of the only position the fold keeps.
 - Paseo 0.14.0-beta.1/beta.2 host defect: with `daemon.mcp.injectIntoAgents` off
   (the default), an idle Pi agent whose session opened with no MCP server fails its
   next prompt after html-render is installed or re-enabled, with `Provider 'pi'

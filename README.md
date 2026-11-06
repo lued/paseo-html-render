@@ -30,7 +30,9 @@ paseo plugin install .
 paseo plugin ls
 ```
 
-Existing agents get the tools on their next prompt (Pi defaults: restart the daemon once, see [compatibility](docs/compatibility.md)). Requires a Paseo daemon `>=0.14.0-beta.1` (tested on 0.14.0-beta.1 and 0.14.0), a Paseo app 0.13.2 or newer, Node 22.18 or newer on the daemon host, and a sandbox-capable Chromium (via `PASEO_HTML_RENDER_CHROMIUM`, a Playwright cache, `shared-browser`, or an installed Chromium-family browser). The manifest has no upper cap, so newer apps load it. No browser is downloaded or installed.
+Existing agents get the tools on their next prompt (Pi defaults: restart the daemon once, see [compatibility](docs/compatibility.md)). Requires a Paseo daemon `>=0.14.0-beta.1` (tested on 0.14.0-beta.1, 0.14.0-beta.2, 0.15.0 and 0.15.2), a Paseo app 0.13.2 or newer, Node 22.18 or newer on the daemon host, and a sandbox-capable Chromium (via `PASEO_HTML_RENDER_CHROMIUM`, a Playwright cache, `shared-browser`, or an installed Chromium-family browser). The manifest declares a minimum only and has no upper cap, so newer apps load it instead of refusing the requirement; the response card also checks at runtime that the public timeline API it appends through still exists and skips its card instead of failing a turn on a host that removed it. No browser is downloaded or installed.
+
+On Pi the only model-visible text is the first line of the MCP instructions (Pi caps it at 250 characters and exposes injected servers behind codemode, and Paseo's Pi provider forwards only command/args/env). That line therefore names the product and the tools: *HTML reports and cards: html_render publishes a card above your reply, html_preview drafts it.* Ask for an "HTML report" and an agent on such a host has a signal to call `html_render` instead of writing a file with bash.
 
 ## What it does
 
@@ -48,7 +50,8 @@ Live pages can use local controls, CSS transitions and inline SVG. Screenshots a
 - A live page can still navigate itself; CSP and click interception do not fully contain `location.assign` or a meta refresh.
 - The turn guard compares exact prepared inputs and is not a permanent duplicate database: cosmetic changes count as new, a daemon restart clears state, and missing attribution or unknown turn lifecycle degrades with a warning. A late file-path failure after a durable save can return an error while still using the turn slot.
 - A 2.x agent keeps an inert saved `html-render` entry; its tools arrive as `html-render-v3`. Recreate the agent to drop the old entry.
-- Paseo 0.14 folds finished turns by default, hiding the card until you expand the turn; the report link in the reply stays visible.
+- Paseo's `collapse turns` hides a finished turn's tool rows. A published answer therefore also projects its card from the reply that carries the artifact link, which survives a rebuild; the daemon-appended response row is a live convenience and is lost with the process memory. A reply that names two different artifacts keeps its native rendering.
+- Artifacts are never pruned automatically. They are owner-only files that grow with every publish; prune deliberately with `npm run prune:artifacts -- --older-than 30d --references <history dir> [--apply]`, which never deletes an artifact its reference scan can see and refuses to delete while that scan is incomplete.
 - Label an agent `html-render/disabled=true` to opt it out.
 
 ## Develop

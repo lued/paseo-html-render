@@ -21,9 +21,16 @@ and 0.14.0-beta.1. Validate the minimum and current host before publication:
 | 22.18.0 | 0.14.0-beta.1 | 0.14.0-beta.1 | 0.14.0-beta.1 | CI isolated reference-tarball smoke |
 | 22.18.0 | 0.14.0-beta.2 | 0.14.0-beta.2 | 0.14.0-beta.1 | CI isolated reference-tarball smoke |
 | 26.12.1 | 0.14.0-beta.2 | 0.14.0-beta.2 | 0.14.0-beta.1 | local isolated smoke; see `docs/verification.md` |
+| 26.13.0 | 0.15.0 | 0.15.0 | 0.15.0-beta.1 | installed fleet plus isolated-home directory install (this branch) |
+| 26.13.0 | 0.15.2 | 0.15.2 | 0.15.0-beta.1 | installed fleet hosts |
 
 The 0.14.0-beta.1 and 0.14.0-beta.2 SDK `dist` trees are byte-identical, and the
 0.15.0-beta.1 client tree is byte-identical to both, so the package pins the floor.
+The upper end of the tested range is not enforced at load time: a future major
+loads, and the response card checks at runtime that `timeline.refetch` and
+`timeline.append` still exist, logging `reason=host-unsupported` and falling back
+to the reply projection instead of failing a turn. Re-run the smoke and record the
+row when a new minor is adopted as tested; do not add an upper cap.
 
 The daemon/CLI version and the `@getpaseo/plugin` SDK version are separate
 contracts. Record both in `smoke-result.json`; do not infer the SDK version from
@@ -61,6 +68,18 @@ public docs/assets, examples and captures; no private plans/research/status,
 tests, scripts or node_modules; relative Markdown/HTML links resolve after
 extraction and cannot escape the package root; package, manifest and adapter
 versions agree; and no direct `@getpaseo/client` import remains.
+
+Artifact retention is an operator task, not a release gate. Nothing is pruned
+automatically; run the dry run, read the plan, then apply. The scan must cover the
+history that holds the artifact links (provider sessions and `$PASEO_HOME/agents`),
+and it refuses to delete when its own scan is incomplete:
+
+```sh
+npm run prune:artifacts -- --older-than 30d \
+  --references "$HOME/.pi/agent/sessions" --references "$HOME/.paseo/agents"
+npm run prune:artifacts -- --older-than 30d \
+  --references "$HOME/.pi/agent/sessions" --references "$HOME/.paseo/agents" --apply
+```
 
 Then test that exact tarball in an isolated production tree and real daemon:
 

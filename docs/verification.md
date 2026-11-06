@@ -638,3 +638,35 @@ inline height/theme/accessibility/history/image behavior remain open.
 The 2026-10-21 v2.1.0 record reported 178 tests and six e2e gates. Those historical
 counts are not current release evidence. Source commits and previous revisions of
 this document retain the earlier durability/marker recovery and policy history.
+
+## 2026-11-06 host-boundary check (branch `fix/host-visibility`)
+
+Three defects were verified on installed 0.15.0/0.15.2 hosts and fixed here.
+
+- Discovery: pi declares no `html_render`/`html_preview` tool and Paseo's Pi
+  provider forwards only command/args/env, so the first instruction line is the
+  whole model-visible signal. It was trigger-only text with no product identity.
+- Rebuild: `bcacdcc` removed the `assistant_message` transformer, so after a
+  rebuild the only card surfaces were the collapsed tool row and the daemon's
+  memory-only response row (5 linked replies, 0 cards on one host; 2 links, 1
+  card on another).
+- Recovery: `selectLastResponseTarget` required the reply to be the literal
+  newest row, which trailing notification rows broke, and it only decoded
+  markers, while 2.x rows carry `interactivePath` without one.
+
+Evidence on this branch: `npm run typecheck`; `npm test` 386/386; bundles 19
+client / 26 server inputs; `check:package` 81 entries / 0 forbidden;
+`npm run verify:e2e` 6/6. Each new test was replayed against base `4d75f15` and
+failed there; a behaviour-only probe (no new imports) failed 6/6 on the base and
+passed 6/6 here. An isolated-home live check (disposable `PASEO_HOME` under
+`/tmp`, own port, directory install of this worktree, real Pi/DeepSeek turn)
+showed: `session-open result=injected server=html-render-v3 transport=stdio`,
+the installed adapter's 248-character first line naming HTML reports and
+`html_render`, one artifact published through a codemode tool row, the appended
+response row present before a daemon restart and gone after it, and exactly one
+`html-report-message` card projected from the rebuilt reply with its text kept.
+Artifacts stayed `0700`/`0600`.
+
+Still unverified: a physical client render of that rebuilt card (the projection
+was exercised through the production client functions and the real rebuilt
+timeline, not a browser), Claude/Codex providers, and native devices.
