@@ -95,10 +95,11 @@ It also contains the never-published 2.2.0 candidate changes listed further down
   Measured A/B on one host/model with two disposable homes: "Make me an HTML
   report of what changed in this repo this week." rendered 0/3 on the old
   244-character line and 4/4 here; "Render this verification run as an HTML
-  report card I can scan." 2/2 vs 3/3; legacy must-render prompts 0/2 vs 0/2. A
-  full-corpus pass here is must-render 3/8, may-render 1/4, must-not-render 0/5,
-  so the 80% bar is unmet by either line on this model and stays an operator
-  knob instead of being weakened.
+  report card I can scan." 2/2 vs 3/3; legacy must-render prompts 0/3 vs 0/3. A
+  full-corpus pass here is must-render 3/8 (one legacy prompt plus both report
+  prompts), may-render 1/4, must-not-render 0/5, so the 80% bar is unmet by
+  either line on this model and stays an operator knob instead of being
+  weakened.
 
 ### Breaking
 

@@ -693,14 +693,15 @@ branch (246-character identity-first line), same model
 | "Make me an HTML report of what changed in this repo this week." | 0/3 | 4/4 |
 | "Render this verification run as an HTML report card I can scan." | 2/2 | 3/3 |
 | "Turn these numbers into an HTML report: Node 20 245ms, …" | 0/1 | 1/1 |
-| legacy must-render pair ("compare the last two commits", "largest files in server/") | 0/2 | 0/2 |
+| legacy must-render prompts ("compare the last two commits", "largest files in server/", "explain the MCP bridge") | 0/3 | 0/3 |
 
 Reading: the identity-first line rescues the wording that failed in the field
 ("HTML report") and does not regress prompts that already mentioned rendering.
-Full-corpus single pass on this branch, in the plugin repo: must-render 3/8,
-may-render 1/4, must-not-render **0/5**. So the 80% default bar is not met on
-this host/model by either line (the legacy prompts answer in text), and that is
-model/host behaviour, not a plugin regression; `--min-structured` stays an
+Full-corpus single pass on this branch, in the plugin repo: must-render **3/8**
+(the two report prompts plus "Summarize today's verification results"), may-render
+1/4, must-not-render **0/5**. The legacy prompts answer in text under both lines
+on this host/model, so the 80% default bar is not met by either line; that is
+model/host behaviour, not a plugin regression, and `--min-structured` stays an
 operator knob rather than being weakened. Two long "build a big page" runs hit
 the harness's per-prompt timeout instead of producing a verdict.
 
