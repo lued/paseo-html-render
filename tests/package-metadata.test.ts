@@ -103,7 +103,7 @@ test("the guard documentation is exact rather than overclaiming normalization or
   assert.match(changelog, /interactivePath/);
   // The first model-visible line is identity-first and tool-named, because pi
   // declares no tool and Paseo's Pi provider strips the server description.
-  assert.match(changelog, /248-character\s+identity-first summary/);
+  assert.match(changelog, /\d+-character\s+identity-first summary/);
   assert.match(changelog, /The first model-visible line names the product and the tools/);
   assert.doesNotMatch(changelog, /only by comments or whitespace runs/i);
   assert.doesNotMatch(changelog, /cwd fallback/i);

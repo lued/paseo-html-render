@@ -47,10 +47,27 @@ It also contains the never-published 2.2.0 candidate changes listed further down
   after their deadline or a new turn. Original tool rows remain as work; preview
   drafts do not become published responses. The response row outranks the reply
   projection, so the reply returns to its native rendering while that row lives.
+- `npm run verify:e2e` gained **G7** (`reply-projected card survives a daemon
+  rebuild`): publish a card, send a plain follow-up turn, restart the fixture's
+  own daemon, prove server-side that the response row is gone (1 before, 0 after,
+  0 again after the client opens the agent), then render that rebuilt timeline in
+  real Chromium and assert exactly one card positioned **above** the reply text it
+  is projected with, inside the older turn, with the reply link opening the HTML
+  file preview and the card surviving a refresh.
 - A runtime capability guard for the minimum-only version range: if a host's
   `agent.timeline` stops exposing `refetch`/`append`, the response card logs
   `reason=host-unsupported` and skips instead of failing a turn. The tested range
   is documented (0.14.0-beta.1 through 0.15.2) and no upper cap is reintroduced.
+
+### Changed
+
+- `npm run check:trigger` counts real render calls from the persisted agent
+  timeline instead of `paseo logs` text, waits for the agent to go idle before
+  reading, and accepts `--home`/`--cwd`/`--only`, so a candidate build installed
+  in a disposable home can be measured without touching the fleet. On Pi the log
+  line was often just `[Codemode]` (the nested call is only in the timeline), and
+  a name-based regex also matched the `html_preview` server key, so the old
+  counter reported real renders as text.
 
 ### Fixed
 
@@ -72,12 +89,16 @@ It also contains the never-published 2.2.0 candidate changes listed further down
   no `html_render`/`html_preview` tool, strips the server description and caps
   the MCP instructions at 250 characters, so the old trigger-only first line
   left a fresh agent with no signal: asked for an "HTML report" it wrote a file
-  with bash (agent `9febb42b`, 46 replies, zero codemode calls). The 248-character
-  first line now reads "HTML reports and cards: html_render publishes a card above
-  your reply, html_preview drafts it. Render when a picture carries the answer:
-  comparison, flow, chart, status. Otherwise reply in text. One card per turn,
-  never republish unchanged content." The long form and the tool descriptions
+  with bash (agent `9febb42b`, 46 replies, zero codemode calls). The 246-character
+  first line now reads "HTML reports and cards: html_render publishes a card above your reply, html_preview drafts. Render when a picture carries the answer: comparison, flow, architecture, status, numbers, chart. Else text; one card per turn; never republish unchanged." The long form and the tool descriptions
   agree with it, and a test fails if the identity leaves the first line.
+  Measured A/B on one host/model with two disposable homes: "Make me an HTML
+  report of what changed in this repo this week." rendered 0/3 on the old
+  244-character line and 4/4 here; "Render this verification run as an HTML
+  report card I can scan." 2/2 vs 3/3; legacy must-render prompts 0/2 vs 0/2. A
+  full-corpus pass here is must-render 3/8, may-render 1/4, must-not-render 0/5,
+  so the 80% bar is unmet by either line on this model and stays an operator
+  knob instead of being weakened.
 
 ### Breaking
 
@@ -261,7 +282,7 @@ permanent duplicate database or a semantic HTML diff.
 ### Changed
 
 - Trigger policy remains one source (`shared/policy.ts`) with the unchanged
-  248-character identity-first summary and a longer instruction payload. Exposure is not
+  246-character identity-first summary and a longer instruction payload. Exposure is not
   universal: a client, harness or shared server description can override or
   truncate what the model sees; Pi exposes MCP tools behind codemode and caps the
   first instruction line at 250 characters. Do not infer a universal selection

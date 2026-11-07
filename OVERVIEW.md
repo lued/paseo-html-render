@@ -125,7 +125,7 @@ Every interactive agent session receives the MCP server, plus the rendering poli
 in the MCP handshake: render a card when the answer has structure, answer in text
 for single facts, prose, code, file contents or config. What the model actually sees is client- and
 configuration-dependent: some harnesses expose MCP tools behind codemode, and a
-client or shared server description can override or truncate the 248-character
+client or shared server description can override or truncate the 246-character
 summary. Do not infer universal exposure from one harness.
 On Pi that first line is the *only* model-visible text: Pi declares no
 `html_render`/`html_preview` tool and Paseo's Pi provider strips `description`,

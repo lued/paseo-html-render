@@ -72,9 +72,9 @@ Pi MCP config (`server/dist/server/server/agent/providers/pi/agent.js`,
 `toPiMcpConfig` returns only `command`, `args`, `env`). The first line of the MCP
 `instructions` is therefore the whole signal, and it names the product and the
 tools (`HTML reports and cards: html_render publishes a card above your reply,
-html_preview drafts it. Render when a picture carries the answer: comparison,
-flow, chart, status. Otherwise reply in text. One card per turn, never republish
-unchanged content.`) within Pi's 250-character cap. The contributed server entry
+html_preview drafts. Render when a picture carries the answer: comparison, flow,
+architecture, status, numbers, chart. Else text; one card per turn; never
+republish unchanged.`) within Pi's 250-character cap. The contributed server entry
 also carries `description` and `toolExposure` for a host that keeps them; nothing
 relies on that today.
 

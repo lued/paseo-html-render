@@ -645,7 +645,9 @@ Three defects were verified on installed 0.15.0/0.15.2 hosts and fixed here.
 
 - Discovery: pi declares no `html_render`/`html_preview` tool and Paseo's Pi
   provider forwards only command/args/env, so the first instruction line is the
-  whole model-visible signal. It was trigger-only text with no product identity.
+  whole model-visible signal. It was trigger-only text with no product identity:
+  an agent asked for an "HTML report" wrote a file with bash instead (agent
+  `9febb42b` on sly, 46 replies, zero codemode calls).
 - Rebuild: `bcacdcc` removed the `assistant_message` transformer, so after a
   rebuild the only card surfaces were the collapsed tool row and the daemon's
   memory-only response row (5 linked replies, 0 cards on one host; 2 links, 1
@@ -654,19 +656,53 @@ Three defects were verified on installed 0.15.0/0.15.2 hosts and fixed here.
   newest row, which trailing notification rows broke, and it only decoded
   markers, while 2.x rows carry `interactivePath` without one.
 
-Evidence on this branch: `npm run typecheck`; `npm test` 386/386; bundles 19
-client / 26 server inputs; `check:package` 81 entries / 0 forbidden;
-`npm run verify:e2e` 6/6. Each new test was replayed against base `4d75f15` and
-failed there; a behaviour-only probe (no new imports) failed 6/6 on the base and
-passed 6/6 here. An isolated-home live check (disposable `PASEO_HOME` under
-`/tmp`, own port, directory install of this worktree, real Pi/DeepSeek turn)
-showed: `session-open result=injected server=html-render-v3 transport=stdio`,
-the installed adapter's 248-character first line naming HTML reports and
+### Gates
+
+`npm run typecheck`; `npm test` 386/386; bundles 19 client / 26 server inputs;
+`check:package` 81 entries / 0 forbidden; `npm run verify:e2e` **7/7** with the
+new gate:
+
+| Gate | Result | What it proves |
+| --- | --- | --- |
+| G1–G5 | pass | renderer, mounted card, real stdio adapter, dedupe, install |
+| G6 | pass | live card + fold + file preview in the protected hosted client |
+| G7 | pass | publish → plain follow-up turn → restart the fixture daemon → response row 1→0 (and 0 again after the client opens the agent) → the rebuilt timeline renders in real Chromium with exactly one card **above** the reply text it is projected with, inside the older turn, file preview from the reply link, and the card survives a refresh |
+
+Each new test was replayed against base `4d75f15` and failed there; a
+behaviour-only probe (no new imports) failed 6/6 on the base and passed 6/6
+here. An isolated-home live check (disposable `PASEO_HOME` under `/tmp`, own
+port, directory install of this worktree, real Pi/DeepSeek turn) showed:
+`session-open result=injected server=html-render-v3 transport=stdio`, the
+installed adapter's 246-character first line naming HTML reports and
 `html_render`, one artifact published through a codemode tool row, the appended
 response row present before a daemon restart and gone after it, and exactly one
 `html-report-message` card projected from the rebuilt reply with its text kept.
 Artifacts stayed `0700`/`0600`.
 
-Still unverified: a physical client render of that rebuilt card (the projection
-was exercised through the production client functions and the real rebuilt
-timeline, not a browser), Claude/Codex providers, and native devices.
+### Trigger policy A/B (one host, one model, same prompts)
+
+`npm run check:trigger` now counts calls from the persisted timeline, waits for
+the agent to go idle, and takes `--home`/`--cwd`/`--only`/`--concurrency`, so a
+candidate build in a disposable home can be measured. Two isolated homes, one
+serving base `4d75f15` (244-character trigger-only line) and one serving this
+branch (246-character identity-first line), same model
+(`ocx/opencode-go/deepseek-v4.1-flash`, high thinking), same neutral git repo:
+
+| Prompt | base (trigger-only) | branch (identity-first) |
+| --- | --- | --- |
+| "Make me an HTML report of what changed in this repo this week." | 0/3 | 4/4 |
+| "Render this verification run as an HTML report card I can scan." | 2/2 | 3/3 |
+| "Turn these numbers into an HTML report: Node 20 245ms, …" | 0/1 | 1/1 |
+| legacy must-render pair ("compare the last two commits", "largest files in server/") | 0/2 | 0/2 |
+
+Reading: the identity-first line rescues the wording that failed in the field
+("HTML report") and does not regress prompts that already mentioned rendering.
+Full-corpus single pass on this branch, in the plugin repo: must-render 3/8,
+may-render 1/4, must-not-render **0/5**. So the 80% default bar is not met on
+this host/model by either line (the legacy prompts answer in text), and that is
+model/host behaviour, not a plugin regression; `--min-structured` stays an
+operator knob rather than being weakened. Two long "build a big page" runs hit
+the harness's per-prompt timeout instead of producing a verdict.
+
+Still unverified: Claude/Codex providers, native devices, and selection on
+providers that expose the tools directly instead of behind codemode.
