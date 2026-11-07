@@ -478,6 +478,51 @@ async function assertCollapsedResponse(browser, marker) {
   return browser.evaluate(expression);
 }
 
+/**
+ * The rebuilt-timeline assertion. After the fixture restarts its daemon the
+ * appended response row is gone (plugin timeline rows are daemon memory), so the
+ * card can only come from this plugin's `assistant_message` projection: the card
+ * is drawn *above* the reply text it shares a plugin item with. That ordering is
+ * the discriminator, because the live response row sits *after* the reply.
+ */
+async function assertRebuiltReplyCard(browser, marker) {
+  const expression = `(() => {
+    const markerFrames = Array.from(document.querySelectorAll('iframe')).filter((node) =>
+      (node.getAttribute('srcdoc') || '').includes(${JSON.stringify(marker)}));
+    const frame = markerFrames[0];
+    const summaries = Array.from(document.querySelectorAll('[data-testid="turn-summary"]'));
+    const link = Array.from(document.querySelectorAll('a,button,[role="button"],[role="link"]'))
+      .find((node) => (node.textContent || '').trim() === 'Open interactive report');
+    const body = document.body.innerText || '';
+    const frameBox = frame ? frame.getBoundingClientRect() : null;
+    const linkBox = link ? link.getBoundingClientRect() : null;
+    return {
+      cardCount: markerFrames.length,
+      cardTop: frameBox ? frameBox.top : null,
+      cardHeight: frameBox ? frameBox.height : null,
+      replyTop: linkBox ? linkBox.top : null,
+      replyPresent: Boolean(link),
+      cardAboveReply: Boolean(frameBox && linkBox && frameBox.top <= linkBox.top),
+      summaryCount: summaries.length,
+      summaryTops: summaries.map((node) => node.getBoundingClientRect().top),
+      cardBeforeNewestTurn: summaries.length < 2 || !frameBox || frameBox.top < summaries[summaries.length - 1].getBoundingClientRect().top,
+      workRowCount: document.querySelectorAll('[data-history-row-id^="agent_tool_"]').length,
+      unavailablePlaceholder: /Plugin timeline item unavailable/i.test(body),
+    };
+  })()`;
+  try {
+    await browser.waitFor(
+      `(() => { const state = ${expression}; return state.cardCount === 1 && state.cardHeight > 0 && ` +
+      `state.replyPresent && state.cardAboveReply && state.cardBeforeNewestTurn && !state.unavailablePlaceholder; })()`,
+      60_000,
+      "rebuilt timeline shows one card projected on the reply",
+    );
+  } catch (error) {
+    throw new Error(`${error.message}; state=${JSON.stringify(await browser.evaluate(expression))}`);
+  }
+  return browser.evaluate(expression);
+}
+
 async function waitForAnyTestId(browser, testIds, timeoutMs) {
   const end = Date.now() + timeoutMs;
   while (Date.now() < end) {
@@ -496,6 +541,7 @@ async function main() {
   const configPath = at === -1 ? "" : args[at + 1];
   if (!configPath) throw new Error("e2e-client: --config <path> is required");
   const config = await readConfig(resolve(configPath));
+  const rebuilt = config.rebuilt === true;
   const offer = (await fs.readFile(config.offerFile, "utf8")).trim();
   const password = process.env.PASEO_E2E_PASSWORD ?? "";
   if (!offer.includes("#offer=")) throw new Error("e2e-client: pairing offer file is invalid");
@@ -771,7 +817,10 @@ async function main() {
     path: `${origin}/h/${config.serverId}/agent/${config.agentId}`,
     cardCount: frames.length,
     card,
-    folding: await assertCollapsedResponse(browser, config.marker),
+    surface: rebuilt ? "message" : "response",
+    folding: rebuilt
+      ? await assertRebuiltReplyCard(browser, config.marker)
+      : await assertCollapsedResponse(browser, config.marker),
   };
   result.auth.positive = "connected";
   result.isolation.hostsAfter = await waitForRegistry(
@@ -783,15 +832,39 @@ async function main() {
   await browser.screenshot(join(config.outDir, "g6-timeline.png"));
 
   result.stage = "expand_turn";
-  await clickTestId(browser, "turn-summary", 10_000, "expand turn work");
-  await browser.waitFor(`document.querySelectorAll('[data-history-row-id^="agent_tool_"]').length > 0`,
-    10_000, "expanded turn mounts the original tool rows");
-  const expandedFrames = await markerFrames(browser, config.marker);
-  if (expandedFrames.length !== 1) throw new Error(`expanded work duplicated the answer card (${expandedFrames.length})`);
-  result.timeline.folding.expandedCardCount = expandedFrames.length;
-  await browser.screenshot(join(config.outDir, "g6-expanded.png"));
-  await clickTestId(browser, "turn-summary", 10_000, "collapse turn work");
-  result.timeline.folding.recollapsed = (await assertCollapsedResponse(browser, config.marker)).collapsed;
+  if (rebuilt) {
+    // The reply projection owns the turn's end anchor, so there may be no
+    // summary to click. Expanding anything that is collapsed must still yield
+    // exactly one card: the tool row keeps its native rendering.
+    const summary = `document.querySelector('[data-testid="turn-summary"]')`;
+    result.timeline.folding.turnSummaryPresent = await browser.evaluate(`Boolean(${summary})`);
+    if (result.timeline.folding.turnSummaryPresent) {
+      await clickTestId(browser, "turn-summary", 10_000, "expand turn work");
+      await sleep(1_000);
+      const afterExpand = await markerFrames(browser, config.marker);
+      if (afterExpand.length !== 1) throw new Error(`expanded rebuilt work duplicated the card (${afterExpand.length})`);
+      result.timeline.folding.expandedCardCount = afterExpand.length;
+      await clickTestId(browser, "turn-summary", 10_000, "collapse turn work").catch(() => {});
+    }
+    const rebuiltState = await assertRebuiltReplyCard(browser, config.marker);
+    if (rebuiltState.cardCount !== 1) throw new Error(`rebuilt view has ${rebuiltState.cardCount} cards`);
+    result.timeline.folding.rebuiltCardCount = rebuiltState.cardCount;
+    result.timeline.folding.cardAboveReply = rebuiltState.cardAboveReply;
+    result.timeline.folding.cardBeforeNewestTurn = rebuiltState.cardBeforeNewestTurn;
+    result.timeline.folding.summaryTops = rebuiltState.summaryTops;
+    result.timeline.folding.replyPresent = rebuiltState.replyPresent;
+    result.timeline.folding.workRowCount = rebuiltState.workRowCount;
+  } else {
+    await clickTestId(browser, "turn-summary", 10_000, "expand turn work");
+    await browser.waitFor(`document.querySelectorAll('[data-history-row-id^="agent_tool_"]').length > 0`,
+      10_000, "expanded turn mounts the original tool rows");
+    const expandedFrames = await markerFrames(browser, config.marker);
+    if (expandedFrames.length !== 1) throw new Error(`expanded work duplicated the answer card (${expandedFrames.length})`);
+    result.timeline.folding.expandedCardCount = expandedFrames.length;
+    await browser.screenshot(join(config.outDir, "g6-expanded.png"));
+    await clickTestId(browser, "turn-summary", 10_000, "collapse turn work");
+    result.timeline.folding.recollapsed = (await assertCollapsedResponse(browser, config.marker)).collapsed;
+  }
 
   result.stage = "refresh";
   // Return to the timeline before reloading; a compact host may have replaced
@@ -811,7 +884,9 @@ async function main() {
     "exactly the fixture host after refresh",
   );
   result.refresh = { cardCount: refreshed.length, hosts: refreshedHosts,
-    folding: await assertCollapsedResponse(browser, config.marker) };
+    folding: rebuilt
+      ? await assertRebuiltReplyCard(browser, config.marker)
+      : await assertCollapsedResponse(browser, config.marker) };
   await browser.screenshot(join(config.outDir, "g6-refresh.png"));
 
   result.stage = "file_link";

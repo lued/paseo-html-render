@@ -624,6 +624,7 @@ export async function runProtectedAcceptance(options = {}) {
     },
     bridge: {},
     sessionOpen: {},
+    rebuild: {},
     agentRuntime: {},
     toolCall: {},
     artifact: {},
@@ -1024,6 +1025,118 @@ export async function runProtectedAcceptance(options = {}) {
     }
     result.interactivePath = readback.interactivePath;
 
+    if (options.rebuildBeforeBrowser === true) {
+      // The appended response row lives in daemon memory: a restart must drop it
+      // while the artifact and the reply stay. What the browser then renders is
+      // the reply projection, which is the claim this stage exists to prove.
+      result.stage = "daemon_rebuild";
+      const responseRows = (entries) => entries.filter((entry) =>
+        entry.item.type === "plugin" &&
+        entry.item.pluginId === SELECTED_IDENTITY.pluginId &&
+        entry.item.kind === SELECTED_IDENTITY.responseRendererKind &&
+        entry.item.data?.artifactId === reference.artifactId).length;
+      const beforeRebuild = await client.fetchAgentTimeline(agentId, { direction: "tail", limit: 64, projection: "canonical" });
+      if (beforeRebuild.error) throw new Error("timeline read before the rebuild failed");
+      const responseRowsBefore = responseRows(beforeRebuild.entries);
+      if (responseRowsBefore !== 1) {
+        throw new Error(`expected one live response card before the rebuild, saw ${responseRowsBefore}`);
+      }
+      // A follow-up turn without a card. Recovery only ever restores the LAST
+      // turn, so this makes the older card's reappearance attributable to the
+      // reply projection alone, which is exactly the reported defect (older
+      // replies with artifact links showed no card after a rebuild).
+      const followUpText = "Do not call any tool. Reply with exactly the single word: acknowledged";
+      const followUp = await paseo(paseoBin, home, ["send", agentId, "--home", home, "--json", followUpText], env, 420_000);
+      if (followUp.code !== 0) {
+        throw new FixtureUnavailableError("provider", `follow-up turn failed: ${redactSensitive(followUp.stderr).slice(-1200) || "no detail"}`);
+      }
+      const afterFollowUp = await client.fetchAgentTimeline(agentId, { direction: "tail", limit: 64, projection: "canonical" });
+      if (afterFollowUp.error) throw new Error("timeline read after the follow-up turn failed");
+      const followUpRows = afterFollowUp.entries;
+      const newestReply = [...followUpRows].reverse().find((entry) => entry.item.type === "assistant_message");
+      const followUpPublished = typeof newestReply?.item.text === "string" && /artifacts\/[0-9a-f]{32}\//.test(newestReply.item.text);
+      const followUpReplies = followUpRows.filter((entry) => entry.item.type === "assistant_message").length;
+      const followUpResponseRows = responseRows(followUpRows);
+      if (followUpPublished || followUpResponseRows !== 1) {
+        throw new Error(
+          `the follow-up turn did not stay plain (published=${followUpPublished}, responseRows=${followUpResponseRows}); ` +
+          "the older-turn card would no longer be attributable to the reply projection",
+        );
+      }
+      result.rebuild.followUp = {
+        replies: followUpReplies,
+        publishedCard: followUpPublished,
+        responseRows: followUpResponseRows,
+        newestReplyHasArtifactLink: followUpPublished,
+      };
+      const serverIdBefore = result.serverId;
+      await client.close().catch(() => {});
+      client = null;
+      const stopped = await stopDaemon(paseoBin, home, env);
+      if (!stopped.stopped) throw new Error(`fixture daemon did not stop for the rebuild (${stopped.evidence})`);
+      const restarted = await startDaemon(paseoBin, home, env);
+      const serverIdAfter = restarted.serverId ?? null;
+      if (!serverIdAfter) throw new Error("rebuilt fixture daemon reported no serverId");
+      result.serverId = serverIdAfter;
+      client = await mods.connectToDaemon({ target: { kind: "instance", home }, timeout: 20_000 });
+      let rebuiltEntries = null;
+      const rebuiltDeadline = Date.now() + 45_000;
+      while (Date.now() < rebuiltDeadline) {
+        const page = await client.fetchAgentTimeline(agentId, { direction: "tail", limit: 64, projection: "canonical" });
+        if (!page.error && page.entries.length > 0) {
+          rebuiltEntries = page.entries;
+          break;
+        }
+        await sleep(250);
+      }
+      if (!rebuiltEntries) throw new Error("the rebuilt timeline returned no entries");
+      const artifactPattern = new RegExp(`artifacts/${reference.artifactId}/interactive\\.html`);
+      const replyWithLink = rebuiltEntries.filter((entry) =>
+        entry.item.type === "assistant_message" &&
+        typeof entry.item.text === "string" &&
+        artifactPattern.test(entry.item.text)).length;
+      const responseRowsAfter = responseRows(rebuiltEntries);
+      const renderRowsAfter = rebuiltEntries.filter((entry) =>
+        entry.item.type === "tool_call" &&
+        typeof entry.item.name === "string" &&
+        isRenderToolRow({ name: entry.item.name, detail: entry.item.detail })).length;
+      let artifactReadableAfter = false;
+      try {
+        const afterReadback = await client.invokePluginRpc("html-render", "html.artifact.read", {
+          artifactId: reference.artifactId,
+          agentId,
+        });
+        artifactReadableAfter = afterReadback?.artifactId === reference.artifactId;
+      } catch {
+        artifactReadableAfter = false;
+      }
+      const followUpFacts = result.rebuild.followUp;
+      result.rebuild = {
+        attempted: true,
+        followUp: followUpFacts,
+        stopped: stopped.stopped,
+        stopEvidence: stopped.evidence,
+        restarted: true,
+        serverIdBefore,
+        serverIdAfter,
+        serverIdKept: serverIdBefore === serverIdAfter,
+        responseRowsBefore,
+        responseRowsAfter,
+        replyWithArtifactLink: replyWithLink,
+        renderRowsAfter,
+        artifactReadableAfter,
+        timelineItemsAfter: rebuiltEntries.length,
+        markerServed: rebuiltEntries.some((entry) =>
+          typeof entry.item.detail === "object" && JSON.stringify(entry.item.detail).includes(reference.artifactId)),
+      };
+      if (responseRowsAfter !== 0) {
+        throw new Error(`the in-memory response card survived the rebuild (${responseRowsAfter})`);
+      }
+      if (replyWithLink === 0) throw new Error("the rebuilt timeline lost the reply that carries the artifact link");
+      if (!artifactReadableAfter) throw new Error("the artifact was not readable after the rebuild");
+      await writePrivateJson(join(outDir, "rebuild-facts.json"), result.rebuild);
+    }
+
     result.stage = "relay_offer";
     const pair = await paseo(paseoBin, home, ["pair", "--home", home, "--json"], env, 60_000);
     if (pair.code !== 0) {
@@ -1055,6 +1168,7 @@ export async function runProtectedAcceptance(options = {}) {
       artifactId: result.artifactId,
       interactivePath: result.interactivePath,
       baseUrl: appBaseUrl,
+      rebuilt: options.rebuildBeforeBrowser === true,
       chromium,
       browserProfileRoot: workRoot,
       browserChildGroupFile: browserChildGroupPath,
@@ -1106,6 +1220,30 @@ export async function runProtectedAcceptance(options = {}) {
     }
     if (!browserCleanup?.browserStopped || !browserCleanup?.profileRemoved) {
       throw new Error("browser process or owned profile cleanup was not verified");
+    }
+
+    if (options.rebuildBeforeBrowser === true) {
+      // Final attribution fact: after the client opened the agent (which runs
+      // the session-open recovery path), the daemon still holds no response row
+      // for this artifact. A rendered card can therefore only be the reply
+      // projection.
+      const afterClient = await client.fetchAgentTimeline(agentId, { direction: "tail", limit: 64, projection: "canonical" });
+      if (afterClient.error) throw new Error("timeline read after the hosted client failed");
+      const rowsAfterClient = afterClient.entries.filter((entry) =>
+        entry.item.type === "plugin" &&
+        entry.item.kind === SELECTED_IDENTITY.responseRendererKind &&
+        entry.item.data?.artifactId === reference.artifactId).length;
+      const replyStillCarriesLink = afterClient.entries.some((entry) =>
+        entry.item.type === "assistant_message" &&
+        typeof entry.item.text === "string" &&
+        new RegExp(`artifacts/${reference.artifactId}/interactive\\.html`).test(entry.item.text));
+      result.rebuild.responseRowsAfterClient = rowsAfterClient;
+      result.rebuild.replyStillCarriesLinkAfterClient = replyStillCarriesLink;
+      await writePrivateJson(join(outDir, "rebuild-facts.json"), result.rebuild);
+      if (rowsAfterClient !== 0) {
+        throw new Error(`a response card was restored after the client opened the agent (${rowsAfterClient}); the reply projection is not isolated`);
+      }
+      if (!replyStillCarriesLink) throw new Error("the rebuilt reply lost its artifact link after the client opened the agent");
     }
 
     result.status = "pass";
@@ -1189,6 +1327,7 @@ if (isMain) {
   const result = await runProtectedAcceptance({
     outDir: option("out", undefined),
     prepareOnly: has("prepare-only"),
+    rebuildBeforeBrowser: has("rebuild-before-browser"),
     keep: has("keep"),
     paseoBin: option("paseo", process.env.PASEO_BIN ?? "paseo"),
     chromium: option("chromium", process.env.PASEO_HTML_RENDER_CHROMIUM),

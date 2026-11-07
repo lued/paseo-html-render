@@ -10,6 +10,8 @@
  *   G3  real stdio MCP adapter (v3) over the real bridge socket + history rebuild
  *   G4  cross-row deduplication capability probe (public SDK surface)
  *   G5  installed plugin registration and daemon identity
+ *   G6  password-protected hosted client timeline, folding and file preview
+ *   G7  reply-projected card still renders after the fixture daemon rebuilds
  *
  * `report.json` maps every gate to the stable PQ ids in
  * `docs/t3-parity-quality-matrix.md`.
@@ -889,6 +891,160 @@ test("G6 real protected hosted client timeline and file preview", { timeout: 900
           evidencePath("g6-timeline.png"),
           evidencePath("g6-file-preview.png"),
           evidencePath("g6-refresh.png"),
+        ],
+      };
+    },
+  );
+});
+
+test("G7 published card renders from the reply after a daemon rebuild", { timeout: 900_000 }, async () => {
+  await gate(
+    { id: "G7", title: "reply-projected card survives a daemon rebuild in the hosted client", pq: ["PQ-018", "PQ-019", "PQ-126"] },
+    async () => {
+      if (process.env.PASEO_E2E_CLIENT === "0") {
+        return { status: "unavailable" as const, detail: "PASEO_E2E_CLIENT=0: hosted client capture disabled for this run" };
+      }
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 10_000);
+        const probe = await fetch("https://app.paseo.sh/", { signal: controller.signal, redirect: "manual" })
+          .finally(() => clearTimeout(timer));
+        assert.ok(probe.status < 500, `hosted client responded ${probe.status}`);
+      } catch (error) {
+        return {
+          status: "unavailable" as const,
+          detail: `hosted client unreachable (${error instanceof Error ? error.message : String(error)}): no rebuilt-card evidence this run`,
+        };
+      }
+      // Its own directory: the fixture deletes stale g6-* files, so sharing the
+      // root would erase G6's evidence.
+      const outDir = evidencePath("g7");
+      await fs.rm(outDir, { recursive: true, force: true });
+      await fs.mkdir(outDir, { recursive: true, mode: 0o700 });
+      const execution = await run(
+        process.execPath,
+        [join(SOURCE_ROOT, "scripts", "fixture-paseo.mjs"), "--out", outDir, "--rebuild-before-browser"],
+        840_000,
+      );
+      const fixture = JSON.parse(await fs.readFile(join(outDir, "fixture-result.json"), "utf8")) as {
+        status: string;
+        stage: string;
+        serverId: string | null;
+        agentId: string | null;
+        marker: string | null;
+        artifactId: string | null;
+        rebuild: {
+          attempted?: boolean;
+          followUp?: { replies?: number; publishedCard?: boolean; responseRows?: number };
+          responseRowsAfterClient?: number;
+          replyStillCarriesLinkAfterClient?: boolean;
+          stopped?: boolean;
+          restarted?: boolean;
+          serverIdBefore?: string | null;
+          serverIdAfter?: string | null;
+          responseRowsBefore?: number;
+          responseRowsAfter?: number;
+          replyWithArtifactLink?: number;
+          renderRowsAfter?: number;
+          artifactReadableAfter?: boolean;
+          timelineItemsAfter?: number;
+        };
+        cleanup: { daemonStopped?: boolean; fixtureRemoved?: boolean; browserStopped?: boolean | null; browserProfileRemoved?: boolean | null; requiredCleanupPassed?: boolean };
+        errors: string[];
+      };
+      if (execution.code === 2 || fixture.status === "unavailable") {
+        return {
+          status: "unavailable" as const,
+          detail: `${fixture.stage}: ${fixture.errors[0]?.split("\n")[0] ?? "rebuilt-card fixture unavailable"}; no pass`,
+        };
+      }
+      assert.equal(execution.code, 0, `fixture orchestrator exited ${execution.code}: ${fixture.errors[0]?.split("\n")[0] ?? execution.stderr.slice(-500)}`);
+      assert.equal(fixture.status, "pass", `fixture orchestrator did not pass: ${fixture.errors[0]?.split("\n")[0] ?? "no detail"}`);
+      assert.deepEqual(fixture.errors, []);
+      // Server side: the appended response row lived in daemon memory only.
+      assert.equal(fixture.rebuild.attempted, true, "the fixture restarted its own daemon");
+      assert.equal(fixture.rebuild.stopped, true);
+      assert.equal(fixture.rebuild.restarted, true);
+      assert.equal(fixture.rebuild.responseRowsBefore, 1, "one live response card before the rebuild");
+      assert.equal(fixture.rebuild.responseRowsAfter, 0, "the in-memory response card is gone after the rebuild");
+      assert.ok((fixture.rebuild.replyWithArtifactLink ?? 0) >= 1, "the rebuilt reply still carries the artifact link");
+      assert.ok((fixture.rebuild.renderRowsAfter ?? 0) >= 1, "the rebuilt timeline still has the render tool row");
+      assert.equal(fixture.rebuild.artifactReadableAfter, true, "the artifact is still readable after the rebuild");
+      assert.equal(fixture.rebuild.followUp?.publishedCard, false, "the follow-up turn stayed plain");
+      assert.equal(fixture.rebuild.followUp?.responseRows, 1, "only the first turn carried a response card");
+      // The smoking gun: the client opened the agent (running the session-open
+      // recovery), and the daemon still holds no response row for this artifact.
+      assert.equal(fixture.rebuild.responseRowsAfterClient, 0, "no response card was restored for the older turn");
+      assert.equal(fixture.rebuild.replyStillCarriesLinkAfterClient, true, "the reply kept its artifact link");
+      assert.equal(fixture.cleanup.daemonStopped, true);
+      assert.equal(fixture.cleanup.fixtureRemoved, true);
+      assert.equal(fixture.cleanup.requiredCleanupPassed, true);
+
+      const report = JSON.parse(await fs.readFile(join(outDir, "g6-client.json"), "utf8")) as {
+        status: string;
+        serverId: string;
+        agentId: string;
+        marker: string;
+        artifactId: string;
+        surface?: string;
+        timeline: {
+          cardCount: number;
+          surface?: string;
+          card: { sandbox: string; allow: string; height: string; hasCsp: boolean; hasMarker: boolean };
+          folding: {
+            rebuiltCardCount?: number;
+            cardAboveReply?: boolean;
+            cardBeforeNewestTurn?: boolean;
+            replyPresent?: boolean;
+            turnSummaryPresent?: boolean;
+            workRowCount?: number;
+          };
+        };
+        filePreview: { testId?: string; sandbox?: string; hasCsp?: boolean; hasMarker?: boolean };
+        refresh: { cardCount?: number; folding?: { rebuiltCardCount?: number; cardAboveReply?: boolean } };
+        cleanup: { browserStopped?: boolean; profileRemoved?: boolean };
+        errors: string[];
+      };
+      assert.equal(report.status, "pass", `hosted client failed: ${report.errors[0]?.split("\n")[0] ?? "no detail"}`);
+      assert.equal(report.serverId, fixture.serverId);
+      assert.equal(report.agentId, fixture.agentId);
+      assert.equal(report.artifactId, fixture.artifactId);
+      assert.equal(report.timeline.surface, "message", "the client reports the reply projection as the card surface");
+      assert.equal(report.timeline.cardCount, 1, "exactly one card in the rebuilt timeline");
+      assert.equal(report.timeline.card.sandbox, "allow-scripts");
+      assert.equal(report.timeline.card.hasCsp, true);
+      assert.equal(report.timeline.card.hasMarker, true);
+      assert.ok(Number.parseFloat(report.timeline.card.height) > 0, "the projected card has a measured height");
+      assert.equal(report.timeline.folding.replyPresent, true, "the reply text is still rendered with the card");
+      assert.equal(report.timeline.folding.cardAboveReply, true, "the card is projected on the reply, not appended after it");
+      assert.equal(report.timeline.folding.rebuiltCardCount, 1);
+      assert.equal(report.timeline.folding.cardBeforeNewestTurn, true, "the older card stays inside its own turn");
+      // The reply link is rendered by the projected card's Markdown, and the
+      // host's file preview still opens the full interactive HTML.
+      assert.equal(report.filePreview.testId, "file-html-preview");
+      assert.equal(report.filePreview.hasMarker, true);
+      assert.equal(report.refresh.cardCount, 1, "one card after a refresh of the rebuilt timeline");
+      assert.equal(report.refresh.folding?.cardAboveReply, true);
+      assert.deepEqual(report.errors, []);
+      const rebuildEvidence = await writeEvidenceJson("g7-rebuild.json", {
+        rebuild: fixture.rebuild,
+        client: {
+          surface: report.timeline.surface,
+          cardCount: report.timeline.cardCount,
+          folding: report.timeline.folding,
+          refresh: report.refresh,
+          filePreview: report.filePreview.testId,
+        },
+      });
+      return {
+        detail: `daemon rebuilt (${fixture.rebuild.serverIdBefore} -> ${fixture.rebuild.serverIdAfter}); response rows ${fixture.rebuild.responseRowsBefore} -> ${fixture.rebuild.responseRowsAfter}; one reply-projected card ${report.timeline.card.height} with the reply text`,
+        evidence: [
+          rebuildEvidence,
+          join(outDir, "fixture-result.json"),
+          join(outDir, "rebuild-facts.json"),
+          join(outDir, "g6-client.json"),
+          join(outDir, "g6-timeline.png"),
+          join(outDir, "g6-file-preview.png"),
         ],
       };
     },
