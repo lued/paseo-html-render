@@ -28,7 +28,7 @@ import { COMMON_VISUAL_PACKAGE_HINTS } from "./visual-packages.ts";
 export const POLICY_SUMMARY_MAX_CHARS = 250;
 
 export const POLICY_SUMMARY =
-  "HTML reports and cards: html_render publishes a card above your reply, html_preview drafts it. Render when a picture carries the answer: comparison, flow, chart, status. Otherwise reply in text. One card per turn, never republish unchanged content.";
+  "HTML reports and cards: html_render publishes a card above your reply, html_preview drafts. Render when a picture carries the answer: comparison, flow, architecture, status, numbers, chart. Else text; one card per turn; never republish unchanged.";
 
 /**
  * Server description carried on the contributed `mcpServers` entry. The current

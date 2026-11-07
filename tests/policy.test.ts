@@ -47,11 +47,12 @@ test("the summary carries all four rules on its own", () => {
   // summary cannot silently drop the brake.
   assert.match(POLICY_SUMMARY, /HTML reports and cards/);
   assert.match(POLICY_SUMMARY, /html_render publishes a card above your reply/);
-  assert.match(POLICY_SUMMARY, /html_preview drafts it/);
-  assert.match(POLICY_SUMMARY, /comparison, flow, chart, status/);
-  assert.match(POLICY_SUMMARY, /Otherwise reply in text/);
-  assert.match(POLICY_SUMMARY, /One card per turn/);
-  assert.match(POLICY_SUMMARY, /never republish unchanged content/);
+  assert.match(POLICY_SUMMARY, /html_preview drafts/);
+  assert.match(POLICY_SUMMARY, /Render when a picture carries the answer/);
+  assert.match(POLICY_SUMMARY, /comparison, flow, architecture, status, numbers, chart/);
+  assert.match(POLICY_SUMMARY, /Else text/);
+  assert.match(POLICY_SUMMARY, /one card per turn/);
+  assert.match(POLICY_SUMMARY, /never republish unchanged/);
 });
 
 test("the long form starts with the standalone summary", () => {
@@ -65,9 +66,9 @@ test("the long form agrees with the summary's brake and text rule", () => {
   const lines = POLICY_INSTRUCTIONS.split("\n");
   // Both projections must carry the same brake. The old "one card per reply"
   // phrase contradicted the summary's stricter "one card per turn".
-  assert.match(POLICY_INSTRUCTIONS, /One card per turn/);
+  assert.match(POLICY_INSTRUCTIONS, /one card per turn/i);
   assert.match(POLICY_INSTRUCTIONS, /Never publish a second card in the same turn/);
-  assert.match(POLICY_INSTRUCTIONS, /Otherwise reply in text/);
+  assert.match(POLICY_INSTRUCTIONS, /reply in text/i);
   assert.match(POLICY_INSTRUCTIONS, /Reply in text for a single fact, one sentence, code, file contents or config/);
   // The long form names the same tools as the summary, and keeps the "HTML
   // report" phrasing a user actually asks for.
