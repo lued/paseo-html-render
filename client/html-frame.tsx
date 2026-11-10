@@ -201,6 +201,9 @@ export function forwardWheelToHost(element: ScrollableElement, wheel: ForwardedW
   }
 }
 
+/** Longest a summed wheel waits for an animation frame before it is applied anyway. */
+const WHEEL_FLUSH_FALLBACK_MS = 32;
+
 /** Refill rate of the forwarded-wheel distance budget: 6000 px per second. */
 const WHEEL_REFILL_PX_PER_MS = 6;
 
@@ -268,9 +271,18 @@ export function HtmlFrame(props: HtmlFrameProps) {
     if (!live) return;
     // Forwarded wheels are summed until the next animation frame, then applied once.
     let pendingWheel: { deltaX: number; deltaY: number } | null = null;
+    // The flush runs on the next animation frame or after WHEEL_FLUSH_FALLBACK_MS, whichever comes first:
+    // a throttled or occluded page may never run an animation frame, and its reader still scrolls.
     let wheelFrame: number | null = null;
+    let wheelTimer: number | null = null;
     const raf = (globalThis as { requestAnimationFrame?: (cb: () => void) => number }).requestAnimationFrame;
     const caf = (globalThis as { cancelAnimationFrame?: (id: number) => void }).cancelAnimationFrame;
+    const cancelWheelFlush = () => {
+      if (wheelFrame !== null && caf) caf(wheelFrame);
+      if (wheelTimer !== null) host().clearTimeout(wheelTimer);
+      wheelFrame = null;
+      wheelTimer = null;
+    };
     // Distance budget: at most MAX_FORWARDED_WHEEL_PX at once, refilled at WHEEL_REFILL_PX_PER_MS.
     let budget = MAX_FORWARDED_WHEEL_PX;
     let budgetAt = performance.now();
@@ -285,7 +297,7 @@ export function HtmlFrame(props: HtmlFrameProps) {
       return { deltaX: wheel.deltaX * scale, deltaY: wheel.deltaY * scale };
     };
     const flushWheel = () => {
-      wheelFrame = null;
+      cancelWheelFlush();
       const wrapper = wrapperRef.current as ScrollableElement | null;
       const wheel = pendingWheel;
       pendingWheel = null;
@@ -304,9 +316,9 @@ export function HtmlFrame(props: HtmlFrameProps) {
         pendingWheel = pendingWheel
           ? { deltaX: pendingWheel.deltaX + wheel.deltaX, deltaY: pendingWheel.deltaY + wheel.deltaY }
           : { deltaX: wheel.deltaX, deltaY: wheel.deltaY };
-        if (wheelFrame === null) {
+        if (wheelFrame === null && wheelTimer === null) {
           if (raf) wheelFrame = raf(flushWheel);
-          else flushWheel();
+          wheelTimer = host().setTimeout(flushWheel, WHEEL_FLUSH_FALLBACK_MS);
         }
         return;
       }
@@ -345,7 +357,7 @@ export function HtmlFrame(props: HtmlFrameProps) {
     host().addEventListener("message", listener as (event: never) => void);
     return () => {
       host().removeEventListener("message", listener as (event: never) => void);
-      if (wheelFrame !== null && caf) caf(wheelFrame);
+      cancelWheelFlush();
     };
   }, [live, post]);
 

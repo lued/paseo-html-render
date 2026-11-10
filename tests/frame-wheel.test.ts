@@ -15,6 +15,10 @@ test("a wheel over a live card reaches the host's scroll container and scrolls i
       import {createRoot} from 'react-dom/client';
       import {HtmlFrame} from './client/html-frame.tsx';
       import {DEFAULT_HTML_DOCUMENT_COLORS, buildInteractiveDocument} from './shared/html-document.ts';
+      // A switch to stall animation frames, as a throttled or occluded page does; the frame reads this once at mount.
+      const realRaf = window.requestAnimationFrame.bind(window);
+      window.__rafStalled = false;
+      window.requestAnimationFrame = cb => window.__rafStalled ? 0 : realRaf(cb);
       const wait = ms => new Promise(r => setTimeout(r, ms));
       const waitFor = async (predicate, timeout = 8000) => {
         const until = Date.now() + timeout;
@@ -114,16 +118,22 @@ test("a wheel over a live card reaches the host's scroll container and scrolls i
       const shadowFrom = await evaluate("(t => (t.scrollTop = t.scrollHeight, t.scrollTop))(document.getElementById('timeline'))");
       await wheel("shadow", 50);
       const shadowDown = { ...(await evaluate("window.__step()")), from: shadowFrom };
+      // With animation frames stalled, a reader's wheel over the card still reaches the timeline.
+      await evaluate("(t => (t.scrollTop = t.scrollHeight, window.__rafStalled = true))(document.getElementById('timeline'))");
+      const stalledFrom = await evaluate("document.getElementById('timeline').scrollTop");
+      await wheel("card", -100);
+      const stalled = { ...(await evaluate("window.__step()")), from: stalledFrom };
+      await evaluate("window.__rafStalled = false");
       // A card posting wheel messages on its own, with no wheel from the reader.
       const burst = await evaluate("window.__burst(20, -50)");
       await new Promise(r => setTimeout(r, 400));
       const flood = await evaluate("window.__burst(40, -2000)");
-      await evaluate(`window.__result = ${"{"}bottom: ${bottom}, overCard: ${JSON.stringify(overCard)}, innerDown: ${JSON.stringify(innerDown)}, innerUp: ${JSON.stringify(innerUp)}, sideways: ${JSON.stringify(sideways)}, drifting: ${JSON.stringify(drifting)}, shadowDown: ${JSON.stringify(shadowDown)}, burst: ${JSON.stringify(burst)}, flood: ${JSON.stringify(flood)}${"}"}`);
+      await evaluate(`window.__result = ${"{"}bottom: ${bottom}, overCard: ${JSON.stringify(overCard)}, innerDown: ${JSON.stringify(innerDown)}, innerUp: ${JSON.stringify(innerUp)}, sideways: ${JSON.stringify(sideways)}, drifting: ${JSON.stringify(drifting)}, shadowDown: ${JSON.stringify(shadowDown)}, stalled: ${JSON.stringify(stalled)}, burst: ${JSON.stringify(burst)}, flood: ${JSON.stringify(flood)}${"}"}`);
     },
   }) as Record<string, any>;
   assert.equal(result.error, undefined, result.stack);
 
-  const { bottom, overCard, innerDown, innerUp, sideways, drifting, shadowDown, burst, flood } = result;
+  const { bottom, overCard, innerDown, innerUp, sideways, drifting, shadowDown, stalled, burst, flood } = result;
   assert.ok(bottom > 0, "the timeline starts scrolled to the bottom");
   assert.deepEqual(
     overCard.wheels.map((w: any) => w.deltaY < 0 && w.insideCard),
@@ -146,6 +156,10 @@ test("a wheel over a live card reaches the host's scroll container and scrolls i
   // A scroller inside a card's open shadow root keeps its own wheel.
   assert.deepEqual(shadowDown.wheels, [], "a wheel a shadow-root list can take is not forwarded");
   assert.equal(shadowDown.top, shadowDown.from, "the timeline stays put while the shadow-root list scrolls");
+
+  // A page whose animation frames are throttled still applies the reader's wheel, on the timer fallback.
+  assert.deepEqual(stalled.wheels.map((w: any) => w.deltaY < 0 && w.insideCard), [true], "with animation frames stalled the wheel still reaches the host");
+  assert.ok(stalled.from - stalled.top >= 50, `and the timeline scrolls up: moved ${stalled.from - stalled.top}`);
 
   // Wheels arriving within one frame are summed and applied once: nothing is dropped, nothing queued.
   assert.equal(burst.arrived, 20, "the card posted its wheels");

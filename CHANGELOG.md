@@ -123,7 +123,7 @@ It also contains the never-published 2.2.0 candidate changes listed further down
   stream read the chained scroll as a layout shift. The card runtime now posts
   a wheel it cannot use, on its dominant axis, as `ui/notifications/wheel`;
   `HtmlFrame` accepts it only from its own frame, sums the wheels that arrive
-  within one animation frame, holds the total to a distance budget (2000 px at
+  within one animation frame (or 32 ms when frames are throttled), holds the total to a distance budget (2000 px at
   once, refilled at 6000 px/s), replays it as a `wheel` on the card's wrapper,
   then scrolls the nearest ancestor that can take it unless a host listener
   cancels the replay. Wheels the card can scroll (including scrollers inside
