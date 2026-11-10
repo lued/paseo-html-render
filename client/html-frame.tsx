@@ -17,10 +17,18 @@
  * - Link and image requests are accepted only from this frame's window, only
  *   while the frame has focus and a fresh user activation exists. There is no
  *   key replay and no privileged host command.
+ * - A forwarded wheel is accepted only from this frame's window. The parent
+ *   cannot tie it to the reader's pointer: Chromium gives the parent no pointer
+ *   boundary events for an out-of-process iframe. So wheels arriving within one
+ *   animation frame are summed and applied once (a fast trackpad keeps its
+ *   distance), and the total is held to a distance budget (2000 px at once,
+ *   refilled at 6000 px/s). A card can still scroll the chat by itself, but
+ *   only within that budget.
  */
 import { createElement, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   HTML_FRAME_DEFAULT_WIDTH,
+  MAX_FORWARDED_WHEEL_PX,
   HTML_FRAME_READY_TIMEOUT_MS,
   HTML_FRAME_SANDBOX,
   appearanceFromColors,
@@ -33,8 +41,10 @@ import {
   readOpenLinkRequest,
   readReadyMessage,
   readSizeChangedMessage,
+  readWheelMessage,
   readyAckMessage,
   selectHtmlFrameKind,
+  type ForwardedWheel,
   type HtmlDocumentColors,
   type HtmlDocumentTheme,
   type HtmlFramePlatform,
@@ -129,6 +139,71 @@ function frameFocusedAndActivated(frame: FrameElement): boolean {
   );
 }
 
+interface ScrollableElement {
+  parentElement: ScrollableElement | null;
+  scrollTop: number;
+  scrollLeft: number;
+  scrollHeight: number;
+  scrollWidth: number;
+  clientHeight: number;
+  clientWidth: number;
+  dispatchEvent(event: unknown): boolean;
+  scrollBy(options: { top: number; left: number; behavior: "instant" }): void;
+}
+
+interface WheelHost {
+  WheelEvent?: new (type: "wheel", init: Record<string, unknown>) => { defaultPrevented: boolean };
+  getComputedStyle?(element: unknown): { overflowX: string; overflowY: string };
+}
+
+function canTake(element: ScrollableElement, wheel: ForwardedWheel, style: { overflowX: string; overflowY: string }): boolean {
+  const scrolls = (overflow: string) => overflow === "auto" || overflow === "scroll" || overflow === "overlay";
+  const { deltaX: dx, deltaY: dy } = wheel;
+  if (dy !== 0 && scrolls(style.overflowY) && element.scrollHeight > element.clientHeight + 1) {
+    if (dy < 0 ? element.scrollTop > 0 : element.scrollTop + element.clientHeight < element.scrollHeight - 1) return true;
+  }
+  if (dx !== 0 && scrolls(style.overflowX) && element.scrollWidth > element.clientWidth + 1) {
+    if (dx < 0 ? element.scrollLeft > 0 : element.scrollLeft + element.clientWidth < element.scrollWidth - 1) return true;
+  }
+  return false;
+}
+
+/**
+ * Replays a wheel the card could not use as if it had happened on the card's
+ * own element, then scrolls the nearest ancestor that can take it.
+ *
+ * A wheel over an iframe is delivered to the iframe's document and never to the
+ * parent's. A host timeline that holds to its bottom until it sees the reader's
+ * own wheel (Paseo's agent stream) would read the chained scroll as a layout
+ * shift and snap back. The synthetic event is dispatched first, so such a host
+ * records the reader's intent before the scroll it causes; a host listener that
+ * cancels it keeps the scroll for itself.
+ */
+export function forwardWheelToHost(element: ScrollableElement, wheel: ForwardedWheel): void {
+  const g = globalThis as unknown as WheelHost;
+  if (!g.WheelEvent || !g.getComputedStyle) return;
+  const event = new g.WheelEvent("wheel", {
+    deltaX: wheel.deltaX,
+    deltaY: wheel.deltaY,
+    deltaMode: 0,
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+  });
+  element.dispatchEvent(event);
+  if (event.defaultPrevented) return;
+  const step = Math.abs(wheel.deltaX) > Math.abs(wheel.deltaY) ? { deltaX: wheel.deltaX, deltaY: 0 } : { deltaX: 0, deltaY: wheel.deltaY };
+  for (let node = element.parentElement; node; node = node.parentElement) {
+    if (canTake(node, step, g.getComputedStyle(node))) {
+      node.scrollBy({ top: step.deltaY, left: step.deltaX, behavior: "instant" });
+      return;
+    }
+  }
+}
+
+/** Refill rate of the forwarded-wheel distance budget: 6000 px per second. */
+const WHEEL_REFILL_PX_PER_MS = 6;
+
 export function HtmlFrame(props: HtmlFrameProps) {
   const live =
     props.enabled !== false &&
@@ -191,10 +266,51 @@ export function HtmlFrame(props: HtmlFrameProps) {
   // Registered in a layout effect, before the iframe can load and post.
   useLayoutEffect(() => {
     if (!live) return;
+    // Forwarded wheels are summed until the next animation frame, then applied once.
+    let pendingWheel: { deltaX: number; deltaY: number } | null = null;
+    let wheelFrame: number | null = null;
+    const raf = (globalThis as { requestAnimationFrame?: (cb: () => void) => number }).requestAnimationFrame;
+    const caf = (globalThis as { cancelAnimationFrame?: (id: number) => void }).cancelAnimationFrame;
+    // Distance budget: at most MAX_FORWARDED_WHEEL_PX at once, refilled at WHEEL_REFILL_PX_PER_MS.
+    let budget = MAX_FORWARDED_WHEEL_PX;
+    let budgetAt = performance.now();
+    const spend = (wheel: { deltaX: number; deltaY: number }) => {
+      const now = performance.now();
+      budget = Math.min(MAX_FORWARDED_WHEEL_PX, budget + (now - budgetAt) * WHEEL_REFILL_PX_PER_MS);
+      budgetAt = now;
+      const want = Math.max(Math.abs(wheel.deltaX), Math.abs(wheel.deltaY));
+      if (want <= 0 || budget <= 0) return null;
+      const scale = Math.min(1, budget / want);
+      budget -= want * scale;
+      return { deltaX: wheel.deltaX * scale, deltaY: wheel.deltaY * scale };
+    };
+    const flushWheel = () => {
+      wheelFrame = null;
+      const wrapper = wrapperRef.current as ScrollableElement | null;
+      const wheel = pendingWheel;
+      pendingWheel = null;
+      if (!wrapper || !wheel) return;
+      const allowed = spend(wheel);
+      if (allowed) forwardWheelToHost(wrapper, allowed);
+    };
     const listener = (event: FrameMessageEvent) => {
       const frame = frameRef.current as FrameElement | null;
       const source = frame?.contentWindow;
       if (!source || event.source !== source) return;
+      const wrapper = wrapperRef.current as ScrollableElement | null;
+      const wheel = readWheelMessage(event.data, wrapper?.clientHeight ?? 0);
+      if (wheel) {
+        if (!wrapper) return;
+        pendingWheel = pendingWheel
+          ? { deltaX: pendingWheel.deltaX + wheel.deltaX, deltaY: pendingWheel.deltaY + wheel.deltaY }
+          : { deltaX: wheel.deltaX, deltaY: wheel.deltaY };
+        if (wheelFrame === null) {
+          if (raf) wheelFrame = raf(flushWheel);
+          else flushWheel();
+        }
+        return;
+      }
+
       const size = readSizeChangedMessage(event.data);
       if (size !== undefined) {
         contentSeenRef.current = true;
@@ -227,7 +343,10 @@ export function HtmlFrame(props: HtmlFrameProps) {
       }
     };
     host().addEventListener("message", listener as (event: never) => void);
-    return () => host().removeEventListener("message", listener as (event: never) => void);
+    return () => {
+      host().removeEventListener("message", listener as (event: never) => void);
+      if (wheelFrame !== null && caf) caf(wheelFrame);
+    };
   }, [live, post]);
 
   // One handshake per document. The frame is never replaced on timeout: a live

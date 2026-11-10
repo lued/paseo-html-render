@@ -164,7 +164,9 @@ The current sandbox and CSP deliberately block more than they allow:
 - Paseo workspace or agent control. A local diagram button cannot start an
   agent, open a workspace, run a command or change the host. The only
   host-reaching actions today are the existing user-activated http(s) link and
-  `data:` image open requests; they are not a general host API.
+  `data:` image open requests, plus a wheel the page cannot scroll with, which
+  the live iframe forwards so the chat scrolls by a bounded distance; they are
+  not a general host API.
 - live behavior on iOS, older Android hosts without the public WebView
   capability, and in the static preview. Those surfaces get the PNG or native
   report, so a page must not claim that a control is usable there when it is only

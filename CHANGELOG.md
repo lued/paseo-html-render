@@ -118,6 +118,16 @@ It also contains the never-published 2.2.0 candidate changes listed further down
   when its row is missing; the call is idempotent, bounded, and skips a newer
   turn so an older card never lands under the newest reply. Older turns keep
   their projected card inside the folded work.
+- Scrolling up with the pointer over a live card no longer snaps the chat back
+  to the bottom. A wheel over an iframe never reaches the parent, so the agent
+  stream read the chained scroll as a layout shift. The card runtime now posts
+  a wheel it cannot use, on its dominant axis, as `ui/notifications/wheel`;
+  `HtmlFrame` accepts it only from its own frame, sums the wheels that arrive
+  within one animation frame, holds the total to a distance budget (2000 px at
+  once, refilled at 6000 px/s), replays it as a `wheel` on the card's wrapper,
+  then scrolls the nearest ancestor that can take it unless a host listener
+  cancels the replay. Wheels the card can scroll (including scrollers inside
+  open shadow roots) and pinch-zoom stay in the card.
 - Cards now recognize the tool-row names Paseo's `omp` provider produces.
   `omp` bridges MCP itself (`providers/omp/mcp-bridge.js`), so the model calls
   `mcp_<server>__<tool>_<12-hex>` and Paseo renames the timeline item to
