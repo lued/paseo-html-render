@@ -383,6 +383,9 @@ export const READY_METHOD = "ui/notifications/ready";
 export const READY_ACK_METHOD = "ui/notifications/ready-ack";
 export const OPEN_LINK_METHOD = "ui/open-link";
 export const OPEN_IMAGE_METHOD = "ui/open-image";
+export const WHEEL_METHOD = "ui/notifications/wheel";
+/** Largest forwarded wheel step, in CSS pixels, either axis. */
+export const MAX_FORWARDED_WHEEL_PX = 2000;
 
 export function hostContextChangedMessage(theme: HtmlDocumentTheme): {
   jsonrpc: "2.0";
@@ -443,6 +446,9 @@ const rootRule = themeRootCss;
  *   own style element (no reload, no state loss);
  * - reports content height through `ui/notifications/size-changed`, measuring
  *   body content rather than the viewport;
+ * - forwards a trusted wheel the page cannot scroll with to the parent through
+ *   `ui/notifications/wheel`, so the host's own scroll container sees the
+ *   reader's input (a wheel inside an iframe never reaches the parent);
  * - asks the parent to open http(s) links and data-URI images on trusted
  *   clicks. It does not handle or forward keyboard events. At top level
  *   (an exported file) it never prevents navigation.
@@ -450,7 +456,7 @@ const rootRule = themeRootCss;
  * It grants no host authority and performs no key replay. Kept ES5-compatible
  * because report pages may run in older webviews.
  */
-export const HTML_DOCUMENT_RUNTIME_SCRIPT = `(function(){var P=window.parent;function post(m){if(P!==window){P.postMessage(m,"*");}}post(${JSON.stringify(readyMessage())});function clean(v){if(typeof v!=="string")return "";v=v.replace(/[\\u0000-\\u001F\\u007F;{}<>\\\\]/g,"").trim();if(!v||/url\\s*\\(|expression\\s*\\(|@import|javascript:|vbscript:|data:/i.test(v))return "";return v.slice(0,512);}function apply(p){var v=p&&p.styles&&p.styles.variables;if(!v||typeof v!=="object")return;var css=":root{color-scheme:"+(p.theme==="light"?"light":"dark")+";";for(var k in v){if(!Object.prototype.hasOwnProperty.call(v,k))continue;if(!/^--[a-z0-9-]+$/.test(k))continue;var x=clean(v[k]);if(x)css+=k+":"+x+";";}css+="}";var s=document.getElementById(${JSON.stringify(HTML_DOCUMENT_THEME_STYLE_ID)});if(s){s.textContent=css;return;}if(!document.head)return;s=document.createElement("style");s.id=${JSON.stringify(HTML_DOCUMENT_THEME_STYLE_ID)};s.textContent=css;document.head.insertBefore(s,document.head.firstChild);}window.addEventListener("message",function(e){if(P===window||e.source!==P)return;var d=e.data;if(d&&d.type==="paseo-ready-probe"){post(${JSON.stringify(readyMessage())});return;}if(!d||d.jsonrpc!=="2.0")return;if(d.method===${JSON.stringify(HOST_CONTEXT_CHANGED_METHOD)}){apply(d.params);}else if(d.method===${JSON.stringify(READY_ACK_METHOD)}){/* handshake only; no authority */}},false);var last=-1,pending=0;function measure(){var h=0,b=document.body,d=document.documentElement,r;if(b){if(b.scrollHeight)h=Math.max(h,b.scrollHeight);if(b.getBoundingClientRect){r=b.getBoundingClientRect();if(r&&r.height)h=Math.max(h,r.height);}}if(d){if(d.scrollHeight>d.clientHeight)h=Math.max(h,d.scrollHeight);else if(d.getBoundingClientRect){r=d.getBoundingClientRect();if(r&&r.height)h=Math.max(h,r.height);}}return Math.ceil(h);}function send(){pending=0;var h=measure();if(h===last)return;last=h;post({jsonrpc:"2.0",method:${JSON.stringify(SIZE_CHANGED_METHOD)},params:{height:h}});}function schedule(){if(pending)return;var raf=window.requestAnimationFrame||function(f){return setTimeout(f,16);};pending=raf(send);}if(P!==window){if(window.ResizeObserver){var ro=new ResizeObserver(schedule);ro.observe(document.documentElement);document.addEventListener("DOMContentLoaded",function(){if(document.body)ro.observe(document.body);schedule();},false);}window.addEventListener("load",schedule,false);schedule();}var linkId=0;document.addEventListener("click",function(e){var path=e.composedPath?e.composedPath():[],i,t;for(i=0;i<path.length;i++){t=path[i];if(t&&t.tagName==="A"&&t.getAttribute&&t.getAttribute("href")){if(!e.isTrusted)return;var u;try{u=new URL(t.getAttribute("href"),document.baseURI);}catch(x){return;}if(u.protocol!=="http:"&&u.protocol!=="https:")return;if(u.href.split("#")[0]===location.href.split("#")[0])return;if(P!==window){e.preventDefault();e.stopPropagation();post({jsonrpc:"2.0",id:"paseo-link-"+(++linkId),method:${JSON.stringify(OPEN_LINK_METHOD)},params:{url:u.href,metaKey:e.metaKey===true,ctrlKey:e.ctrlKey===true}});}return;}}t=path.length?path[0]:e.target;if(!e.isTrusted||e.defaultPrevented||e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey||!t||t.tagName!=="IMG")return;if(t.closest&&t.closest("a[href],button"))return;var src=t.currentSrc||t.src||"";if(!/^data:image\\//i.test(src))return;post({jsonrpc:"2.0",method:${JSON.stringify(OPEN_IMAGE_METHOD)},params:{src:src,name:t.alt||t.title||""}});},true);})();`;
+export const HTML_DOCUMENT_RUNTIME_SCRIPT = `(function(){var P=window.parent;function post(m){if(P!==window){P.postMessage(m,"*");}}post(${JSON.stringify(readyMessage())});function clean(v){if(typeof v!=="string")return "";v=v.replace(/[\\u0000-\\u001F\\u007F;{}<>\\\\]/g,"").trim();if(!v||/url\\s*\\(|expression\\s*\\(|@import|javascript:|vbscript:|data:/i.test(v))return "";return v.slice(0,512);}function apply(p){var v=p&&p.styles&&p.styles.variables;if(!v||typeof v!=="object")return;var css=":root{color-scheme:"+(p.theme==="light"?"light":"dark")+";";for(var k in v){if(!Object.prototype.hasOwnProperty.call(v,k))continue;if(!/^--[a-z0-9-]+$/.test(k))continue;var x=clean(v[k]);if(x)css+=k+":"+x+";";}css+="}";var s=document.getElementById(${JSON.stringify(HTML_DOCUMENT_THEME_STYLE_ID)});if(s){s.textContent=css;return;}if(!document.head)return;s=document.createElement("style");s.id=${JSON.stringify(HTML_DOCUMENT_THEME_STYLE_ID)};s.textContent=css;document.head.insertBefore(s,document.head.firstChild);}window.addEventListener("message",function(e){if(P===window||e.source!==P)return;var d=e.data;if(d&&d.type==="paseo-ready-probe"){post(${JSON.stringify(readyMessage())});return;}if(!d||d.jsonrpc!=="2.0")return;if(d.method===${JSON.stringify(HOST_CONTEXT_CHANGED_METHOD)}){apply(d.params);}else if(d.method===${JSON.stringify(READY_ACK_METHOD)}){/* handshake only; no authority */}},false);var last=-1,pending=0;function measure(){var h=0,b=document.body,d=document.documentElement,r;if(b){if(b.scrollHeight)h=Math.max(h,b.scrollHeight);if(b.getBoundingClientRect){r=b.getBoundingClientRect();if(r&&r.height)h=Math.max(h,r.height);}}if(d){if(d.scrollHeight>d.clientHeight)h=Math.max(h,d.scrollHeight);else if(d.getBoundingClientRect){r=d.getBoundingClientRect();if(r&&r.height)h=Math.max(h,r.height);}}return Math.ceil(h);}function send(){pending=0;var h=measure();if(h===last)return;last=h;post({jsonrpc:"2.0",method:${JSON.stringify(SIZE_CHANGED_METHOD)},params:{height:h}});}function schedule(){if(pending)return;var raf=window.requestAnimationFrame||function(f){return setTimeout(f,16);};pending=raf(send);}if(P!==window){if(window.ResizeObserver){var ro=new ResizeObserver(schedule);ro.observe(document.documentElement);document.addEventListener("DOMContentLoaded",function(){if(document.body)ro.observe(document.body);schedule();},false);}window.addEventListener("load",schedule,false);schedule();}function canScroll(path,dx,dy){var i,n,s,e;for(i=0;i<path.length;i++){n=path[i];if(!n||n.nodeType!==1)continue;s=getComputedStyle(n);if(dy&&(s.overflowY==="auto"||s.overflowY==="scroll")&&n.scrollHeight>n.clientHeight+1&&(dy<0?n.scrollTop>0:n.scrollTop+n.clientHeight<n.scrollHeight-1))return true;if(dx&&(s.overflowX==="auto"||s.overflowX==="scroll")&&n.scrollWidth>n.clientWidth+1&&(dx<0?n.scrollLeft>0:n.scrollLeft+n.clientWidth<n.scrollWidth-1))return true;}e=document.scrollingElement;if(e&&dy&&e.scrollHeight>e.clientHeight+1&&(dy<0?e.scrollTop>0:e.scrollTop+e.clientHeight<e.scrollHeight-1))return true;if(e&&dx&&e.scrollWidth>e.clientWidth+1&&(dx<0?e.scrollLeft>0:e.scrollLeft+e.clientWidth<e.scrollWidth-1))return true;return false;}if(P!==window){window.addEventListener("wheel",function(e){if(!e.isTrusted||e.defaultPrevented||e.ctrlKey)return;var dx=e.deltaX||0,dy=e.deltaY||0;if(!dx&&!dy)return;if(Math.abs(dx)>Math.abs(dy))dy=0;else dx=0;var path=e.composedPath?e.composedPath():[],t;if(!path.length)for(t=e.target;t;t=t.parentNode)path.push(t);if(canScroll(path,dx,dy))return;e.preventDefault();post({jsonrpc:"2.0",method:${JSON.stringify(WHEEL_METHOD)},params:{deltaX:dx,deltaY:dy,deltaMode:e.deltaMode|0}});},{passive:false});}var linkId=0;document.addEventListener("click",function(e){var path=e.composedPath?e.composedPath():[],i,t;for(i=0;i<path.length;i++){t=path[i];if(t&&t.tagName==="A"&&t.getAttribute&&t.getAttribute("href")){if(!e.isTrusted)return;var u;try{u=new URL(t.getAttribute("href"),document.baseURI);}catch(x){return;}if(u.protocol!=="http:"&&u.protocol!=="https:")return;if(u.href.split("#")[0]===location.href.split("#")[0])return;if(P!==window){e.preventDefault();e.stopPropagation();post({jsonrpc:"2.0",id:"paseo-link-"+(++linkId),method:${JSON.stringify(OPEN_LINK_METHOD)},params:{url:u.href,metaKey:e.metaKey===true,ctrlKey:e.ctrlKey===true}});}return;}}t=path.length?path[0]:e.target;if(!e.isTrusted||e.defaultPrevented||e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey||!t||t.tagName!=="IMG")return;if(t.closest&&t.closest("a[href],button"))return;var src=t.currentSrc||t.src||"";if(!/^data:image\\//i.test(src))return;post({jsonrpc:"2.0",method:${JSON.stringify(OPEN_IMAGE_METHOD)},params:{src:src,name:t.alt||t.title||""}});},true);})();`;
 
 function themeStyleElementCss(theme: HtmlDocumentTheme | undefined): string {
   if (theme) return rootRule(theme);
@@ -696,6 +702,29 @@ export function readSizeChangedMessage(data: unknown): number | undefined {
   }
   if (typeof height !== "number" || !Number.isFinite(height) || height <= 0) return undefined;
   return clampFrameHeight(height);
+}
+
+export interface ForwardedWheel {
+  /** CSS pixels, already converted from line or page units and bounded. */
+  readonly deltaX: number;
+  readonly deltaY: number;
+}
+
+/**
+ * Reads a forwarded wheel. Any page can post one, without a reader wheel, so
+ * it grants only a bounded scroll of the host timeline: each axis is capped
+ * here, and `HtmlFrame` holds the total to a distance budget. Line and page
+ * units are converted to pixels.
+ */
+export function readWheelMessage(data: unknown, pagePx: number): ForwardedWheel | undefined {
+  const message = jsonRpcMethod(data);
+  if (!message || message.method !== WHEEL_METHOD || !isRecord(message.params)) return undefined;
+  const { deltaX, deltaY, deltaMode } = message.params;
+  if (typeof deltaX !== "number" || typeof deltaY !== "number") return undefined;
+  if (!Number.isFinite(deltaX) || !Number.isFinite(deltaY) || (deltaX === 0 && deltaY === 0)) return undefined;
+  const unit = deltaMode === 1 ? 16 : deltaMode === 2 ? Math.max(1, pagePx) : 1;
+  const bound = (v: number) => Math.max(-MAX_FORWARDED_WHEEL_PX, Math.min(MAX_FORWARDED_WHEEL_PX, v * unit));
+  return { deltaX: bound(deltaX), deltaY: bound(deltaY) };
 }
 
 /** Strict ready notification. A page can forge this; it grants no authority. */
