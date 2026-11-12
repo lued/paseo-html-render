@@ -73,6 +73,16 @@ function fakeServer() {
       hooks.set(name, handler);
       return () => {};
     },
+    registerSettings() {
+      return {
+        async read() {
+          return { status: "ready" as const, revision: "test", values: { enabled: true } };
+        },
+        subscribe() {
+          return () => {};
+        },
+      };
+    },
     on(name: string, handler: EventHook) {
       events.set(name, handler);
       return () => {};
@@ -126,10 +136,14 @@ test("daemon entry injects MCP at session open, serves owned artifacts, and clea
   t.after(cleanup);
   const paseo = fakePaseo(workspace);
 
-  // Launch-only injection: `agent.create` must not exist at all, because it
-  // writes the server into saved configuration and then collides with the
-  // session-open contribution on every later open.
-  assert.equal(hooks.get("agent.create"), undefined);
+  // Launch-only MCP injection: `agent.create` may only add the pi trigger
+  // prompt to saved configuration. Writing an MCP server there would collide
+  // with the session-open contribution on every later open.
+  const createHook = hooks.get("agent.create");
+  assert.ok(createHook, "the agent prompt hook is registered");
+  const created = await createHook!({ request: { config: { provider: "pi", cwd: workspace } } }, {});
+  assert.match(created?.config?.systemPrompt ?? "", /<paseo-html-render prompt v1>/);
+  assert.equal(created?.config?.mcpServers, undefined);
   assert.ok(hooks.get("agent.session_open"));
 
   // A resumed agent establishes authority and receives the server.

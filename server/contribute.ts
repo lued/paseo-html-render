@@ -1,4 +1,5 @@
 import type { PluginHandlerContext, PluginServerContext } from "@getpaseo/plugin/server";
+import { z } from "zod";
 import type { PluginIdentity } from "../shared/identity.ts";
 import { SELECTED_IDENTITY } from "../shared/selected-identity.ts";
 import {
@@ -7,6 +8,7 @@ import {
   readOriginalArtifactRpc,
   readReportRpc,
 } from "../shared/protocol.ts";
+import { registerAgentPromptHook } from "./agent-prompt.ts";
 import type { Authority } from "./authority.ts";
 import { createAuthority } from "./authority.ts";
 import { ArtifactError, ArtifactStore, pngDimensions, type ArtifactRequester } from "./artifacts.ts";
@@ -177,6 +179,33 @@ export default function contribute(server: PluginServerContext, options: Contrib
     identity,
     store,
     resolveRequester: requireWorkspace,
+    log,
+  });
+
+  // The trigger prompt is plugin behavior, not host configuration: it ships
+  // wherever the plugin is enabled. The setting exists so one host can turn it
+  // off and so an A/B can compare this build with the prompt on and off; a
+  // daemon without plugin settings keeps the default (on).
+  const agentPromptSettings = (() => {
+    try {
+      return server.registerSettings({
+        id: "html-render.agent-prompt",
+        scope: "host",
+        version: 1,
+        schema: z.object({ enabled: z.boolean().default(true) }),
+      });
+    } catch (error) {
+      log(`agent prompt setting unavailable, keeping it enabled: ${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    }
+  })();
+
+  registerAgentPromptHook(server, {
+    enabled: async () => {
+      if (!agentPromptSettings) return true;
+      const state = await agentPromptSettings.read();
+      return state.status !== "ready" ? true : state.values.enabled !== false;
+    },
     log,
   });
 

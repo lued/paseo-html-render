@@ -602,6 +602,16 @@ test("daemon entry appends the real published card and ignores a preview-only tu
     before() {
       return () => {};
     },
+    registerSettings() {
+      return {
+        async read() {
+          return { status: "ready" as const, revision: "test", values: { enabled: true } };
+        },
+        subscribe() {
+          return () => {};
+        },
+      };
+    },
     on(name: string, handler: (event: unknown, context: unknown) => Promise<void> | void) {
       events.set(name, handler);
       return () => {};
