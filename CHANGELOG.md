@@ -20,7 +20,7 @@ It also contains the never-published 2.2.0 candidate changes listed further down
   and `alwaysLoad`; the 250-character instruction line alone did not create the
   impulse. Only pi agents are touched, an existing prompt is preserved, and the
   block is idempotent by its marker. The plugin's first host setting,
-  `html-render.agent-prompt` (`enabled`, default true), turns it off for a host.
+  `html-render-agent-prompt` (`enabled`, default true), turns it off for a host.
   The text is saved in each new agent's record, so it survives resumes and stays
   after the plugin is removed; existing agents are not rewritten.
 - Published HTML answers now use a persistent response-card reference appended

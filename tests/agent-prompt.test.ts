@@ -6,6 +6,7 @@ import {
   AGENT_PROMPT,
   AGENT_PROMPT_MARKER,
   AGENT_PROMPT_PROVIDERS,
+  AGENT_PROMPT_SETTINGS_ID,
   hasAgentPrompt,
   isAgentPromptProvider,
   withAgentPrompt,
@@ -55,6 +56,12 @@ test("the prompt names both tools, the codemode path and the brake", () => {
   assert.match(AGENT_PROMPT, /plain text for a single fact/);
   assert.match(AGENT_PROMPT, /One card per turn/);
   assert.match(AGENT_PROMPT, /never republish unchanged content/);
+});
+
+test("the host setting id is one the SDK accepts", () => {
+  // defineSettings rejects anything else; the fleet would stay on the default
+  // only because the plugin catches the throw, which is not a test.
+  assert.match(AGENT_PROMPT_SETTINGS_ID, /^[a-z][a-z0-9_-]*$/);
 });
 
 test("only pi receives the prompt", () => {

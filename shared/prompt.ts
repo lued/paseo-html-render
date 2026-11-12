@@ -24,6 +24,13 @@
 
 export const AGENT_PROMPT_MARKER = "<paseo-html-render prompt v1>";
 
+/**
+ * Host setting that turns the prompt off. The SDK accepts only
+ * `^[a-z][a-z0-9_-]*$` and the settings directory is shared by every plugin,
+ * so the id is namespaced with the plugin id instead of a dot.
+ */
+export const AGENT_PROMPT_SETTINGS_ID = "html-render-agent-prompt";
+
 export const AGENT_PROMPT =
   AGENT_PROMPT_MARKER +
   "\n" +

@@ -9,6 +9,7 @@ import {
   readReportRpc,
 } from "../shared/protocol.ts";
 import { registerAgentPromptHook } from "./agent-prompt.ts";
+import { AGENT_PROMPT_SETTINGS_ID } from "../shared/prompt.ts";
 import type { Authority } from "./authority.ts";
 import { createAuthority } from "./authority.ts";
 import { ArtifactError, ArtifactStore, pngDimensions, type ArtifactRequester } from "./artifacts.ts";
@@ -189,7 +190,7 @@ export default function contribute(server: PluginServerContext, options: Contrib
   const agentPromptSettings = (() => {
     try {
       return server.registerSettings({
-        id: "html-render.agent-prompt",
+        id: AGENT_PROMPT_SETTINGS_ID,
         scope: "host",
         version: 1,
         schema: z.object({ enabled: z.boolean().default(true) }),
